@@ -1,0 +1,1 @@
+"""Xinjian Zhiwei backend application."""

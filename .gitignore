@@ -1,0 +1,42 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+backend/.coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+
+# Local runtime and database data
+*.log
+logs/
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+data/postgres/
+
+# Pre-existing unrelated local artifact
+build_grassland_report.py
+
+# IDE
+.idea/
+.vscode/
+
+# Device secrets (Phase 10)
+device/**/secrets.h
+device/**/secrets.ini
