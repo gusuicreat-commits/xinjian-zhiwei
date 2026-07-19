@@ -1,6 +1,6 @@
 # 芯鉴知微
 
-面向高校嵌入式与物联网实验课程的智能分析平台。当前完成 Phase 1 项目骨架：Vue 3 前端、FastAPI 后端、PostgreSQL + pgvector 容器配置，以及前后端健康检查链路。
+面向高校嵌入式与物联网实验课程的智能分析平台。当前已完成 Phase 2：在 Vue 3、FastAPI、PostgreSQL + pgvector 基础上，加入通用设备模型、设备令牌认证，以及日志、传感器读数、心跳和设备状态 API。
 
 ## 当前能力
 
@@ -9,8 +9,44 @@
 - Compose 定义 PostgreSQL、后端和前端三个服务及健康检查。
 - 后端提供结构化日志、配置校验、pytest 和 Ruff。
 - 前端提供 TypeScript、Vue Router、Pinia、Element Plus、ECharts、Vitest、Playwright、ESLint 和 Prettier 基础配置。
+- Alembic 在后端容器启动时自动升级数据库到当前版本。
+- 设备令牌仅以 PBKDF2-SHA256 哈希保存，API 不记录或返回原始令牌。
+- 日志、读数和心跳保存原始 JSON 请求及 `is_test_data` 标记，支持数据追溯。
 
-业务数据模型、设备 API 和认证将在后续阶段实现。
+设备模拟器、规则诊断和用户业务模型将在后续阶段实现。
+
+## 尚未确定的配置与实现边界
+
+以下内容目前尚未由项目方确定。后续实现必须保持可配置、可替换和可追溯，不得把具体厂商、硬件型号、字段结构或生产配置写死在业务代码中。
+
+### AI Provider
+
+- 当前状态：Provider、模型名称、服务地址和生产密钥均未确定。
+- 实现方式：后端通过统一 `AIClient` 接口接入模型服务，Provider 适配器可替换；模型、Base URL、超时和重试策略通过环境变量或配置对象注入。
+- 默认行为：使用不发起外部请求的占位实现；AI 未配置或调用失败时，系统仍应返回规则诊断结果。
+- 占位配置：`.env.example` 中的 `AI_PROVIDER`、`AI_BASE_URL`、`AI_MODEL` 和 `AI_API_KEY` 仅用于声明配置入口，不代表已选择任何厂商。
+
+### ESP32 与传感器
+
+- 当前状态：开发板型号、传感器型号、接线方式、采样频率和业务字段均未确定。
+- 实现方式：采用通用设备、传感器、指标和读数模型。建议以 `device_id`、`sensor_type`、`metric_key`、`value`、`unit`、`observed_at` 和可扩展 `metadata` 表达采集数据。
+- 扩展方式：具体硬件协议、字段映射和校验规则由设备配置或适配器提供，不在核心业务模型中固定某一种开发板或传感器。
+- 占位行为：真实设备接入前使用明确标记为测试数据的模拟器，不把模拟数据描述为真实采集结果。
+
+### 知识库来源
+
+- 当前状态：教材、实验指导书、案例库、审核教师和授权范围均未确定。
+- 实现方式：知识导入通过来源适配接口完成，并保存 `source_type`、`source_uri`、标题、版本、授权信息、审核状态和更新时间等可追溯元数据。
+- 使用限制：来源和授权未确认的内容不得作为正式知识入库；占位内容必须标记为 `TODO[待补充]` 或测试数据。
+- 检索约束：后续 RAG 输出必须携带来源引用，不能生成或伪造不存在的知识来源。
+
+### 生产参数
+
+- 当前状态：域名、服务器、数据库凭据、网络拓扑、账号权限、对象存储、监控和备份方案均未确定。
+- 实现方式：通过环境变量、部署密钥或外部配置注入；仓库只保留无敏感信息的 `.env.example` 和开发默认值。
+- 安全要求：不得提交真实密码、令牌、密钥、证书或生产连接串，也不得用开发占位值直接部署生产环境。
+
+上述项目确定后，应优先补充配置和适配器，并同步更新 README、架构文档、环境变量示例和验收测试，而不是绕过接口在现有代码中加入厂商特例。
 
 ## 本地开发
 
@@ -30,6 +66,7 @@ uvicorn app.main:app --reload --port 8000
 cd backend
 ruff check .
 pytest
+alembic upgrade head
 ```
 
 ### 前端
@@ -79,9 +116,32 @@ docker compose logs frontend
 
 不要提交 `.env`、真实数据库密码、设备令牌或 AI 密钥。
 
+## Phase 2 设备 API
+
+设备请求使用 `X-Device-Token`，日志、读数和心跳接口还需使用 `X-Device-ID`。令牌必须是高熵随机值，并通过交互式命令创建，不能写入源码、README 或版本控制：
+
+```bash
+docker compose exec backend python -m app.cli.create_device \
+  --device-id TODO_DEVICE_ID \
+  --display-name "TODO[待补充]: 设备名称" \
+  --device-type "TODO[待补充]: 通用设备类别"
+```
+
+可用接口：
+
+- `POST /api/v1/device/logs`
+- `POST /api/v1/device/readings`
+- `POST /api/v1/device/heartbeat`
+- `GET /api/v1/device/{device_id}/status`
+
+传感器数据使用通用字段 `sensor_type`、`metric_key`、`value`、`unit`、`observed_at` 和 `metadata`。具体开发板、传感器型号及厂商字段只能通过后续适配器或配置映射接入，不能修改核心模型来写死某个硬件。
+
 ## 项目文档
 
 - [项目上下文](docs/PROJECT_CONTEXT.md)
 - [系统架构](docs/architecture.md)
+- [API 设计](docs/api-design.md)
+- [数据库设计](docs/database-design.md)
+- [设备协议](docs/device-protocol.md)
 - [开发计划](docs/development-plan.md)
 - [实现状态](docs/implementation-status.md)

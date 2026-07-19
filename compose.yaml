@@ -25,6 +25,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
       DATABASE_URL: ${DATABASE_URL}
+      DEVICE_OFFLINE_AFTER_SECONDS: ${DEVICE_OFFLINE_AFTER_SECONDS:-90}
     ports:
       - "8000:8000"
     depends_on:

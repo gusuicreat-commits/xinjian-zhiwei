@@ -1,100 +1,79 @@
 # 芯鉴知微实现状态
 
-最后更新：2026-07-18（Phase 1）
+最后更新：2026-07-19（Phase 2）
 
 ## 总体状态
 
-- 当前阶段：Phase 1 实现、本地验收和 Docker 容器验收全部完成。
-- 下一阶段：Phase 2 尚未开始。
-- Git：当前目录仍不是 Git 仓库。
-- 业务数据：没有创建业务表、迁移、设备账号或模拟数据。
+- 当前阶段：Phase 2 实现、本地测试、Alembic 迁移和 Docker/PostgreSQL 运行验收全部完成。
+- 下一阶段：Phase 3 尚未开始。
+- Git：已在 `main` 建立 Phase 1 基线提交；Phase 2 变更尚未提交。
+- 验收数据：本地开发数据库包含一个明确标记的 Phase 2 测试设备，以及日志、读数、心跳各一条 `is_test_data=true` 的验收记录；它们不代表真实硬件或实验数据。
 
-## Phase 1 实现情况
+## Phase 2 实现情况
 
-- [x] 创建 Vue 3 + TypeScript + Vite 前端骨架。
-- [x] 配置 Vue Router、Pinia、Axios、Element Plus、ECharts、Vitest 和 Playwright。
-- [x] 创建统一 Axios 客户端和 `/api/v1/health` 类型定义。
-- [x] 实现健康状态页面，包含加载、成功、失败和重试状态。
-- [x] 配置 Vite `/api` 开发代理和 Nginx 容器反向代理。
-- [x] 创建 FastAPI 后端骨架、Pydantic Settings 和结构化 JSON 日志。
-- [x] 实现 `GET /api/v1/health` 与 Swagger/OpenAPI。
-- [x] 配置 SQLAlchemy、Alembic、psycopg 和 PostgreSQL 连接占位符。
-- [x] 创建 PostgreSQL + pgvector、后端、前端 Compose 三服务定义。
-- [x] 为三个容器配置健康检查和 PostgreSQL 持久化卷。
-- [x] 创建 `.env.example`、`.gitignore`、Dockerfile、README 和格式化/静态检查配置。
-- [x] 安装并锁定前端依赖；ECharts 升级到 6.1.x 后 npm 审计为 0 个漏洞。
-- [x] 安装 Docker Desktop 4.82.0，并执行 `docker compose up -d --build` 完成三服务运行验收。
+- [x] 创建 SQLAlchemy 2 declarative base、会话和四个通用模型：Device、DeviceLog、SensorReading、DeviceHeartbeat。
+- [x] 创建 Alembic 环境和初始迁移 `20260719_0001`。
+- [x] 后端容器启动时先执行 `alembic upgrade head`。
+- [x] 使用带随机盐的 PBKDF2-SHA256 哈希保存设备令牌。
+- [x] 提供交互式设备创建 CLI，不回显或保存明文令牌。
+- [x] 实现 `POST /api/v1/device/logs`。
+- [x] 实现 `POST /api/v1/device/readings`。
+- [x] 实现 `POST /api/v1/device/heartbeat` 并更新服务端 `last_seen_at`。
+- [x] 实现 `GET /api/v1/device/{device_id}/status`。
+- [x] 保存经过校验的原始 JSON 请求、服务端接收时间和测试数据标记。
+- [x] 对缺字段、额外字段、非有限数值和无时区时间戳返回 422。
+- [x] 对未知、停用或令牌错误的设备统一返回 401。
+- [x] 传感器采用 `sensor_type`、`metric_key`、`value`、`unit` 和 `metadata` 通用模型，没有写死硬件型号或厂商字段。
 
-## 主要新增文件
+## 主要修改与新增文件
 
-### 根目录
+- 数据层：`backend/app/db/`、`backend/app/models/`。
+- 认证：`backend/app/core/security.py`、`backend/app/api/dependencies.py`。
+- API 与服务：`backend/app/api/v1/routes/device.py`、`backend/app/services/device_ingest.py`。
+- Schema：`backend/app/schemas/device.py`。
+- 迁移：`backend/alembic.ini`、`backend/migrations/`。
+- 启动与运维：`backend/app/startup.py`、`backend/app/cli/create_device.py`、`backend/Dockerfile`。
+- 测试：`backend/tests/conftest.py`、`test_device_api.py`、`test_security.py`。
+- 文档：`README.md`、`docs/api-design.md`、`docs/database-design.md`、`docs/device-protocol.md`。
 
-- `README.md`
-- `.gitignore`
-- `.env.example`
-- `compose.yaml`
+## 数据库迁移
 
-### 后端
-
-- `backend/pyproject.toml`
-- `backend/Dockerfile`
-- `backend/app/main.py`
-- `backend/app/core/config.py`
-- `backend/app/core/logging.py`
-- `backend/app/api/v1/router.py`
-- `backend/app/api/v1/routes/health.py`
-- `backend/app/schemas/health.py`
-- `backend/tests/test_health.py`
-
-### 前端
-
-- `frontend/package.json` 与 `frontend/package-lock.json`
-- `frontend/Dockerfile` 与 `frontend/nginx.conf`
-- TypeScript、Vite、ESLint、Prettier、Vitest 和 Playwright 配置
-- `frontend/src/api/`、`router/`、`stores/`、`types/`
-- `frontend/src/views/HomeView.vue`
-- `frontend/src/components/StatusBadge.vue` 及单元测试
-- `frontend/tests/e2e/health.spec.ts`
-
-原始 Word、`docs/CODEX_PROJECT_CONTEXT.md` 和 `build_grassland_report.py` 均未修改。
+- Revision：`20260719_0001`。
+- 新建：`devices`、`device_logs`、`sensor_readings`、`device_heartbeats`。
+- 启用：`vector` 扩展（幂等创建）。
+- 实际数据库：`alembic current` 为 `20260719_0001 (head)`。
+- 一致性：`alembic check` 返回 `No new upgrade operations detected`。
 
 ## 验证结果
 
 | 验证项 | 命令/方式 | 结果 |
 | --- | --- | --- |
-| 后端静态检查 | `backend/.venv/bin/ruff check backend` | 通过 |
-| 后端测试 | `cd backend && .venv/bin/pytest` | 2 passed |
-| 后端真实 HTTP | `GET http://127.0.0.1:8000/api/v1/health` | 200，返回结构化状态 |
-| Swagger | `GET http://127.0.0.1:8000/docs` | 200，可访问 |
-| 前端 ESLint | `npm run lint` | 通过，0 warning |
-| 前端格式 | `npm run format:check` | 通过 |
-| 前端单元测试 | `npm run test` | 2 passed |
-| 前端类型与构建 | `npm run build` | 通过；主 JS 约 150.75 kB（gzip 57.84 kB） |
-| 前端代理 | `GET http://127.0.0.1:5173/api/v1/health` | 200，与后端响应一致 |
-| 浏览器 E2E | `npm run test:e2e`（Chrome） | 1 passed |
-| 浏览器质量 | Playwright 断言与截图 | 页面有内容，无错误覆盖层、控制台错误、页面异常或失败资源 |
-| npm 安全审计 | `npm audit --json` | 0 vulnerabilities |
-| Compose 静态检查 | PyYAML 解析与服务/镜像/健康检查断言 | 通过 |
-| Docker 工具链 | Docker Desktop 4.82.0、Engine/CLI 29.6.1、Compose 5.3.0 | 可用 |
-| Compose 运行验收 | `docker compose up -d --build`、`docker compose ps` | PostgreSQL、backend、frontend 全部 healthy |
-| 容器后端与 Swagger | `GET :8000/api/v1/health`、`GET :8000/docs` | 均为 200 |
-| 容器前端与代理 | `GET :8080/`、`GET :8080/api/v1/health` | 均为 200 |
-| 容器浏览器 E2E | `PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 npm run test:e2e` | Chrome 1 passed |
-| pgvector | 查询 `pg_available_extensions` | 可用，版本 0.8.5 |
-| PostgreSQL 持久化 | `docker volume inspect xinjian-zhiwei_postgres_data` | local 数据卷已创建 |
-
-## 数据库迁移
-
-无。Phase 1 只提供 PostgreSQL/pgvector 运行配置和数据库连接依赖；SQLAlchemy 模型及 Alembic 初始迁移属于 Phase 2。
+| Ruff | `backend/.venv/bin/ruff check .` | 通过 |
+| pytest | `pytest -W error` | 12 passed，0 warning |
+| Python 3.9 语法 | `compileall` 使用独立缓存目录 | 通过 |
+| Alembic head | `alembic heads` | `20260719_0001 (head)` |
+| 离线迁移 SQL | `alembic upgrade head --sql` | 完整生成 |
+| 实际迁移 | 后端容器启动入口 | PostgreSQL 升级成功 |
+| 模型/迁移一致性 | 容器内 `alembic check` | 无待生成操作 |
+| 合法日志上传 | 实际容器 API | 201，数据库可查询 |
+| 合法读数上传 | 实际容器 API | 201，数据库可查询 |
+| 合法心跳上传 | 实际容器 API | 201，`last_seen_at` 已更新 |
+| 状态查询 | 实际容器 API | 200，返回 `online` |
+| 非法令牌 | 实际容器 API | 401，未写入 |
+| 缺少必填字段 | 实际容器 API | 422 |
+| Compose | `docker compose ps` | PostgreSQL、backend、frontend 全部 healthy |
+| 健康接口 | `GET /api/v1/health` | 200，版本 `0.2.0` |
+| 前端回归 | ESLint、Prettier、Vitest、类型检查与生产构建 | 全部通过，2 tests passed |
+| 容器浏览器 E2E | Chrome + `http://127.0.0.1:8080` | 1 passed，显示 Phase 2 运行链路 |
 
 ## 已知问题与风险
 
-1. 当前目录不是 Git 仓库，无法用 Git 证明工作区差异或进行提交级回滚。
-2. Docker Hub 的认证与镜像端点在当前网络超时；Python、Node.js 和 Nginx 基础镜像已改用 AWS Public ECR 的 Docker Official Images 镜像源，并保留 `BASE_REGISTRY` 覆盖能力。
-3. Swagger 默认从 CDN 加载 UI 静态资源；当前验证了 HTML 响应，离线部署优化留待部署阶段。
-4. AI Provider、ESP32 型号、接线、账号、知识来源和生产部署参数仍为 `TODO[待补充]`。
-5. `build_grassland_report.py` 是既有 0 字节未知文件，继续保留。
+1. AI Provider、具体硬件、知识来源和生产参数尚未确定；README 已明确统一接口、通用模型与占位规则，后续不得写死。
+2. 当前只实现设备侧数据接收，尚无学生、教师、实验或设备管理权限 API。
+3. 设备令牌轮换、撤销审计和上传限流将在安全加固阶段补充；当前可通过 `is_active=false` 停用设备。
+4. Swagger UI 静态资源仍依赖 CDN，离线部署优化留待部署阶段。
+5. Docker Hub 在当前网络超时，基础镜像继续使用可覆盖的 AWS Public ECR Docker Official Images 镜像源。
 
 ## 下一阶段
 
-Phase 2 将创建 SQLAlchemy 模型、Alembic 初始迁移、设备令牌认证，以及日志、读数、心跳和设备状态 API。在用户再次明确输入“继续下一阶段”前，不进入 Phase 2。
+Phase 3 将实现明确标记为测试数据的设备模拟器，包括正常、读取失败、离线、越界和数值不变场景。用户再次明确输入“继续下一阶段”前，不进入 Phase 3。

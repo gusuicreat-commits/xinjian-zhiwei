@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "芯鉴知微 API"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     app_env: str = "development"
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
@@ -20,11 +20,19 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+psycopg://xinjian_app:TODO_CHANGE_ME@localhost:5432/xinjian_zhiwei"
     )
+    device_offline_after_seconds: int = 90
 
     @field_validator("log_level")
     @classmethod
     def normalize_log_level(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("device_offline_after_seconds")
+    @classmethod
+    def validate_offline_threshold(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("device_offline_after_seconds must be positive")
+        return value
 
     @property
     def cors_origins(self) -> list[str]:

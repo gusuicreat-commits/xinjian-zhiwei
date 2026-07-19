@@ -9,7 +9,7 @@
 
 ## 阶段计划
 
-当前进度：Phase 0、Phase 1 均已完成并通过实际运行验收；Phase 2 尚未开始。
+当前进度：Phase 0、Phase 1、Phase 2 均已完成并通过实际运行验收；Phase 3 尚未开始。
 
 | Phase | 目标 | 核心交付物 | 主要验收 |
 | --- | --- | --- | --- |
@@ -41,7 +41,18 @@
 4. [x] 用实际依赖验证 Node.js v26.3.0 的 lint、测试、类型检查和生产构建。
 5. [x] 创建 `.gitignore`、`.env.example`、前后端骨架和 `compose.yaml`。
 6. [x] 落地 `/api/v1/health`、Swagger 和前端健康检查页面。
-7. [ ] 由用户决定是否在当前目录初始化 Git；本阶段未擅自创建仓库。
+7. [x] 已按用户要求初始化 Git，并创建 Phase 1 基线提交。
+
+## Phase 2 验收收尾
+
+1. [x] 创建通用 Device、DeviceLog、SensorReading 和 DeviceHeartbeat 模型。
+2. [x] 创建并实际执行 Alembic 初始迁移 `20260719_0001`。
+3. [x] 设备令牌使用 PBKDF2-SHA256 哈希存储，非法令牌返回 401。
+4. [x] 日志、读数、心跳正常请求返回 201 并可从 PostgreSQL 查询。
+5. [x] 心跳更新 `last_seen_at`，状态接口正确返回在线状态。
+6. [x] 缺少必填字段返回 422，并保存可追溯原始请求体。
+7. [x] Ruff、12 项 pytest、Alembic 一致性检查和 Compose 运行验收通过。
+8. [x] 硬件、AI、知识来源和生产参数继续使用通用接口与占位配置，不写死未确定事实。
 
 ## 全局待确认项
 

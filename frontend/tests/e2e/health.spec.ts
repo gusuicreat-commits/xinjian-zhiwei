@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('shows a healthy Phase 1 application shell', async ({ page }, testInfo) => {
+test('shows a healthy Phase 2 application shell', async ({ page }, testInfo) => {
   const consoleErrors: string[] = []
   const pageErrors: string[] = []
   const failedResponses: string[] = []
@@ -17,7 +17,7 @@ test('shows a healthy Phase 1 application shell', async ({ page }, testInfo) => 
   await page.goto('/')
 
   await expect(page.getByRole('heading', { name: '芯鉴知微' })).toBeVisible()
-  await expect(page.getByText('Phase 1 · 基础运行链路')).toBeVisible()
+  await expect(page.getByText('Phase 2 · 设备数据接入链路')).toBeVisible()
   await expect(page.getByText('服务正常')).toBeVisible()
   await expect(page.getByText('芯鉴知微 API')).toBeVisible()
   await expect(page.locator('.vite-error-overlay')).toHaveCount(0)
