@@ -1,12 +1,34 @@
+import secrets
 from typing import Annotated, Optional
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.security import verify_device_token
 from app.db.session import get_db
 from app.models.device import Device
+
+
+def require_review_access(
+    settings: Annotated[Settings, Depends(get_settings)],
+    x_review_token: Annotated[Optional[str], Header(alias="X-Review-Token")] = None,
+) -> None:
+    expected = settings.review_access_token
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "REVIEW_ACCESS_NOT_CONFIGURED",
+                "message": "Review access is not configured",
+            },
+        )
+    if not x_review_token or not secrets.compare_digest(x_review_token, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "INVALID_REVIEW_TOKEN", "message": "Invalid review credentials"},
+        )
 
 
 def get_authenticated_device(

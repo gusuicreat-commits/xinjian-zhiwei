@@ -1,58 +1,65 @@
 # 芯鉴知微实现状态
 
-最后更新：2026-07-20（Phase 4）
+最后更新：2026-07-20（Phase 5）
 
 ## 总体状态
 
-- 当前阶段：Phase 4 实现、测试、镜像构建和实际 PostgreSQL 诊断验收完成。
-- 下一阶段：Phase 5 尚未开始。
-- Git：Phase 3 已提交为 `aa3005095d45907e1fd2c84d6b8ae238e8c4cb12 feat: complete phase 3 device simulator`；Phase 4 变更尚未提交。
-- 运行状态：原 PostgreSQL、backend、frontend 容器保持运行，未因本阶段停止或替换；Phase 4 新镜像已构建并通过一次性容器验收。
+- 当前阶段：Phase 5 实现、测试、镜像构建和实际 PostgreSQL 提示升级验收完成。
+- 下一阶段：Phase 6 尚未开始。
+- Git：Phase 4 已提交为 `e7759b158a3d2cd5e2ef4bf6b06f95dfeca69ee1 feat: complete phase 4 rule diagnosis`；Phase 5 变更尚未提交。
+- 运行状态：原 PostgreSQL、backend、frontend 长期容器保持运行；Phase 5 的 0.5.0 新镜像通过一次性容器验收。
 
-## Phase 4 实现情况
+## Phase 5 实现情况
 
-- [x] 统一 `DiagnosisContext` 覆盖日志、心跳、读数、最后在线时间和可选实验模板快照。
-- [x] YAML 规则通过 Pydantic 严格加载，规则文件按名称、规则按优先级与 ID 确定性排序。
-- [x] 事实解析器和运算符表替代按错误类型堆叠的条件分支。
-- [x] 实现 `SENSOR_READ_FAILED`、`DEVICE_OFFLINE`、`VALUE_OUT_OF_RANGE` 三类核心规则。
-- [x] 每个命中结果包含对应日志、离线时间或越界读数与边界证据。
-- [x] 相同上下文和规则集产生相同匹配内容及 SHA-256 输入指纹。
-- [x] 修改 YAML 阈值无需修改主程序，并由自动化测试验证。
-- [x] 诊断结果保存规则版本/哈希、指纹、命中规则、证据、上下文快照和测试数据标记。
-- [x] 新增设备认证的诊断运行 API，不暴露或保存原始令牌。
+- [x] YAML 保存 DHT11 读取失败、LED 不亮、按键无反应三棵课程示例故障树。
+- [x] 三棵树均标记 `placeholder`，不将板卡型号、引脚、传感器字段或生产参数写入 Python。
+- [x] 通用事实解析器根据 Phase 4 错误类型或配置事件码匹配证据。
+- [x] 同一异常输出三个可能原因，按证据权重和原因 ID 确定性排序。
+- [x] 无专属证据时最高仅 20 分低置信；原因专属证据可提升排序和置信度。
+- [x] 没有任何证据的原因不输出，不生成无依据的高置信结论。
+- [x] Level 1–4 阈值和提示文本由 YAML 配置，按失败次数或持续时间升级。
+- [x] 保存树版本/哈希、首次发现时间、失败次数、持续时间、原因、证据、提示和测试标记。
+- [x] 同一诊断/故障树幂等，连续窗口外重新计数。
+- [x] Level 4 进入临时令牌保护的介入列表；未配置审阅令牌时默认关闭。
 
 ## 数据库迁移
 
-- 新增 `20260720_0002_phase4_diagnosis_results.py`。
-- 新增 `diagnosis_results` 表及设备/创建时间、输入指纹索引。
-- 已在现有 PostgreSQL 实际执行，`alembic current` 返回 `20260720_0002 (head)`。
+- 新增 `20260720_0003_phase5_guidance_history.py`。
+- 新增 `guidance_history` 表、唯一约束及设备历史和介入查询索引。
+- 已在现有 PostgreSQL 执行，`alembic current` 返回 `20260720_0003 (head)`。
+- `alembic check` 返回 `No new upgrade operations detected.`。
 
 ## 验证结果
 
 | 验证项 | 命令/方式 | 结果 |
 | --- | --- | --- |
-| 后端 Ruff | `ruff check app tests`、`ruff format --check app tests` | 通过 |
-| 后端测试 | `pytest` | 21 passed |
+| 后端 Ruff/格式 | `ruff check app tests`、`ruff format --check app tests` | 通过 |
+| 后端测试 | `pytest` | 30 passed |
 | 模拟器回归 | Ruff、格式、`pytest -W error` | 8 passed |
 | 前端回归 | ESLint、Prettier、Vitest、类型检查、构建 | 2 tests passed，构建通过 |
-| Compose 镜像 | `docker compose build backend frontend` | 0.4.0 镜像构建通过 |
-| PostgreSQL 迁移 | 一次性 Phase 4 后端容器 | `20260720_0002 (head)` |
-| 实际诊断 API | 随机临时设备 + TestClient + PostgreSQL | 三类规则全部命中，HTTP 201 |
-| 证据持久化 | 查询 `diagnosis_results` | 3 组证据，测试标记为 true |
-| 容器保持运行 | `docker compose ps` | 原三个服务均持续 healthy |
+| Compose 镜像 | `docker compose build backend frontend` | 0.5.0 镜像构建通过 |
+| PostgreSQL 迁移 | 一次性 Phase 5 后端容器 | `20260720_0003 (head)` |
+| 迁移一致性 | `alembic check` | 无待生成操作 |
+| 提示升级 | 实际 API + PostgreSQL，连续 10 次测试异常 | `1,1,2,2,2,3,3,3,3,4` |
+| 原因与置信约束 | 实际 API | 每次 3 个有证据低置信候选 |
+| 历史幂等 | 重复调用第 10 个诊断 | 历史仍为 10 条，失败次数仍为 10 |
+| 教师介入查询 | 临时随机审阅凭据 | Level 4 测试设备可见 |
+| 测试数据标记 | PostgreSQL `bool_and(is_test_data)` | true |
+| 长期容器 | `docker compose ps` | 三个服务持续 healthy，未停止或替换 |
 
 ## 本地验收数据
 
-Phase 4 创建了一个随机后缀、名称明确标记为 acceptance test 的临时设备，并写入一条错误日志、一条通用越界读数和一条诊断结果。载荷及结果均标记为测试数据，不代表真实硬件、实验或生产结果；随机令牌未输出或写入仓库。
+Phase 5 创建了一个随机后缀、名称明确标记为 acceptance test 的临时设备，一条测试错误日志、十条诊断结果和十条提示历史。所有提示历史均为测试数据，不代表真实硬件、课程或生产结论；设备与审阅随机令牌未写入仓库。
 
 ## 已知问题与风险
 
-1. 正式实验模板模型尚未建立，Phase 4 暂由诊断请求注入通用指标范围快照；后续应改为服务端加载并授权。
-2. 诊断运行暂沿用设备令牌认证；学生与教师权限将在业务模型阶段补齐。
-3. `VALUE_STUCK` 等可选规则未提前实现，避免越过核心三类验收范围。
-4. AI Provider、ESP32/传感器型号和字段、知识库来源及生产参数仍未确定，接口和文档保持通用占位。
-5. 新镜像已构建，但为遵守“不停止当前 Docker 容器”的要求，当前长期运行 backend/frontend 未替换；下次获准更新运行环境时再滚动到 0.4.0。
+1. 三棵树是项目计划指定但尚未经课程方确认的示例模板，必须在真实实验与硬件确定后审核 YAML。
+2. LED 和按键根事件码当前只是可配置接口约定，尚无真实设备字段映射。
+3. 教师账号和角色尚未建立；`REVIEW_ACCESS_TOKEN` 是默认关闭的临时审阅边界，后续必须替换。
+4. 当前原因评分为透明的加权证据，不包含 Phase 8 知识检索或 Phase 9 AI 推理。
+5. 新镜像已构建，但为保持长期容器不中断，当前 backend/frontend 未替换；下次获准更新运行环境时再滚动到 0.5.0。
+6. 容器内新版 FastAPI 的 TestClient 发出上游弃用警告，不影响本阶段结果；依赖升级阶段应跟踪其替代方案。
 
 ## 下一阶段
 
-Phase 5 将基于 Phase 4 的结构化证据实现故障树、原因评分和分层提示。用户再次明确输入“继续下一阶段”前，不进入 Phase 5。
+Phase 6 将实现学生端页面和真实后端接口展示。用户再次明确输入“继续下一阶段”前，不进入 Phase 6。

@@ -1,0 +1,205 @@
+version: "1"
+trees:
+  - id: sensor-read-failure-example-v1
+    title: DHT11 读取失败（待课程确认的示例模板）
+    status: placeholder
+    enabled: true
+    continuity_window_seconds: 3600
+    trigger:
+      - fact: diagnosis_error_count
+        operator: gte
+        value: 1
+        weight: 1
+        description: 规则诊断已确认传感器读取失败
+        params: {error_type: SENSOR_READ_FAILED}
+    escalation: &default_escalation
+      - {level: 1, min_failure_count: 1, min_duration_seconds: 0}
+      - {level: 2, min_failure_count: 3, min_duration_seconds: 300}
+      - {level: 3, min_failure_count: 6, min_duration_seconds: 900}
+      - {level: 4, min_failure_count: 10, min_duration_seconds: 1800}
+    causes:
+      - id: sensor-power-or-wiring
+        title: 供电或连接不稳定
+        evidence:
+          - &sensor_root
+            fact: diagnosis_error_count
+            operator: gte
+            value: 1
+            weight: 20
+            description: 已发生传感器读取失败，只支持低置信候选
+            params: {error_type: SENSOR_READ_FAILED}
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在通用传感器供电异常证据
+            params: {event_code: SENSOR_POWER_UNSTABLE}
+        hints:
+          1: 先沿供电与连接方向检查，不要立即更换器件。
+          2: 对照实验接线说明检查电源、地线和连接是否牢固。
+          3: 断电后逐项复核连接，再恢复供电并观察是否仍持续失败。
+          4: 保留当前接线与日志，请教师协助确认供电和连接条件。
+      - id: sensor-signal-path
+        title: 数据通路异常
+        evidence:
+          - *sensor_root
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在通用信号超时证据
+            params: {event_code: SENSOR_SIGNAL_TIMEOUT}
+        hints:
+          1: 重点检查数据通路方向。
+          2: 对照实验配置确认数据连接与软件映射一致。
+          3: 逐项验证连接、输入模式和通信时序，并记录每次变化。
+          4: 提交连接记录与超时日志，请教师协助定位数据通路。
+      - id: sensor-read-timing
+        title: 读取时序或频率不合适
+        evidence:
+          - *sensor_root
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在读取过于频繁的证据
+            params: {event_code: SENSOR_READ_TOO_FREQUENT}
+        hints:
+          1: 检查读取时序方向。
+          2: 将当前采样间隔与实验模板要求进行比较。
+          3: 使用配置项逐步增加采样间隔，记录每次测试结果。
+          4: 保留时序配置与失败记录，请教师确认实验模板参数。
+
+  - id: led-no-light-example-v1
+    title: LED 不亮（待课程确认的示例模板）
+    status: placeholder
+    enabled: true
+    continuity_window_seconds: 3600
+    trigger:
+      - &led_root_trigger
+        fact: log_event_count
+        operator: gte
+        value: 1
+        weight: 1
+        description: 日志存在 LED 无响应事件
+        params: {event_code: LED_NO_RESPONSE}
+    escalation: *default_escalation
+    causes:
+      - id: led-connection-direction
+        title: 发光器件连接方向或连接关系不符
+        evidence:
+          - <<: *led_root_trigger
+            weight: 20
+            description: 仅有 LED 无响应根事件，只支持低置信候选
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在输出连接检查证据
+            params: {event_code: OUTPUT_CONNECTION_SUSPECTED}
+        hints:
+          1: 先检查器件连接方向。
+          2: 对照实验接线图确认连接方向和连接关系。
+          3: 断电后逐段复核连接，并在恢复供电后重新测试。
+          4: 保留接线照片和测试日志，请教师协助检查电路连接。
+      - id: led-output-configuration
+        title: 输出配置与实验模板不一致
+        evidence:
+          - <<: *led_root_trigger
+            weight: 20
+            description: 仅有 LED 无响应根事件，只支持低置信候选
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在通用输出配置异常证据
+            params: {event_code: OUTPUT_CONFIGURATION_MISMATCH}
+        hints:
+          1: 检查软件输出配置方向。
+          2: 对照实验模板确认输出映射、模式和有效电平配置。
+          3: 分别验证初始化和状态切换路径，记录实际输出状态。
+          4: 提交配置快照与日志，请教师协助核对实验模板。
+      - id: led-circuit-power
+        title: 输出回路供电异常
+        evidence:
+          - <<: *led_root_trigger
+            weight: 20
+            description: 仅有 LED 无响应根事件，只支持低置信候选
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在输出回路供电异常证据
+            params: {event_code: OUTPUT_POWER_UNSTABLE}
+        hints:
+          1: 检查输出回路供电方向。
+          2: 检查公共参考连接和实验要求的供电条件。
+          3: 断电检查回路完整性，再按实验安全要求逐段验证。
+          4: 停止反复通电，保留现场并请求教师介入。
+
+  - id: button-no-response-example-v1
+    title: 按键无反应（待课程确认的示例模板）
+    status: placeholder
+    enabled: true
+    continuity_window_seconds: 3600
+    trigger:
+      - &button_root_trigger
+        fact: log_event_count
+        operator: gte
+        value: 1
+        weight: 1
+        description: 日志存在按键无响应事件
+        params: {event_code: BUTTON_NO_RESPONSE}
+    escalation: *default_escalation
+    causes:
+      - id: button-connection
+        title: 输入连接不完整
+        evidence:
+          - <<: *button_root_trigger
+            weight: 20
+            description: 仅有按键无响应根事件，只支持低置信候选
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在输入连接异常证据
+            params: {event_code: INPUT_CONNECTION_SUSPECTED}
+        hints:
+          1: 先检查输入连接方向。
+          2: 对照实验接线图检查按键回路和公共参考连接。
+          3: 断电后逐段检查连接连续性，再恢复测试。
+          4: 保留接线状态与日志，请教师协助确认输入回路。
+      - id: button-input-configuration
+        title: 输入模式或映射配置不一致
+        evidence:
+          - <<: *button_root_trigger
+            weight: 20
+            description: 仅有按键无响应根事件，只支持低置信候选
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在通用输入配置异常证据
+            params: {event_code: INPUT_CONFIGURATION_MISMATCH}
+        hints:
+          1: 检查软件输入配置方向。
+          2: 对照实验模板确认输入映射、模式和有效状态配置。
+          3: 记录原始输入状态并分别验证初始化与事件处理路径。
+          4: 提交配置快照和输入日志，请教师协助核对模板。
+      - id: button-signal-conditioning
+        title: 输入信号稳定条件不满足
+        evidence:
+          - <<: *button_root_trigger
+            weight: 20
+            description: 仅有按键无响应根事件，只支持低置信候选
+          - fact: log_event_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 日志存在输入信号不稳定证据
+            params: {event_code: INPUT_SIGNAL_UNSTABLE}
+        hints:
+          1: 检查输入信号稳定性方向。
+          2: 对照实验模板检查输入稳定条件与事件判定设置。
+          3: 采集连续原始输入状态，区分无变化与快速抖动。
+          4: 保留连续输入记录，请教师协助判断硬件或软件原因。

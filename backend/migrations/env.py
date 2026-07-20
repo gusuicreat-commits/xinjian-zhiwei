@@ -10,6 +10,7 @@ from app.models import (  # noqa: F401
     DeviceHeartbeat,
     DeviceLog,
     DiagnosisResult,
+    GuidanceHistory,
     SensorReading,
 )
 

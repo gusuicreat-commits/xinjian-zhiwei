@@ -31,3 +31,6 @@ class Device(UuidPrimaryKeyMixin, TimestampMixin, Base):
     diagnosis_results = relationship(
         "DiagnosisResult", back_populates="device", cascade="all, delete-orphan"
     )
+    guidance_history = relationship(
+        "GuidanceHistory", back_populates="device", cascade="all, delete-orphan"
+    )

@@ -1,4 +1,4 @@
-# 芯鉴知微系统架构（Phase 4）
+# 芯鉴知微系统架构（Phase 5）
 
 ## 1. 架构目标
 
@@ -51,7 +51,7 @@ xinjian-zhiwei/
 └── .env.example
 ```
 
-Phase 4 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器，以及 YAML 确定性规则诊断。真实设备端与知识库将在对应阶段创建，避免空目录冒充实现。
+Phase 5 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断，以及可配置故障树和分层提示。真实设备端与知识库将在对应阶段创建，避免空目录冒充实现。
 
 ## 4. 模块职责
 
@@ -73,7 +73,7 @@ Phase 4 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 
 1. 从日志、心跳、读数和实验模板构造 `DiagnosisContext`。
 2. YAML 规则引擎输出确定性异常类型和证据。
-3. 故障树按证据为可能原因评分（Phase 5，尚未实现）。
+3. 故障树按证据为可能原因评分，并根据持续时间和失败次数升级提示。
 4. pgvector 检索经审核的实验知识和案例，并返回来源。
 5. `AIClient` 生成结构化解释，经 Pydantic 校验后保存。
 6. AI 超时、失败或输出非法时返回规则结果和基础步骤。
@@ -113,9 +113,9 @@ Phase 4 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 
 ## 7. 当前架构风险
 
-1. Git 已提交 Phase 1 至 Phase 3 基线；Phase 4 已完成验收但尚未提交。
+1. Git 已提交 Phase 1 至 Phase 4 基线；Phase 5 变更尚未提交。
 2. Docker Desktop 4.82.0 已安装，Compose 三服务运行验收通过；PlatformIO 仍不可用，将在设备阶段处理。
-3. 本机 Python 3.9.6 与容器 Python 3.12 均已验证 Phase 4；后续仍应持续验证二者行为一致。
+3. 本机 Python 3.9.6 与容器 Python 3.12 均已验证 Phase 5；后续仍应持续验证二者行为一致。
 4. Node.js v26.3.0 已通过本地 lint、Vitest、类型检查、构建和 Playwright，但生产容器固定使用 Node 22，降低部署兼容风险。
 5. AI Provider、ESP32 型号、接线、账号和知识来源尚未确定；核心模型保持通用，配置边界详见 README。
 6. 设备令牌轮换、撤销审计、上传限流和生产保留策略尚未实现，将在安全加固阶段补充。

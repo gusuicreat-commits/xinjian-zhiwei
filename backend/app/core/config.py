@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "芯鉴知微 API"
-    app_version: str = "0.4.0"
+    app_version: str = "0.5.0"
     app_env: str = "development"
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
@@ -21,6 +22,7 @@ class Settings(BaseSettings):
         "postgresql+psycopg://xinjian_app:TODO_CHANGE_ME@localhost:5432/xinjian_zhiwei"
     )
     device_offline_after_seconds: int = 90
+    review_access_token: Optional[str] = None
 
     @field_validator("log_level")
     @classmethod

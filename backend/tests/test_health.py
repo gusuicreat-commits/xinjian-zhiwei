@@ -11,7 +11,7 @@ def test_health_check_returns_structured_status() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "芯鉴知微 API",
-        "version": "0.4.0",
+        "version": "0.5.0",
         "environment": "development",
     }
 
@@ -27,3 +27,6 @@ def test_openapi_exposes_health_endpoint() -> None:
     assert "/api/v1/device/heartbeat" in response.json()["paths"]
     assert "/api/v1/device/{device_id}/status" in response.json()["paths"]
     assert "/api/v1/diagnosis/devices/{device_id}/run" in response.json()["paths"]
+    assert "/api/v1/diagnosis/results/{diagnosis_result_id}/guidance" in response.json()["paths"]
+    assert "/api/v1/diagnosis/devices/{device_id}/guidance" in response.json()["paths"]
+    assert "/api/v1/diagnosis/interventions" in response.json()["paths"]
