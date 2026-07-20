@@ -1,4 +1,4 @@
-# 芯鉴知微系统架构（Phase 5）
+# 芯鉴知微系统架构（Phase 6）
 
 ## 1. 架构目标
 
@@ -51,7 +51,7 @@ xinjian-zhiwei/
 └── .env.example
 ```
 
-Phase 5 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断，以及可配置故障树和分层提示。真实设备端与知识库将在对应阶段创建，避免空目录冒充实现。
+Phase 6 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断、可配置故障树与分层提示，以及使用真实聚合 API 的学生工作台。真实设备端与知识库将在对应阶段创建，避免空目录冒充实现。
 
 ## 4. 模块职责
 
@@ -113,9 +113,9 @@ Phase 5 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 
 ## 7. 当前架构风险
 
-1. Git 已提交 Phase 1 至 Phase 4 基线；Phase 5 变更尚未提交。
+1. Git 已提交 Phase 1 至 Phase 5 基线；Phase 6 变更尚未提交。
 2. Docker Desktop 4.82.0 已安装，Compose 三服务运行验收通过；PlatformIO 仍不可用，将在设备阶段处理。
-3. 本机 Python 3.9.6 与容器 Python 3.12 均已验证 Phase 5；后续仍应持续验证二者行为一致。
+3. 本机 Python 3.9.6 与容器 Python 3.12 均用于分阶段验证；后续仍应持续验证二者行为一致。
 4. Node.js v26.3.0 已通过本地 lint、Vitest、类型检查、构建和 Playwright，但生产容器固定使用 Node 22，降低部署兼容风险。
 5. AI Provider、ESP32 型号、接线、账号和知识来源尚未确定；核心模型保持通用，配置边界详见 README。
 6. 设备令牌轮换、撤销审计、上传限流和生产保留策略尚未实现，将在安全加固阶段补充。

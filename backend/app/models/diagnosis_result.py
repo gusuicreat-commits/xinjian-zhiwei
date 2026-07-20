@@ -31,3 +31,6 @@ class DiagnosisResult(UuidPrimaryKeyMixin, Base):
     guidance_history = relationship(
         "GuidanceHistory", back_populates="diagnosis_result", cascade="all, delete-orphan"
     )
+    feedback = relationship(
+        "DiagnosisFeedback", back_populates="diagnosis_result", cascade="all, delete-orphan"
+    )
