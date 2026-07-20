@@ -1,6 +1,6 @@
 # 芯鉴知微
 
-面向高校嵌入式与物联网实验课程的智能分析平台。当前已完成 Phase 2：在 Vue 3、FastAPI、PostgreSQL + pgvector 基础上，加入通用设备模型、设备令牌认证，以及日志、传感器读数、心跳和设备状态 API。
+面向高校嵌入式与物联网实验课程的智能分析平台。当前已完成 Phase 3：在设备数据接入基础上，加入正常、读取失败、离线、越界和连续相同值五类可配置测试模拟场景。
 
 ## 当前能力
 
@@ -12,8 +12,10 @@
 - Alembic 在后端容器启动时自动升级数据库到当前版本。
 - 设备令牌仅以 PBKDF2-SHA256 哈希保存，API 不记录或返回原始令牌。
 - 日志、读数和心跳保存原始 JSON 请求及 `is_test_data` 标记，支持数据追溯。
+- 独立模拟器通过环境变量配置 API、测试设备凭据、通用指标字段和场景数值。
+- 所有模拟器载荷强制标记为测试数据，不冒充真实设备或实验结果。
 
-设备模拟器、规则诊断和用户业务模型将在后续阶段实现。
+规则诊断和用户业务模型将在后续阶段实现。
 
 ## 尚未确定的配置与实现边界
 
@@ -136,6 +138,32 @@ docker compose exec backend python -m app.cli.create_device \
 
 传感器数据使用通用字段 `sensor_type`、`metric_key`、`value`、`unit`、`observed_at` 和 `metadata`。具体开发板、传感器型号及厂商字段只能通过后续适配器或配置映射接入，不能修改核心模型来写死某个硬件。
 
+## Phase 3 设备模拟器
+
+模拟器位于 `simulator/`，支持以下场景：
+
+- `normal`
+- `read-failure`
+- `offline`
+- `out-of-range`
+- `value-stuck`
+
+安装和运行：
+
+```bash
+cd simulator
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+
+export XINJIAN_API_BASE_URL=http://127.0.0.1:8000
+export XINJIAN_DEVICE_ID=TODO_TEST_DEVICE_ID
+export XINJIAN_DEVICE_TOKEN=TODO_LOCAL_SECRET
+xinjian-simulator normal --iterations 1
+```
+
+真实令牌不得写入脚本、README、`.env.example` 或 Git。具体传感器字段和场景值由 `XINJIAN_*` 环境变量映射，详见 `simulator/.env.example`。
+
 ## 项目文档
 
 - [项目上下文](docs/PROJECT_CONTEXT.md)
@@ -143,5 +171,6 @@ docker compose exec backend python -m app.cli.create_device \
 - [API 设计](docs/api-design.md)
 - [数据库设计](docs/database-design.md)
 - [设备协议](docs/device-protocol.md)
+- [模拟器设计](docs/simulator-design.md)
 - [开发计划](docs/development-plan.md)
 - [实现状态](docs/implementation-status.md)

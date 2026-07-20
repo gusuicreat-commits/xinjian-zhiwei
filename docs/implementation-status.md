@@ -1,79 +1,72 @@
 # 芯鉴知微实现状态
 
-最后更新：2026-07-19（Phase 2）
+最后更新：2026-07-19（Phase 3）
 
 ## 总体状态
 
-- 当前阶段：Phase 2 实现、本地测试、Alembic 迁移和 Docker/PostgreSQL 运行验收全部完成。
-- 下一阶段：Phase 3 尚未开始。
-- Git：已在 `main` 建立 Phase 1 基线提交；Phase 2 变更尚未提交。
-- 验收数据：本地开发数据库包含一个明确标记的 Phase 2 测试设备，以及日志、读数、心跳各一条 `is_test_data=true` 的验收记录；它们不代表真实硬件或实验数据。
+- 当前阶段：Phase 3 实现、单元测试和实际 API/PostgreSQL 场景验收全部完成。
+- 下一阶段：Phase 4 尚未开始。
+- Git：Phase 2 已提交为 `714b808 feat: complete phase 2 device ingestion`；Phase 3 变更尚未提交。
+- 运行状态：PostgreSQL、backend、frontend 容器保持运行。
 
-## Phase 2 实现情况
+## Phase 3 实现情况
 
-- [x] 创建 SQLAlchemy 2 declarative base、会话和四个通用模型：Device、DeviceLog、SensorReading、DeviceHeartbeat。
-- [x] 创建 Alembic 环境和初始迁移 `20260719_0001`。
-- [x] 后端容器启动时先执行 `alembic upgrade head`。
-- [x] 使用带随机盐的 PBKDF2-SHA256 哈希保存设备令牌。
-- [x] 提供交互式设备创建 CLI，不回显或保存明文令牌。
-- [x] 实现 `POST /api/v1/device/logs`。
-- [x] 实现 `POST /api/v1/device/readings`。
-- [x] 实现 `POST /api/v1/device/heartbeat` 并更新服务端 `last_seen_at`。
-- [x] 实现 `GET /api/v1/device/{device_id}/status`。
-- [x] 保存经过校验的原始 JSON 请求、服务端接收时间和测试数据标记。
-- [x] 对缺字段、额外字段、非有限数值和无时区时间戳返回 422。
-- [x] 对未知、停用或令牌错误的设备统一返回 401。
-- [x] 传感器采用 `sensor_type`、`metric_key`、`value`、`unit` 和 `metadata` 通用模型，没有写死硬件型号或厂商字段。
+- [x] 创建独立 `simulator/` Python 包和虚拟环境配置。
+- [x] 创建统一环境变量配置、HTTP 客户端、场景动作和循环 runner。
+- [x] 实现 `normal`：心跳、测试日志和两个通用指标读数。
+- [x] 实现 `read-failure`：心跳和读取失败日志，不发送伪造读数。
+- [x] 实现 `offline`：首周期上传后停止所有请求。
+- [x] 实现 `out-of-range`：两个可配置越界值及警告日志。
+- [x] 实现 `value-stuck`：连续发送完全相同的可配置值。
+- [x] 提供统一 CLI 及五个独立入口脚本。
+- [x] 所有上传载荷强制设置 `is_test_data=true`。
+- [x] API、设备 ID、令牌、字段、单位、数值、间隔和超时均通过环境变量配置。
+- [x] 令牌不进入配置对象 `repr`、运行输出、示例文件或 Git。
+- [x] 具体 ESP32、传感器型号及生产字段没有写死。
 
-## 主要修改与新增文件
+## 主要新增与修改文件
 
-- 数据层：`backend/app/db/`、`backend/app/models/`。
-- 认证：`backend/app/core/security.py`、`backend/app/api/dependencies.py`。
-- API 与服务：`backend/app/api/v1/routes/device.py`、`backend/app/services/device_ingest.py`。
-- Schema：`backend/app/schemas/device.py`。
-- 迁移：`backend/alembic.ini`、`backend/migrations/`。
-- 启动与运维：`backend/app/startup.py`、`backend/app/cli/create_device.py`、`backend/Dockerfile`。
-- 测试：`backend/tests/conftest.py`、`test_device_api.py`、`test_security.py`。
-- 文档：`README.md`、`docs/api-design.md`、`docs/database-design.md`、`docs/device-protocol.md`。
+- 模拟器核心：`simulator/xinjian_simulator/`。
+- 场景入口：`normal_device.py`、`sensor_read_failure.py`、`offline_device.py`、`out_of_range.py`、`value_stuck.py`。
+- 配置与依赖：`simulator/pyproject.toml`、`simulator/.env.example`。
+- 测试：`simulator/tests/`。
+- 文档：`simulator/README.md`、`docs/simulator-design.md` 及根 README。
+- 版本：后端、前端和模拟器统一为 `0.3.0`。
 
 ## 数据库迁移
 
-- Revision：`20260719_0001`。
-- 新建：`devices`、`device_logs`、`sensor_readings`、`device_heartbeats`。
-- 启用：`vector` 扩展（幂等创建）。
-- 实际数据库：`alembic current` 为 `20260719_0001 (head)`。
-- 一致性：`alembic check` 返回 `No new upgrade operations detected`。
+无。Phase 3 复用 Phase 2 的设备采集表和 `20260719_0001`，没有修改数据库结构。
 
 ## 验证结果
 
 | 验证项 | 命令/方式 | 结果 |
 | --- | --- | --- |
-| Ruff | `backend/.venv/bin/ruff check .` | 通过 |
-| pytest | `pytest -W error` | 12 passed，0 warning |
+| 模拟器 Ruff | `ruff check .` | 通过 |
+| 模拟器格式 | `ruff format --check .` | 15 files formatted |
+| 模拟器测试 | `pytest -W error` | 8 passed，0 warning |
 | Python 3.9 语法 | `compileall` 使用独立缓存目录 | 通过 |
-| Alembic head | `alembic heads` | `20260719_0001 (head)` |
-| 离线迁移 SQL | `alembic upgrade head --sql` | 完整生成 |
-| 实际迁移 | 后端容器启动入口 | PostgreSQL 升级成功 |
-| 模型/迁移一致性 | 容器内 `alembic check` | 无待生成操作 |
-| 合法日志上传 | 实际容器 API | 201，数据库可查询 |
-| 合法读数上传 | 实际容器 API | 201，数据库可查询 |
-| 合法心跳上传 | 实际容器 API | 201，`last_seen_at` 已更新 |
-| 状态查询 | 实际容器 API | 200，返回 `online` |
-| 非法令牌 | 实际容器 API | 401，未写入 |
-| 缺少必填字段 | 实际容器 API | 422 |
-| Compose | `docker compose ps` | PostgreSQL、backend、frontend 全部 healthy |
-| 健康接口 | `GET /api/v1/health` | 200，版本 `0.2.0` |
-| 前端回归 | ESLint、Prettier、Vitest、类型检查与生产构建 | 全部通过，2 tests passed |
-| 容器浏览器 E2E | Chrome + `http://127.0.0.1:8080` | 1 passed，显示 Phase 2 运行链路 |
+| normal | 实际 API + PostgreSQL | 心跳 1、日志 1、读数 2 |
+| read-failure | 实际 API + PostgreSQL | 心跳 1、错误日志 1、读数 0 |
+| out-of-range | 实际 API + PostgreSQL | 心跳 1、警告日志 1、读数 2 |
+| value-stuck | 实际 API + PostgreSQL | 心跳/日志/读数各 4，distinct value = 1 |
+| offline | 初始心跳后静默约 95 秒 | 状态接口返回 `offline` |
+| 测试数据标记 | PostgreSQL `bool_and(is_test_data)` | 所有 Phase 3 场景均为 true |
+| Phase 2 回归 | 后端 pytest | 12 passed |
+| 前端回归 | ESLint、Prettier、Vitest、类型检查、构建 | 全部通过 |
+| 浏览器 E2E | Chrome + 容器前端 | Phase 3 页面 1 passed |
+
+## 本地验收数据
+
+Phase 3 复用了 `phase2-acceptance-test-device`，并写入明确测试记录：心跳 8 条、读数 8 条，以及对应 `TEST_*` 日志。这些记录只用于开发验收，不代表真实设备或实验数据。
 
 ## 已知问题与风险
 
-1. AI Provider、具体硬件、知识来源和生产参数尚未确定；README 已明确统一接口、通用模型与占位规则，后续不得写死。
-2. 当前只实现设备侧数据接收，尚无学生、教师、实验或设备管理权限 API。
-3. 设备令牌轮换、撤销审计和上传限流将在安全加固阶段补充；当前可通过 `is_active=false` 停用设备。
-4. Swagger UI 静态资源仍依赖 CDN，离线部署优化留待部署阶段。
-5. Docker Hub 在当前网络超时，基础镜像继续使用可覆盖的 AWS Public ECR Docker Official Images 镜像源。
+1. 模拟器使用同步 HTTP 和固定周期，尚未实现网络失败重试、抖动或并发设备；真实设备联调阶段再补充。
+2. 离线场景需要真实等待后端阈值，默认开发配置为 90 秒。
+3. Phase 4 尚未实现规则诊断，因此当前场景只产生稳定证据，不自动输出异常结论。
+4. AI Provider、具体硬件、知识来源和生产参数继续保持占位与可配置状态。
+5. Phase 3 变更尚未提交 Git。
 
 ## 下一阶段
 
-Phase 3 将实现明确标记为测试数据的设备模拟器，包括正常、读取失败、离线、越界和数值不变场景。用户再次明确输入“继续下一阶段”前，不进入 Phase 3。
+Phase 4 将定义 `DiagnosisContext`、YAML 规则加载和确定性匹配，优先识别读取失败、设备离线和数值越界。用户再次明确输入“继续下一阶段”前，不进入 Phase 4。

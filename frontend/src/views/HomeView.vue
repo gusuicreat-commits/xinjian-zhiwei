@@ -60,7 +60,7 @@ onMounted(() => {
         </el-alert>
       </el-card>
 
-      <p class="phase-note">Phase 2 · 设备数据接入链路</p>
+      <p class="phase-note">Phase 3 · 设备场景模拟链路</p>
     </section>
   </main>
 </template>
