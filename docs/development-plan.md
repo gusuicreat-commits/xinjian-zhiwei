@@ -9,7 +9,7 @@
 
 ## 阶段计划
 
-当前进度：Phase 0 至 Phase 3 均已完成并通过实际运行验收；Phase 4 尚未开始。
+当前进度：Phase 0 至 Phase 4 均已完成并通过实际运行验收；Phase 5 尚未开始。
 
 | Phase | 目标 | 核心交付物 | 主要验收 |
 | --- | --- | --- | --- |
@@ -64,6 +64,17 @@
 6. [x] 连续相同值场景产生四条读数且 distinct value 为 1。
 7. [x] 所有场景记录均为 `is_test_data=true`，配置和输出不泄漏设备令牌。
 8. [x] 8 项模拟器测试、Ruff、格式检查和实际 PostgreSQL 场景验收通过。
+
+## Phase 4 验收收尾
+
+1. [x] 定义统一 `DiagnosisContext`，覆盖日志、心跳、读数和通用实验模板快照。
+2. [x] 创建经 Pydantic 严格校验的 YAML 规则加载器，拒绝重复规则 ID。
+3. [x] 通过事实解析器与运算符表匹配规则，主流程不按错误类型分支。
+4. [x] 稳定识别 `SENSOR_READ_FAILED`、`DEVICE_OFFLINE` 和 `VALUE_OUT_OF_RANGE`。
+5. [x] 输出并保存规则版本、哈希、输入指纹、命中规则、证据与上下文快照。
+6. [x] 新增 Alembic 迁移 `20260720_0002` 和诊断运行 API。
+7. [x] 单元与 SQLite API 测试覆盖正常、异常、确定性和修改 YAML 无需改主程序。
+8. [x] 完成 PostgreSQL 迁移、实际 API 和 Compose 镜像构建验收；原长期运行容器按要求保持不变。
 
 ## 全局待确认项
 

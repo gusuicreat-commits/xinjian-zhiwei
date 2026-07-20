@@ -28,3 +28,6 @@ class Device(UuidPrimaryKeyMixin, TimestampMixin, Base):
     heartbeats = relationship(
         "DeviceHeartbeat", back_populates="device", cascade="all, delete-orphan"
     )
+    diagnosis_results = relationship(
+        "DiagnosisResult", back_populates="device", cascade="all, delete-orphan"
+    )

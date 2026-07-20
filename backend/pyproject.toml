@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xinjian-zhiwei-backend"
-version = "0.3.0"
+version = "0.4.0"
 description = "FastAPI backend for the Xinjian Zhiwei embedded-lab analysis platform"
 requires-python = ">=3.9"
 dependencies = [
@@ -14,6 +14,7 @@ dependencies = [
   "psycopg[binary]>=3.2,<4.0",
   "alembic>=1.14,<2.0",
   "httpx>=0.28,<1.0",
+  "pyyaml>=6.0,<7.0",
   "uvicorn[standard]>=0.34,<1.0",
 ]
 
@@ -27,6 +28,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.diagnosis" = ["rules/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

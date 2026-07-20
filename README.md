@@ -1,6 +1,6 @@
 # 芯鉴知微
 
-面向高校嵌入式与物联网实验课程的智能分析平台。当前已完成 Phase 3：在设备数据接入基础上，加入正常、读取失败、离线、越界和连续相同值五类可配置测试模拟场景。
+面向高校嵌入式与物联网实验课程的智能分析平台。当前已完成 Phase 4：在可配置设备模拟链路上，加入确定性 YAML 规则诊断、证据记录和结果持久化。
 
 ## 当前能力
 
@@ -14,8 +14,11 @@
 - 日志、读数和心跳保存原始 JSON 请求及 `is_test_data` 标记，支持数据追溯。
 - 独立模拟器通过环境变量配置 API、测试设备凭据、通用指标字段和场景数值。
 - 所有模拟器载荷强制标记为测试数据，不冒充真实设备或实验结果。
+- 统一 `DiagnosisContext` 从日志、心跳、读数和可选实验模板快照构造诊断输入。
+- YAML 规则稳定识别读取失败、设备离线和数值越界，结果包含命中规则与原始证据。
+- 规则加载、事实解析和运算符匹配相互解耦，调整阈值或新增现有事实组合无需修改主流程。
 
-规则诊断和用户业务模型将在后续阶段实现。
+故障树、用户业务模型和 AI 诊断将在后续阶段实现。
 
 ## 尚未确定的配置与实现边界
 
@@ -164,6 +167,24 @@ xinjian-simulator normal --iterations 1
 
 真实令牌不得写入脚本、README、`.env.example` 或 Git。具体传感器字段和场景值由 `XINJIAN_*` 环境变量映射，详见 `simulator/.env.example`。
 
+## Phase 4 规则诊断
+
+诊断运行接口为 `POST /api/v1/diagnosis/devices/{device_id}/run`，沿用设备令牌认证。请求可提供通用实验模板范围：
+
+```json
+{
+  "lookback_seconds": 3600,
+  "experiment_template": {
+    "template_id": "TODO[待补充]",
+    "metric_ranges": {
+      "TODO_METRIC_KEY": {"minimum": 0, "maximum": 100}
+    }
+  }
+}
+```
+
+示例字段和值仅说明接口结构，不代表已确定传感器、实验模板或生产阈值。Phase 4 尚无实验模板业务表，因此模板快照由调用方显式注入；对应模型确定后应由服务端加载并校验授权。规则说明见 `docs/diagnosis-rules.md`。
+
 ## 项目文档
 
 - [项目上下文](docs/PROJECT_CONTEXT.md)
@@ -172,5 +193,6 @@ xinjian-simulator normal --iterations 1
 - [数据库设计](docs/database-design.md)
 - [设备协议](docs/device-protocol.md)
 - [模拟器设计](docs/simulator-design.md)
+- [规则诊断设计](docs/diagnosis-rules.md)
 - [开发计划](docs/development-plan.md)
 - [实现状态](docs/implementation-status.md)

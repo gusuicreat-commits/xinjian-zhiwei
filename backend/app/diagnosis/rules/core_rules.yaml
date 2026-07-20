@@ -1,0 +1,33 @@
+version: "1"
+rules:
+  - id: sensor-read-failed-v1
+    error_type: SENSOR_READ_FAILED
+    priority: 100
+    enabled: true
+    summary: 设备日志报告传感器读取失败
+    conditions:
+      - fact: log_event_count
+        operator: gte
+        value: 1
+        params:
+          event_code: SENSOR_READ_FAILED
+
+  - id: device-offline-v1
+    error_type: DEVICE_OFFLINE
+    priority: 90
+    enabled: true
+    summary: 设备最后在线时间超过规则阈值
+    conditions:
+      - fact: seconds_since_last_seen
+        operator: gte
+        value: 90
+
+  - id: value-out-of-range-v1
+    error_type: VALUE_OUT_OF_RANGE
+    priority: 80
+    enabled: true
+    summary: 传感器读数超出实验模板配置范围
+    conditions:
+      - fact: out_of_range_count
+        operator: gte
+        value: 1

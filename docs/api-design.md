@@ -1,4 +1,4 @@
-# 芯鉴知微 API 设计（Phase 2）
+# 芯鉴知微 API 设计（Phase 4）
 
 ## 通用约定
 
@@ -37,6 +37,12 @@ X-Device-Token: <secret token>
 
 返回 `online`、`offline` 或 `never_seen`。离线阈值由 `DEVICE_OFFLINE_AFTER_SECONDS` 配置，默认开发值为 90 秒。
 
+### POST `/diagnosis/devices/{device_id}/run`
+
+使用路径设备 ID 和 `X-Device-Token` 认证。请求包含 1 至 604800 秒的回看窗口，以及可选的通用实验模板快照 `template_id + metric_ranges`。响应返回持久化结果 ID、规则集版本、输入指纹、按优先级排序的命中规则及证据。
+
+Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的临时接口边界，不表示设备端有权定义生产阈值。相关业务模型确定后应改为服务端加载模板。
+
 ## 状态码
 
 | 状态码 | 含义 |
@@ -46,4 +52,4 @@ X-Device-Token: <secret token>
 | 401 | 设备不存在、已停用或令牌无效 |
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
 
-Phase 2 不提供学生、教师、诊断或知识库 API，也不提供公开设备注册接口。
+当前不提供学生、教师、故障树或知识库 API，也不提供公开设备注册接口。
