@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "芯鉴知微 API"
-    app_version: str = "0.6.0"
+    app_version: str = "0.7.0"
     app_env: str = "development"
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
