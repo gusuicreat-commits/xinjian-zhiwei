@@ -42,6 +42,16 @@ class UnconfiguredDataset(StrictTeacherModel):
     notice: str
 
 
+class TeacherKnowledgeSummary(UnconfiguredDataset):
+    framework_ready: bool
+    source_count: int
+    document_count: int
+    pending_review_count: int
+    approved_chunk_count: int
+    embedding_count: int
+    embedding_provider_configured: bool
+
+
 class TeacherAnomalyItem(StrictTeacherModel):
     device_id: str
     device_name: Optional[str]
@@ -85,4 +95,4 @@ class TeacherDashboardResponse(StrictTeacherModel):
     anomalies: list[TeacherAnomalyItem]
     recent_logs: list[TeacherLogItem]
     interventions: list[TeacherInterventionItem]
-    knowledge_cases: UnconfiguredDataset
+    knowledge_cases: TeacherKnowledgeSummary

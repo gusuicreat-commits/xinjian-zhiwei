@@ -4,6 +4,13 @@ from app.models.device_log import DeviceLog
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
+from app.models.knowledge import (
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeEmbedding,
+    KnowledgeReview,
+    KnowledgeSource,
+)
 from app.models.sensor_reading import SensorReading
 
 __all__ = [
@@ -13,5 +20,10 @@ __all__ = [
     "DiagnosisFeedback",
     "DiagnosisResult",
     "GuidanceHistory",
+    "KnowledgeChunk",
+    "KnowledgeDocument",
+    "KnowledgeEmbedding",
+    "KnowledgeReview",
+    "KnowledgeSource",
     "SensorReading",
 ]

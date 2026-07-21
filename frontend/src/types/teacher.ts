@@ -53,5 +53,15 @@ export interface TeacherDashboard {
     is_test_data: boolean
     student_identity_configured: boolean
   }>
-  knowledge_cases: { configured: boolean; notice: string }
+  knowledge_cases: {
+    configured: boolean
+    framework_ready: boolean
+    source_count: number
+    document_count: number
+    pending_review_count: number
+    approved_chunk_count: number
+    embedding_count: number
+    embedding_provider_configured: boolean
+    notice: string
+  }
 }

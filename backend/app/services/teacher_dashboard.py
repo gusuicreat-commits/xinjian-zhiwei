@@ -16,11 +16,13 @@ from app.schemas.teacher import (
     TeacherErrorRankingItem,
     TeacherErrorTrendItem,
     TeacherInterventionItem,
+    TeacherKnowledgeSummary,
     TeacherLogItem,
     TeacherMetricSummary,
     UnconfiguredDataset,
 )
 from app.services.device_ingest import calculate_device_status
+from app.services.knowledge import get_knowledge_status
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -30,6 +32,7 @@ def _as_utc(value: datetime) -> datetime:
 def build_teacher_dashboard(db: Session) -> TeacherDashboardResponse:
     now = datetime.now(timezone.utc)
     settings = get_settings()
+    knowledge_status = get_knowledge_status(db, settings)
     devices = db.scalars(select(Device).order_by(Device.device_key)).all()
     diagnoses = db.scalars(
         select(DiagnosisResult).order_by(
@@ -103,7 +106,7 @@ def build_teacher_dashboard(db: Session) -> TeacherDashboardResponse:
         generated_at=now,
         data_notice=(
             "统计仅来自当前数据库中的设备、日志、诊断与故障树记录；测试数据保留标识。"
-            "学生、班级、实验任务和知识案例尚未建模。"
+            "学生、班级和实验任务尚未建模；知识库只展示已登记和审核的数据。"
         ),
         metrics=TeacherMetricSummary(
             online_devices=status_counts["online"],
@@ -183,8 +186,15 @@ def build_teacher_dashboard(db: Session) -> TeacherDashboardResponse:
             )
             for record in interventions
         ],
-        knowledge_cases=UnconfiguredDataset(
-            configured=False,
-            notice="Phase 8 尚未开始：没有知识案例、Embedding 或 pgvector 知识记录可供审核。",
+        knowledge_cases=TeacherKnowledgeSummary(
+            configured=knowledge_status.content_available,
+            framework_ready=knowledge_status.framework_ready,
+            source_count=knowledge_status.source_count,
+            document_count=knowledge_status.document_count,
+            pending_review_count=knowledge_status.pending_review_count,
+            approved_chunk_count=knowledge_status.approved_chunk_count,
+            embedding_count=knowledge_status.embedding_count,
+            embedding_provider_configured=knowledge_status.embedding_provider_configured,
+            notice=knowledge_status.notice,
         ),
     )

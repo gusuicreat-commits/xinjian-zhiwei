@@ -371,14 +371,20 @@ onBeforeUnmount(() => {
             <article id="knowledge-review" class="teacher-panel knowledge-panel">
               <header>
                 <h2>知识案例审核入口</h2>
-                <small>Phase 8</small>
+                <small>Phase 8 框架</small>
               </header>
               <Management />
               <div>
-                <b>知识库尚未建立</b>
+                <b>{{ dashboard.knowledge_cases.configured ? '知识库可检索' : '等待授权资料' }}</b>
                 <p>{{ dashboard.knowledge_cases.notice }}</p>
+                <p>
+                  来源 {{ dashboard.knowledge_cases.source_count ?? 0 }} · 文档
+                  {{ dashboard.knowledge_cases.document_count ?? 0 }} · 待审核
+                  {{ dashboard.knowledge_cases.pending_review_count ?? 0 }} · 向量
+                  {{ dashboard.knowledge_cases.embedding_count ?? 0 }}
+                </p>
               </div>
-              <button type="button" disabled>暂不可用</button>
+              <span class="knowledge-status-chip">审核 API 已就绪</span>
             </article>
           </div>
         </section>

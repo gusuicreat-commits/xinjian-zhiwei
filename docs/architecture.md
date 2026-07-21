@@ -1,4 +1,4 @@
-# 芯鉴知微系统架构（Phase 7）
+# 芯鉴知微系统架构（Phase 8）
 
 ## 1. 架构目标
 
@@ -43,7 +43,7 @@ xinjian-zhiwei/
 │       └── ai/               # clients、prompts、structured_output
 ├── device/                   # PlatformIO 设备项目
 ├── simulator/                # 明确标记的测试设备模拟器
-├── knowledge-base/           # 实验知识、案例、规则、故障树
+├── data/knowledge/           # 本地原始资料与解析缓存（Git 忽略）
 ├── docs/
 ├── scripts/
 ├── tests/
@@ -51,7 +51,7 @@ xinjian-zhiwei/
 └── .env.example
 ```
 
-Phase 7 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断、可配置故障树与分层提示，以及使用真实聚合 API 的学生端与教师端工作台。教师端缺失的班级、学生、任务和知识案例能力以显式空状态呈现。真实设备端与知识库将在对应阶段创建，避免空目录冒充实现。
+Phase 8 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断、可配置故障树与分层提示、学生/教师工作台，以及来源可追溯的知识表、文本导入、审核、向量保存和检索接口。当前没有正式知识资料或 Provider，空库状态不会冒充知识能力。
 
 ## 4. 模块职责
 
@@ -74,7 +74,7 @@ Phase 7 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 1. 从日志、心跳、读数和实验模板构造 `DiagnosisContext`。
 2. YAML 规则引擎输出确定性异常类型和证据。
 3. 故障树按证据为可能原因评分，并根据持续时间和失败次数升级提示。
-4. pgvector 检索经审核的实验知识和案例，并返回来源。
+4. pgvector 检索经审核的实验知识和案例，并返回来源；当前框架已实现，但诊断流水线尚未调用。
 5. `AIClient` 生成结构化解释，经 Pydantic 校验后保存。
 6. AI 超时、失败或输出非法时返回规则结果和基础步骤。
 
@@ -113,10 +113,11 @@ Phase 7 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 
 ## 7. 当前架构风险
 
-1. Git 已提交 Phase 1 至 Phase 6 基线；Phase 7 变更尚未提交。
+1. Git 已提交 Phase 1 至 Phase 7 基线；Phase 8 通用框架变更尚未提交。
 2. Docker Desktop 4.82.0 已安装，Compose 三服务运行验收通过；PlatformIO 仍不可用，将在设备阶段处理。
 3. 本机 Python 3.9.6 与容器 Python 3.12 均用于分阶段验证；后续仍应持续验证二者行为一致。
 4. Node.js v26.3.0 已通过本地 lint、Vitest、类型检查、构建和 Playwright，但生产容器固定使用 Node 22，降低部署兼容风险。
-5. AI Provider、ESP32 型号、接线、账号和知识来源尚未确定；核心模型保持通用，配置边界详见 README。
+5. AI/Embedding Provider、ESP32 型号、接线、账号和知识来源尚未确定；核心模型保持通用，配置边界详见 README。
 6. 设备令牌轮换、撤销审计、上传限流和生产保留策略尚未实现，将在安全加固阶段补充。
 7. 背景 Word 的旧技术草案与固定方案有差异，已在 `PROJECT_CONTEXT.md` 中明确裁决，后续不得同时保留两套实现。
+8. Phase 8 最终后端镜像已构建，但为遵守不停止现有容器的要求，长期 backend/frontend 容器没有滚动替换；PostgreSQL 迁移已独立升级到 `20260721_0005`。

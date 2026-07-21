@@ -9,9 +9,14 @@ from app.models import (  # noqa: F401
     Device,
     DeviceHeartbeat,
     DeviceLog,
-    DiagnosisResult,
     DiagnosisFeedback,
+    DiagnosisResult,
     GuidanceHistory,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeEmbedding,
+    KnowledgeReview,
+    KnowledgeSource,
     SensorReading,
 )
 
