@@ -1486,6 +1486,34 @@ button {
 .diagnosis-suite {
   display: contents;
 }
+.ai-explanation-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 14px;
+  border-color: #cfe1f5;
+  background: linear-gradient(145deg, #f8fbff, #fff);
+}
+.ai-explanation-content,
+.ai-disabled-state {
+  display: grid;
+  gap: 8px;
+  color: #4e6175;
+  line-height: 1.65;
+}
+.ai-explanation-content strong {
+  color: #173a5d;
+  font-size: 16px;
+}
+.ai-explanation-content ul {
+  display: grid;
+  gap: 5px;
+  padding-left: 20px;
+}
+.ai-safety-note {
+  margin: 0;
+  color: #7b8da1;
+  font-size: 12px;
+}
 .diagnosis-summary {
   grid-column: 3;
   min-height: 305px;

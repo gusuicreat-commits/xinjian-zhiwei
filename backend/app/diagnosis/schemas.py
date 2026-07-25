@@ -126,3 +126,7 @@ class DiagnosisRunResponse(StrictModel):
     matches: list[DiagnosisMatch]
     is_test_data: bool
     created_at: datetime
+    deterministic_result: Optional[dict[str, Any]] = None
+    explanation: Optional[dict[str, Any]] = None
+    ai_enhancement: Optional[dict[str, Any]] = None
+    episode: Optional[dict[str, Any]] = None

@@ -1,5 +1,6 @@
 import { apiClient } from '@/api/client'
 import type {
+  AIExplanationResponse,
   DeviceCredentials,
   FeedbackAction,
   StudentDashboard,
@@ -40,6 +41,18 @@ export async function createDiagnosisFeedback(
   const response = await apiClient.post<StudentFeedback>(
     `/api/v1/student/diagnoses/${encodeURIComponent(diagnosisId)}/feedback`,
     { action },
+    { headers: authHeaders(credentials) },
+  )
+  return response.data
+}
+
+export async function requestAIExplanation(
+  credentials: DeviceCredentials,
+  diagnosisId: string,
+): Promise<AIExplanationResponse> {
+  const response = await apiClient.post<AIExplanationResponse>(
+    `/api/v1/diagnosis/results/${encodeURIComponent(diagnosisId)}/ai-explanation`,
+    null,
     { headers: authHeaders(credentials) },
   )
   return response.data

@@ -21,6 +21,8 @@ def test_student_session_and_empty_dashboard_use_real_device_auth(
     assert payload["readings"] == []
     assert payload["diagnosis"] is None
     assert payload["guidance"] == []
+    assert payload["ai_status"]["provider_configured"] is False
+    assert payload["ai_explanation"] is None
 
 
 def test_student_dashboard_returns_normal_ingested_data(api_context: dict[str, Any]) -> None:

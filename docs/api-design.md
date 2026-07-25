@@ -1,4 +1,4 @@
-# 芯鉴知微 API 设计（Phase 8）
+# 芯鉴知微 API 设计（Phase 9）
 
 ## 通用约定
 
@@ -54,6 +54,18 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 ### GET `/diagnosis/interventions`
 
 返回达到 Level 4 的设备与故障树记录。当前用户与教师角色尚未建立，因此使用环境变量 `REVIEW_ACCESS_TOKEN` 和 `X-Review-Token` 作为临时、默认关闭的审阅边界；未配置返回 503，凭据错误返回 401。正式角色模型落地后必须替换该临时边界。
+
+### GET `/diagnosis/ai/status`
+
+返回 Phase 9 框架、AI Provider、Embedding 客户端、知识门禁、传输类型和 Prompt 版本状态。该接口不返回 Base URL、API Key 或其他密钥。
+
+### POST `/diagnosis/results/{diagnosis_result_id}/ai-explanation`
+
+使用设备凭据，只能解释当前设备的诊断结果。请求体可选 `user_question`。接口先确保故障树与 Episode 存在，以结构化过滤、全文检索和可选 pgvector 检索审核知识，再执行策略、预算、稳定指纹缓存及本地/云端可替换 `AIClient` 路由。AI 不能修改确定性错误类型；证据必须来自规则白名单，知识引用必须来自本次检索结果。
+
+未配置 Provider、知识未就绪、预算受限、检索失败、AI 超时或输出校验失败时仍返回 201，并携带 `deterministic_result`；`enhancement_status` 明确为 `disabled/skipped/cache_hit/local_success/cloud_success/failed_fallback`，同时保存审计记录。成功时仍返回兼容字段 `mode=ai_enhanced` 和严格结构化解释。
+
+结构化策略触发原因通过 `trigger_reason` 返回并写入审计。已知高置信单规则、只读页面刷新、教师统计和普通知识检索不会触发 Provider；低置信、未知异常、多规则、Episode 升级或显式自然语言追问才可能进入缓存和 Provider 路由。知识引用包含来源、版本、定位、审核状态、融合分数和全文/向量/RRF 分项分数。
 
 ### POST `/student/session`
 
@@ -116,4 +128,6 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
 | 503 | 教师审阅凭据或正式 Embedding Provider 尚未配置 |
 
-当前提供设备凭据保护的临时学生 API，以及审阅令牌保护的教师聚合和知识库管理 API；不提供正式账号、班级、实验任务、自动 Embedding、AI 诊断或公开设备注册接口。
+当前提供设备凭据保护的临时学生 API，以及审阅令牌保护的教师聚合和知识库管理 API；Phase 9 只提供默认关闭的 AI 通用框架，不代表已经配置真实 AI 服务。仍不提供正式账号、班级、实验任务或公开设备注册接口。
+
+当前数据库中的 `phase9.synthetic-acceptance` 来源及 `phase9-test-vector` 向量只用于自动化验收，默认查询排除；它们不是正式知识或真实 Provider 产物。Phase 10 尚未开始。

@@ -45,6 +45,7 @@ class KnowledgeTextImportRequest(StrictKnowledgeModel):
     parser_name: str = Field(default="plain-text", min_length=1, max_length=100)
     parser_version: str = Field(default="1", min_length=1, max_length=50)
     locator_prefix: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     is_test_data: bool = False
 
 
@@ -54,6 +55,7 @@ class KnowledgeChunkResponse(StrictKnowledgeModel):
     content_hash: str
     char_count: int
     locator: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
     review_status: Literal["pending", "approved", "rejected"]
 
 

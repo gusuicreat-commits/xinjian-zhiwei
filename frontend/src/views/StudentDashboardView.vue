@@ -76,6 +76,18 @@ async function submitFeedback(action: FeedbackAction): Promise<void> {
   }
 }
 
+async function generateAIExplanation(): Promise<void> {
+  if (!sessionStore.credentials) return
+  try {
+    await dashboardStore.generateAIExplanation(sessionStore.credentials)
+    const result = dashboardStore.dashboard?.ai_explanation
+    if (result?.status === 'succeeded') ElMessage.success('AI 解释已生成')
+    else ElMessage.info(result?.notice || '当前保持规则诊断模式')
+  } catch {
+    ElMessage.error('AI 解释请求失败，规则诊断结果不受影响')
+  }
+}
+
 function navigateTo(target: string): void {
   document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
@@ -187,7 +199,11 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
             :guidance="dashboardStore.dashboard.guidance"
             :feedback="dashboardStore.dashboard.feedback"
             :feedback-loading="dashboardStore.feedbackLoading"
+            :ai-status="dashboardStore.dashboard.ai_status"
+            :ai-explanation="dashboardStore.dashboard.ai_explanation"
+            :ai-loading="dashboardStore.aiLoading"
             @feedback="submitFeedback"
+            @request-ai="generateAIExplanation"
           />
         </section>
       </div>

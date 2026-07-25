@@ -1,4 +1,4 @@
-# 芯鉴知微系统架构（Phase 8）
+# 芯鉴知微系统架构（Phase 9）
 
 ## 1. 架构目标
 
@@ -15,8 +15,10 @@
        |-- 设备/用户/实验服务
        |-- 规则引擎（YAML）
        |-- 故障树（JSON/YAML）
-       |-- RAG 检索（pgvector）
-       |-- AIClient（结构化输出与降级）
+       |-- Episode 事件聚合
+       |-- 混合 RAG（PostgreSQL FTS + pgvector + RRF）
+       |-- 确定性说明模板
+       |-- AI 策略/缓存/可选增强
        v
 [PostgreSQL + pgvector]
        ^
@@ -51,7 +53,7 @@ xinjian-zhiwei/
 └── .env.example
 ```
 
-Phase 8 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断、可配置故障树与分层提示、学生/教师工作台，以及来源可追溯的知识表、文本导入、审核、向量保存和检索接口。当前没有正式知识资料或 Provider，空库状态不会冒充知识能力。
+Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断、可配置故障树与分层提示、学生/教师工作台、来源可追溯的知识框架，以及 Provider 无关的 AI/Embedding 客户端、结构化输出校验、审计和降级。当前没有正式知识资料或 Provider，空库和禁用状态不会冒充知识或 AI 能力。
 
 ## 4. 模块职责
 
@@ -71,12 +73,13 @@ Phase 8 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 
 ### 诊断流水线
 
-1. 从日志、心跳、读数和实验模板构造 `DiagnosisContext`。
-2. YAML 规则引擎输出确定性异常类型和证据。
-3. 故障树按证据为可能原因评分，并根据持续时间和失败次数升级提示。
-4. pgvector 检索经审核的实验知识和案例，并返回来源；当前框架已实现，但诊断流水线尚未调用。
-5. `AIClient` 生成结构化解释，经 Pydantic 校验后保存。
-6. AI 超时、失败或输出非法时返回规则结果和基础步骤。
+1. 从日志、心跳、读数和实验模板构造 `DiagnosisContext`，并把同设备、同实验、同主要错误在时间窗口内聚合为 `DiagnosisEpisode`。
+2. YAML 规则与故障树生成不可被 AI 覆盖的 `DiagnosisCore`。
+3. 在 Phase 8 同一知识表上执行结构化过滤、PostgreSQL FTS 关键词检索和可选 pgvector 检索，再以 RRF 融合。
+4. 确定性模板根据核心证据、原因、知识与 Level 1–4 提示生成完整基础说明。
+5. `AIExplanationPolicy` 只对低置信、冲突、未知、多异常、明确追问或升级场景放行；高置信已知异常默认零调用。
+6. 放行后先查 PostgreSQL 指纹缓存，再按可选本地、云端 Provider 顺序增强。
+7. AI 输出经 Pydantic、证据白名单和知识引用校验；任何失败、限流或预算耗尽都返回确定性说明。
 
 ### 前端
 
@@ -113,11 +116,11 @@ Phase 8 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 
 ## 7. 当前架构风险
 
-1. Git 已提交 Phase 1 至 Phase 7 基线；Phase 8 通用框架变更尚未提交。
+1. Git 已提交 Phase 1 至 Phase 8 基线；Phase 9 通用框架当前位于工作区，等待用户确认后提交。
 2. Docker Desktop 4.82.0 已安装，Compose 三服务运行验收通过；PlatformIO 仍不可用，将在设备阶段处理。
 3. 本机 Python 3.9.6 与容器 Python 3.12 均用于分阶段验证；后续仍应持续验证二者行为一致。
 4. Node.js v26.3.0 已通过本地 lint、Vitest、类型检查、构建和 Playwright，但生产容器固定使用 Node 22，降低部署兼容风险。
 5. AI/Embedding Provider、ESP32 型号、接线、账号和知识来源尚未确定；核心模型保持通用，配置边界详见 README。
 6. 设备令牌轮换、撤销审计、上传限流和生产保留策略尚未实现，将在安全加固阶段补充。
 7. 背景 Word 的旧技术草案与固定方案有差异，已在 `PROJECT_CONTEXT.md` 中明确裁决，后续不得同时保留两套实现。
-8. Phase 8 最终后端镜像已构建，但为遵守不停止现有容器的要求，长期 backend/frontend 容器没有滚动替换；PostgreSQL 迁移已独立升级到 `20260721_0005`。
+8. 当前运行 Docker 已同步到 Phase 9 `0.9.0`，PostgreSQL 迁移为 `20260723_0006`；AI/Embedding 传输仍默认禁用。

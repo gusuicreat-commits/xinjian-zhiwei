@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -22,6 +22,9 @@ class DiagnosisResult(UuidPrimaryKeyMixin, Base):
     matched_rules: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     context_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    deterministic_core: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+    deterministic_explanation: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+    ai_enhancement: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
@@ -33,4 +36,7 @@ class DiagnosisResult(UuidPrimaryKeyMixin, Base):
     )
     feedback = relationship(
         "DiagnosisFeedback", back_populates="diagnosis_result", cascade="all, delete-orphan"
+    )
+    ai_call_records = relationship(
+        "AICallRecord", back_populates="diagnosis_result", cascade="all, delete-orphan"
     )

@@ -19,6 +19,22 @@ function dashboard(overrides: Record<string, unknown> = {}) {
     diagnosis: null,
     guidance: [],
     feedback: null,
+    ai_status: {
+      framework_ready: true,
+      provider_configured: false,
+      embedding_client_configured: false,
+      require_knowledge: true,
+      provider: null,
+      model: null,
+      transport: 'disabled',
+      prompt_version: 'phase9-v1',
+      notice: 'AI Provider 未配置，系统保持确定性规则诊断模式。',
+      ai_enabled: false,
+      local_configured: false,
+      cloud_configured: false,
+    },
+    ai_explanation: null,
+    episode: null,
     ...overrides,
   }
 }
@@ -167,7 +183,7 @@ test('shows abnormal evidence and submits teacher-help feedback', async ({ page 
     }),
   )
   await login(page)
-  await expect(page.getByText('读取失败示例命中')).toBeVisible()
+  await expect(page.getByRole('heading', { name: '读取失败示例命中' })).toBeVisible()
   await expect(page.getByText('连接异常')).toBeVisible()
   await page.getByRole('button', { name: '请求教师协助' }).click()
   await expect(page.getByText('已记录：请求教师协助')).toBeVisible()

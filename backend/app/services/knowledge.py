@@ -119,6 +119,7 @@ def _document_response(
                 content_hash=chunk.content_hash,
                 char_count=chunk.char_count,
                 locator=chunk.locator_json,
+                metadata=chunk.metadata_json,
                 review_status=chunk.review_status,
             )
             for chunk in sorted(document.chunks, key=lambda item: item.chunk_index)
@@ -221,6 +222,7 @@ def import_text_document(
                 content_hash=_hash_text(chunk_text),
                 char_count=len(chunk_text),
                 locator_json=locator,
+                metadata_json=payload.metadata,
             )
         )
     db.commit()
@@ -467,11 +469,10 @@ def get_knowledge_status(db: Session, settings: Settings) -> KnowledgeStatusResp
         or 0
     )
     embedding_count = db.scalar(select(func.count()).select_from(KnowledgeEmbedding)) or 0
-    production_embedding_count = (
+    production_chunk_count = (
         db.scalar(
             select(func.count())
-            .select_from(KnowledgeEmbedding)
-            .join(KnowledgeChunk, KnowledgeEmbedding.chunk_id == KnowledgeChunk.id)
+            .select_from(KnowledgeChunk)
             .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
             .join(KnowledgeSource, KnowledgeDocument.source_id == KnowledgeSource.id)
             .where(
@@ -479,18 +480,17 @@ def get_knowledge_status(db: Session, settings: Settings) -> KnowledgeStatusResp
                 KnowledgeDocument.review_status == "approved",
                 KnowledgeSource.is_test_data.is_(False),
                 KnowledgeDocument.is_test_data.is_(False),
-                KnowledgeEmbedding.is_test_data.is_(False),
             )
         )
         or 0
     )
-    content_available = production_embedding_count > 0
+    content_available = production_chunk_count > 0
     if source_count == 0:
         notice = "知识库框架已建立，但尚未导入任何经授权资料。"
     elif not content_available:
-        notice = "资料已登记，但尚无通过审核并完成向量化的非测试知识内容。"
+        notice = "资料已登记，但尚无通过审核的非测试知识内容。"
     else:
-        notice = "知识库已有可检索内容；检索结果仍须携带来源并遵循审核状态。"
+        notice = "知识库已有可用内容；可先全文检索，配置向量后启用混合检索。"
     return KnowledgeStatusResponse(
         content_available=content_available,
         source_count=source_count,

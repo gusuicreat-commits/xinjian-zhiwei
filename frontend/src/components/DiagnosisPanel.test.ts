@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 
-import type { StudentDiagnosis, StudentGuidance } from '@/types/student'
+import type { AIStatus, StudentDiagnosis, StudentGuidance } from '@/types/student'
 
 import DiagnosisPanel from './DiagnosisPanel.vue'
 
@@ -41,6 +41,18 @@ const guidance: StudentGuidance = {
   hints: [{ cause_id: 'connection', level: 2, text: '检查通用连接状态。' }],
 }
 
+const aiStatus: AIStatus = {
+  framework_ready: true,
+  provider_configured: false,
+  embedding_client_configured: false,
+  require_knowledge: true,
+  provider: null,
+  model: null,
+  transport: 'disabled',
+  prompt_version: 'phase9-v1',
+  notice: 'AI Provider 未配置，系统保持确定性规则诊断模式。',
+}
+
 function mountPanel(overrides: Record<string, unknown> = {}) {
   return mount(DiagnosisPanel, {
     props: {
@@ -48,6 +60,9 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
       guidance: [],
       feedback: null,
       feedbackLoading: false,
+      aiStatus,
+      aiExplanation: null,
+      aiLoading: false,
       ...overrides,
     },
     global: {
@@ -83,6 +98,9 @@ describe('DiagnosisPanel', () => {
   it('renders evidence, ranked causes and emits feedback', async () => {
     const wrapper = mountPanel({ diagnosis, guidance: [guidance] })
     expect(wrapper.text()).toContain('确定性示例规则')
+    expect(wrapper.text()).toContain('确定性结果')
+    expect(wrapper.text()).toContain('AI 增强未启用')
+    expect(wrapper.text()).toContain('当前建议由确定性规则')
     expect(wrapper.text()).toContain('检测到传感器读取失败事件')
     expect(wrapper.text()).toContain('连接异常')
     expect(wrapper.text()).toContain('检查通用连接状态')

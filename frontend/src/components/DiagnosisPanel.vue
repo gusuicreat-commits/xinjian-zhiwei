@@ -12,6 +12,8 @@ import { computed } from 'vue'
 
 import type {
   FeedbackAction,
+  AIExplanationResponse,
+  AIStatus,
   StudentDiagnosis,
   StudentFeedback,
   StudentGuidance,
@@ -22,9 +24,15 @@ const props = defineProps<{
   guidance: StudentGuidance[]
   feedback: StudentFeedback | null
   feedbackLoading: boolean
+  aiStatus: AIStatus
+  aiExplanation: AIExplanationResponse | null
+  aiLoading: boolean
 }>()
 
-const emit = defineEmits<{ feedback: [action: FeedbackAction] }>()
+const emit = defineEmits<{
+  feedback: [action: FeedbackAction]
+  requestAi: []
+}>()
 
 const actionLabels: Record<FeedbackAction, string> = {
   resolved: '问题已解决',
@@ -67,6 +75,55 @@ function scorePercent(score: number): number {
         <p>检测到确定性示例规则匹配项，请结合下方证据与分层步骤继续排查。</p>
         <small>规则 {{ primaryMatch.rule_id }} · 优先级 {{ primaryMatch.priority }}</small>
       </div>
+    </article>
+
+    <article v-if="diagnosis" class="panel-card ai-explanation-panel">
+      <div class="panel-heading compact-heading">
+        <h2><DocumentChecked /> 诊断解释</h2>
+        <el-tag
+          :type="aiExplanation?.status === 'succeeded' ? 'success' : 'info'"
+          size="small"
+          round
+        >
+          {{ aiExplanation?.status === 'succeeded' ? 'AI 已增强' : '确定性结果' }}
+        </el-tag>
+      </div>
+      <div v-if="aiExplanation?.explanation" class="ai-explanation-content">
+        <strong>{{ aiExplanation.explanation.summary }}</strong>
+        <p>{{ aiExplanation.notice }}</p>
+        <ul>
+          <li v-for="step in aiExplanation.explanation.steps" :key="step">{{ step }}</li>
+        </ul>
+        <small v-if="aiExplanation.explanation.limitations.length">
+          限制：{{ aiExplanation.explanation.limitations.join('；') }}
+        </small>
+      </div>
+      <div v-else class="ai-disabled-state">
+        <strong>{{ diagnosis.explanation?.summary || primaryMatch?.summary }}</strong>
+        <p>当前建议由确定性规则、故障树和已审核知识生成；AI 不是诊断前置条件。</p>
+        <p>{{ aiExplanation?.notice || aiStatus.notice }}</p>
+        <ul v-if="diagnosis.explanation?.steps.length">
+          <li v-for="step in diagnosis.explanation.steps" :key="step">{{ step }}</li>
+        </ul>
+        <small v-if="diagnosis.explanation?.limitations.length">
+          当前限制：{{ diagnosis.explanation.limitations.join('；') }}
+        </small>
+        <small>
+          Provider {{ aiStatus.provider_configured ? '已配置' : '待配置' }} · Embedding
+          {{ aiStatus.embedding_client_configured ? '已配置' : '待配置' }} · Prompt
+          {{ aiStatus.prompt_version }}
+        </small>
+      </div>
+      <el-button
+        type="primary"
+        plain
+        :loading="aiLoading"
+        :disabled="!aiStatus.provider_configured"
+        @click="emit('requestAi')"
+      >
+        {{ aiStatus.provider_configured ? '按需增强解释' : 'AI 增强未启用' }}
+      </el-button>
+      <p class="ai-safety-note">AI 只补充解释，不覆盖确定性规则、证据和故障树结论。</p>
     </article>
 
     <article v-if="primaryMatch" class="panel-card evidence-panel">

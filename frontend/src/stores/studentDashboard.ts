@@ -1,7 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import { createDiagnosisFeedback, getStudentDashboard } from '@/api/student'
+import {
+  createDiagnosisFeedback,
+  getStudentDashboard,
+  requestAIExplanation,
+} from '@/api/student'
 import type { DeviceCredentials, FeedbackAction, StudentDashboard } from '@/types/student'
 
 export type DashboardState = 'idle' | 'loading' | 'ready' | 'error'
@@ -11,6 +15,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   const dashboard = ref<StudentDashboard | null>(null)
   const errorMessage = ref('')
   const feedbackLoading = ref(false)
+  const aiLoading = ref(false)
 
   async function load(credentials: DeviceCredentials): Promise<void> {
     state.value = dashboard.value ? 'ready' : 'loading'
@@ -41,11 +46,34 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     }
   }
 
+  async function generateAIExplanation(credentials: DeviceCredentials): Promise<void> {
+    if (!dashboard.value?.diagnosis) return
+    aiLoading.value = true
+    try {
+      dashboard.value.ai_explanation = await requestAIExplanation(
+        credentials,
+        dashboard.value.diagnosis.id,
+      )
+    } finally {
+      aiLoading.value = false
+    }
+  }
+
   function clear(): void {
     state.value = 'idle'
     dashboard.value = null
     errorMessage.value = ''
   }
 
-  return { state, dashboard, errorMessage, feedbackLoading, load, submitFeedback, clear }
+  return {
+    state,
+    dashboard,
+    errorMessage,
+    feedbackLoading,
+    aiLoading,
+    load,
+    submitFeedback,
+    generateAIExplanation,
+    clear,
+  }
 })

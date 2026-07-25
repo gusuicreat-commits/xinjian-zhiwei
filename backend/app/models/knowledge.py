@@ -81,6 +81,7 @@ class KnowledgeChunk(UuidPrimaryKeyMixin, Base):
     content_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     char_count: Mapped[int] = mapped_column(Integer, nullable=False)
     locator_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     review_status: Mapped[str] = mapped_column(
         String(20), default="pending", index=True, nullable=False
     )

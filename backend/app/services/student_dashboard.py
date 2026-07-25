@@ -4,8 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.models.ai_call_record import AICallRecord
 from app.models.device import Device
 from app.models.device_log import DeviceLog
+from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
@@ -21,6 +23,7 @@ from app.schemas.student import (
     StudentLogItem,
     StudentReadingItem,
 )
+from app.services.ai_diagnosis import get_ai_status, serialize_ai_call
 from app.services.device_ingest import calculate_device_status
 
 
@@ -46,6 +49,8 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
     )
     guidance = []
     feedback = None
+    ai_call = None
+    episode = None
     if diagnosis is not None:
         guidance = db.scalars(
             select(GuidanceHistory)
@@ -56,6 +61,18 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
             select(DiagnosisFeedback)
             .where(DiagnosisFeedback.diagnosis_result_id == diagnosis.id)
             .order_by(DiagnosisFeedback.created_at.desc(), DiagnosisFeedback.id.desc())
+            .limit(1)
+        )
+        ai_call = db.scalar(
+            select(AICallRecord)
+            .where(AICallRecord.diagnosis_result_id == diagnosis.id)
+            .order_by(AICallRecord.created_at.desc(), AICallRecord.id.desc())
+            .limit(1)
+        )
+        episode = db.scalar(
+            select(DiagnosisEpisode)
+            .where(DiagnosisEpisode.last_diagnosis_result_id == diagnosis.id)
+            .order_by(DiagnosisEpisode.updated_at.desc())
             .limit(1)
         )
     settings = get_settings()
@@ -103,6 +120,9 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
                 matches=diagnosis.matched_rules,
                 evidence=diagnosis.evidence,
                 is_test_data=diagnosis.is_test_data,
+                deterministic_result=diagnosis.deterministic_core,
+                explanation=diagnosis.deterministic_explanation,
+                ai_enhancement=diagnosis.ai_enhancement,
             )
             if diagnosis is not None
             else None
@@ -133,6 +153,22 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
             if feedback is not None
             else None
         ),
+        ai_status=get_ai_status(settings),
+        ai_explanation=serialize_ai_call(ai_call, settings) if ai_call is not None else None,
+        episode=(
+            {
+                "id": episode.id,
+                "status": episode.status,
+                "primary_error_code": episode.primary_error_code,
+                "started_at": episode.started_at,
+                "last_seen_at": episode.last_seen_at,
+                "failure_count": episode.failure_count,
+                "current_hint_level": episode.current_hint_level,
+                "ai_call_count": episode.ai_call_count,
+            }
+            if episode is not None
+            else None
+        ),
     )
 
 
@@ -150,6 +186,24 @@ def save_student_feedback(
         is_test_data=diagnosis.is_test_data,
     )
     db.add(record)
+    episode = db.scalar(
+        select(DiagnosisEpisode)
+        .where(
+            DiagnosisEpisode.device_id == device.id,
+            DiagnosisEpisode.last_diagnosis_result_id == diagnosis.id,
+            DiagnosisEpisode.status.in_(("open", "escalated")),
+        )
+        .order_by(DiagnosisEpisode.updated_at.desc())
+        .limit(1)
+    )
+    if episode is not None:
+        if payload.action == "resolved":
+            episode.status = "resolved"
+            episode.resolved_at = datetime.now(timezone.utc)
+            episode.resolution_source = "student_feedback"
+        elif payload.action == "request_teacher_help":
+            episode.status = "escalated"
+            episode.current_hint_level = 4
     db.commit()
     db.refresh(record)
     return record

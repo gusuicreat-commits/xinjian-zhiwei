@@ -1,0 +1,776 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import time
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.ai.clients import (
+    AIClient,
+    AIProviderError,
+    EmbeddingClient,
+    build_ai_client,
+    build_cloud_ai_client,
+    build_embedding_client,
+    build_local_ai_client,
+)
+from app.ai.prompts import build_prompts
+from app.ai.schemas import (
+    AIDiagnosisInput,
+    AIExplanationResponse,
+    AIKnowledgeReference,
+    AIStatusResponse,
+    AIStructuredExplanation,
+)
+from app.core.config import Settings
+from app.models.ai_call_record import AICallRecord
+from app.models.ai_explanation_cache import AIExplanationCache
+from app.models.device import Device
+from app.models.diagnosis_episode import DiagnosisEpisode
+from app.models.diagnosis_result import DiagnosisResult
+from app.models.guidance_history import GuidanceHistory
+from app.services.diagnosis_episode import upsert_episode
+from app.services.hybrid_retrieval import hybrid_retrieve
+from app.services.knowledge import get_knowledge_status
+from app.services.lightweight_diagnosis import (
+    budget_allowed,
+    build_diagnosis_core,
+    decide_ai_policy,
+    estimate_ai_cost,
+    explanation_fingerprint,
+    render_deterministic_explanation,
+)
+
+
+def get_ai_status(settings: Settings) -> AIStatusResponse:
+    if not settings.ai_configured:
+        notice = "AI Provider 未配置，系统保持确定性规则诊断模式。"
+    elif settings.ai_require_knowledge and not settings.knowledge_embedding_client_configured:
+        notice = "AI Provider 已配置，但 Embedding Provider 未就绪，仍保持规则诊断模式。"
+    else:
+        notice = "AI 通用接口已配置；调用仍受知识审核、结构校验和规则保护。"
+    return AIStatusResponse(
+        provider_configured=settings.ai_configured,
+        embedding_client_configured=settings.knowledge_embedding_client_configured,
+        require_knowledge=settings.ai_require_knowledge,
+        provider=settings.ai_provider if settings.ai_configured else None,
+        model=settings.ai_model if settings.ai_configured else None,
+        transport=settings.ai_transport,
+        prompt_version=settings.ai_prompt_version,
+        notice=notice,
+        ai_enabled=settings.ai_enabled,
+        local_configured=settings.local_ai_configured,
+        cloud_configured=settings.cloud_ai_configured,
+    )
+
+
+def _allowed_evidence(record: DiagnosisResult) -> list[str]:
+    values: list[str] = []
+    for match in record.matched_rules:
+        for item in match.get("evidence", []):
+            values.append(f"{item.get('fact')}: {item.get('observed_value')}")
+    return list(dict.fromkeys(values))
+
+
+def _build_input(
+    record: DiagnosisResult,
+    guidance: list[GuidanceHistory],
+    knowledge: list[AIKnowledgeReference],
+    settings: Settings,
+) -> AIDiagnosisInput:
+    context = record.context_snapshot
+    limit = settings.ai_max_context_items
+    return AIDiagnosisInput(
+        diagnosis_result_id=record.id,
+        device_state={
+            "device_id": context.get("device_id"),
+            "evaluated_at": context.get("evaluated_at"),
+            "last_seen_at": context.get("last_seen_at"),
+            "experiment_template": context.get("experiment_template"),
+        },
+        logs=list(context.get("logs", []))[-limit:],
+        sensor_readings=list(context.get("readings", []))[-limit:],
+        heartbeats=list(context.get("heartbeats", []))[-limit:],
+        rule_matches=record.matched_rules,
+        fault_tree_guidance=[
+            {
+                "tree_id": item.fault_tree_id,
+                "tree_status": item.fault_tree_status,
+                "hint_level": item.hint_level,
+                "teacher_intervention_required": item.teacher_intervention_required,
+                "ranked_causes": item.ranked_causes,
+                "hints": item.hints,
+            }
+            for item in guidance
+        ],
+        knowledge=knowledge,
+        allowed_evidence=_allowed_evidence(record),
+        output_language=settings.ai_output_language,
+        is_test_data=record.is_test_data,
+    )
+
+
+def _knowledge_query(record: DiagnosisResult, guidance: list[GuidanceHistory]) -> str:
+    parts = [
+        str(match.get("error_type", ""))
+        for match in record.matched_rules
+        if match.get("error_type")
+    ]
+    parts.extend(
+        str(cause.get("title", ""))
+        for item in guidance
+        for cause in item.ranked_causes
+        if cause.get("title")
+    )
+    return "；".join(dict.fromkeys(parts))
+
+
+def _retrieve_knowledge(
+    db: Session,
+    record: DiagnosisResult,
+    guidance: list[GuidanceHistory],
+    settings: Settings,
+    embedding_client: EmbeddingClient,
+) -> list[AIKnowledgeReference]:
+    status = get_knowledge_status(db, settings)
+    if not status.content_available and not record.is_test_data:
+        return []
+    query = _knowledge_query(record, guidance)
+    if not query:
+        return []
+    response = hybrid_retrieve(
+        db,
+        query,
+        settings,
+        embedding_client,
+        include_test_data=record.is_test_data,
+    )
+    return response.references
+
+
+def _validate_explanation(
+    raw_content: str, payload: AIDiagnosisInput
+) -> AIStructuredExplanation:
+    document = json.loads(raw_content)
+    explanation = AIStructuredExplanation.model_validate(document)
+    allowed_errors = {
+        str(match.get("error_type")) for match in payload.rule_matches if match.get("error_type")
+    }
+    if explanation.error_type not in allowed_errors:
+        if allowed_errors or explanation.error_type != "UNCLASSIFIED_ANOMALY":
+            raise ValueError("AI error_type must match a deterministic rule result")
+    allowed_evidence = set(payload.allowed_evidence)
+    if any(item not in allowed_evidence for item in explanation.evidence):
+        raise ValueError("AI evidence must be selected from deterministic evidence")
+    allowed_chunks = {item.chunk_id for item in payload.knowledge}
+    referenced_chunks = {
+        chunk_id
+        for cause in explanation.possible_causes
+        for chunk_id in cause.knowledge_chunk_ids
+    }
+    if not referenced_chunks.issubset(allowed_chunks):
+        raise ValueError("AI knowledge references must come from retrieved chunks")
+    return explanation
+
+
+def _save_record(
+    db: Session,
+    *,
+    diagnosis: DiagnosisResult,
+    settings: Settings,
+    payload: AIDiagnosisInput,
+    prompt_hash: str,
+    status: str,
+    attempt_count: int,
+    duration_ms: int,
+    explanation: AIStructuredExplanation | None,
+    knowledge: list[AIKnowledgeReference],
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    error_code: str | None = None,
+    error_message: str | None = None,
+    episode: DiagnosisEpisode | None = None,
+    trigger_reason: str | None = None,
+    cache_status: str | None = None,
+    route: str | None = None,
+    validation_status: str | None = None,
+    fallback_reason: str | None = None,
+    estimated_cost: float | None = None,
+    provider: str | None = None,
+    model_name: str | None = None,
+    transport: str | None = None,
+) -> AICallRecord:
+    record = AICallRecord(
+        diagnosis_result_id=diagnosis.id,
+        episode_id=episode.id if episode else None,
+        provider=provider
+        if provider is not None
+        else settings.ai_provider
+        if settings.ai_configured
+        else None,
+        model=model_name
+        if model_name is not None
+        else settings.ai_model
+        if settings.ai_configured
+        else None,
+        transport=transport or settings.ai_transport,
+        prompt_version=settings.ai_prompt_version,
+        prompt_hash=prompt_hash,
+        status=status,
+        attempt_count=attempt_count,
+        duration_ms=duration_ms,
+        input_snapshot=_audit_snapshot(payload),
+        output_json=explanation.model_dump(mode="json") if explanation else None,
+        knowledge_references=[item.model_dump(mode="json") for item in knowledge],
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        trigger_reason=trigger_reason,
+        cache_status=cache_status,
+        route=route,
+        estimated_cost=estimated_cost,
+        latency_ms=duration_ms,
+        validation_status=validation_status,
+        fallback_reason=fallback_reason,
+        error_code=error_code,
+        error_message=error_message,
+        is_test_data=diagnosis.is_test_data or any(item.is_test_data for item in knowledge),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def _audit_snapshot(payload: AIDiagnosisInput) -> dict[str, Any]:
+    full_input = payload.model_dump(mode="json")
+    digest = hashlib.sha256(
+        json.dumps(full_input, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return {
+        "diagnosis_result_id": payload.diagnosis_result_id,
+        "device_id": payload.device_state.get("device_id"),
+        "input_sha256": digest,
+        "item_counts": {
+            "logs": len(payload.logs),
+            "sensor_readings": len(payload.sensor_readings),
+            "heartbeats": len(payload.heartbeats),
+            "rule_matches": len(payload.rule_matches),
+            "fault_tree_guidance": len(payload.fault_tree_guidance),
+            "knowledge": len(payload.knowledge),
+        },
+        "rule_ids": [
+            item.get("rule_id") for item in payload.rule_matches if item.get("rule_id")
+        ],
+        "error_types": [
+            item.get("error_type") for item in payload.rule_matches if item.get("error_type")
+        ],
+        "knowledge_chunk_ids": [item.chunk_id for item in payload.knowledge],
+        "is_test_data": payload.is_test_data,
+    }
+
+
+def _response(
+    record: AICallRecord,
+    explanation: AIStructuredExplanation | None,
+    knowledge: list[AIKnowledgeReference],
+    settings: Settings,
+    notice: str,
+    *,
+    enhancement_status: str | None = None,
+    trigger_reason: str | None = None,
+    route: str | None = None,
+    deterministic_result: dict[str, Any] | None = None,
+) -> AIExplanationResponse:
+    return AIExplanationResponse(
+        call_record_id=record.id,
+        diagnosis_result_id=record.diagnosis_result_id,
+        status=record.status,
+        mode="ai_enhanced" if record.status == "succeeded" else "rules_only",
+        provider_configured=settings.ai_configured,
+        explanation=explanation,
+        knowledge_references=knowledge,
+        notice=notice,
+        enhancement_status=enhancement_status
+        or ("cloud_success" if record.status == "succeeded" else "skipped"),
+        trigger_reason=trigger_reason or record.trigger_reason or "UNSPECIFIED",
+        route=route or record.route or "none",
+        deterministic_result=deterministic_result,
+    )
+
+
+def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanationResponse:
+    explanation = (
+        AIStructuredExplanation.model_validate(record.output_json) if record.output_json else None
+    )
+    knowledge = [
+        AIKnowledgeReference.model_validate(item) for item in record.knowledge_references
+    ]
+    if record.status == "succeeded":
+        notice = "AI 仅补充解释；确定性规则、证据和故障树结果保持不变。"
+    elif record.status == "failed":
+        notice = "AI 调用或输出校验失败，当前展示规则诊断结果。"
+    elif record.error_code == "AI_NOT_CONFIGURED":
+        notice = "AI Provider 未配置，当前仅展示确定性规则诊断。"
+    elif record.error_code == "KNOWLEDGE_NOT_READY":
+        notice = "正式知识与向量尚未就绪，当前仅展示确定性规则诊断。"
+    else:
+        notice = "AI 调用已跳过，当前展示确定性规则诊断。"
+    return _response(
+        record,
+        explanation,
+        knowledge,
+        settings,
+        notice,
+        enhancement_status=(
+            "cache_hit"
+            if record.cache_status == "hit"
+            else "failed_fallback"
+            if record.status == "failed"
+            else "disabled"
+            if record.error_code == "AI_NOT_CONFIGURED"
+            else None
+        ),
+    )
+
+
+def _skipped_response(
+    db: Session,
+    *,
+    diagnosis: DiagnosisResult,
+    settings: Settings,
+    payload: AIDiagnosisInput,
+    prompt_hash: str,
+    knowledge: list[AIKnowledgeReference],
+    episode: DiagnosisEpisode | None,
+    trigger_reason: str,
+    error_code: str,
+    error_message: str | None,
+    notice: str,
+    deterministic_result: dict[str, Any],
+    started: float,
+    estimated_cost: float = 0.0,
+) -> AIExplanationResponse:
+    saved = _save_record(
+        db,
+        diagnosis=diagnosis,
+        settings=settings,
+        payload=payload,
+        prompt_hash=prompt_hash,
+        status="skipped",
+        attempt_count=0,
+        duration_ms=int((time.monotonic() - started) * 1000),
+        explanation=None,
+        knowledge=knowledge,
+        error_code=error_code,
+        error_message=error_message,
+        episode=episode,
+        trigger_reason=trigger_reason,
+        cache_status="not_checked",
+        route="none",
+        validation_status="not_run",
+        estimated_cost=estimated_cost,
+    )
+    enhancement_status = "disabled" if error_code == "AI_NOT_CONFIGURED" else "skipped"
+    diagnosis.ai_enhancement = {
+        "status": enhancement_status,
+        "trigger_reason": trigger_reason,
+        "route": "none",
+        "cache_status": "not_checked",
+        "call_record_id": saved.id,
+    }
+    db.commit()
+    return _response(
+        saved,
+        None,
+        knowledge,
+        settings,
+        notice,
+        enhancement_status=enhancement_status,
+        trigger_reason=trigger_reason,
+        deterministic_result=deterministic_result,
+    )
+
+
+def explain_diagnosis(
+    db: Session,
+    device: Device,
+    diagnosis: DiagnosisResult,
+    settings: Settings,
+    *,
+    ai_client: AIClient | None = None,
+    ai_clients: list[tuple[str, AIClient]] | None = None,
+    embedding_client: EmbeddingClient | None = None,
+    user_question: str | None = None,
+) -> AIExplanationResponse:
+    started = time.monotonic()
+    guidance = list(
+        db.scalars(
+            select(GuidanceHistory)
+            .where(GuidanceHistory.diagnosis_result_id == diagnosis.id)
+            .order_by(GuidanceHistory.fault_tree_id)
+        )
+    )
+    client_transport = (
+        "injected-test"
+        if ai_client is not None or ai_clients is not None
+        else settings.ai_transport
+    )
+    if ai_clients is not None:
+        clients = list(ai_clients)
+    elif ai_client is not None:
+        clients: list[tuple[str, AIClient]] = [("cloud", ai_client)]
+    else:
+        clients = []
+        local_client = build_local_ai_client(settings)
+        cloud_client = build_cloud_ai_client(settings)
+        if local_client.configured:
+            clients.append(("local", local_client))
+        if cloud_client.configured:
+            clients.append(("cloud", cloud_client))
+        if not clients:
+            legacy_client = build_ai_client(settings)
+            if legacy_client.configured:
+                clients.append(("cloud", legacy_client))
+    ai = clients[0][1] if clients else build_ai_client(settings)
+    embedding = embedding_client or build_embedding_client(settings)
+    knowledge: list[AIKnowledgeReference] = []
+    retrieval_error: str | None = None
+    try:
+        knowledge = _retrieve_knowledge(db, diagnosis, guidance, settings, embedding)
+    except (AIProviderError, ValueError) as exc:
+        retrieval_error = str(exc)
+    core = build_diagnosis_core(
+        diagnosis, guidance, [item.chunk_id for item in knowledge]
+    )
+    deterministic = render_deterministic_explanation(core)
+    diagnosis.deterministic_core = core.model_dump(mode="json")
+    diagnosis.deterministic_explanation = deterministic.model_dump(mode="json")
+    episode = upsert_episode(db, device, diagnosis, guidance, settings)
+    policy = decide_ai_policy(
+        core, settings, episode=episode, user_question=user_question
+    )
+    payload = _build_input(diagnosis, guidance, knowledge, settings)
+    _, _, prompt_hash = build_prompts(payload, settings.ai_prompt_version)
+    fault_tree_version = guidance[0].fault_tree_version if guidance else None
+    cache_fingerprint = explanation_fingerprint(
+        core,
+        prompt_version=settings.ai_prompt_version,
+        schema_version=settings.ai_schema_version,
+        ruleset_version=diagnosis.ruleset_version,
+        fault_tree_version=fault_tree_version,
+        knowledge_chunk_ids=[item.chunk_id for item in knowledge],
+        output_language=settings.ai_output_language,
+        user_question=user_question,
+    )
+
+    skip_code: str | None = None
+    notice: str | None = None
+    if retrieval_error:
+        skip_code = "KNOWLEDGE_RETRIEVAL_FAILED"
+        notice = "知识检索失败，已降级为规则诊断；未调用 AI。"
+    elif not policy.should_call:
+        skip_code = policy.reason
+        notice = "确定性结果已足够，本次无需调用 AI。"
+    estimated_input_tokens = len(
+        json.dumps(payload.model_dump(mode="json"), ensure_ascii=False)
+    ) // 4
+    if skip_code:
+        return _skipped_response(
+            db,
+            diagnosis=diagnosis,
+            settings=settings,
+            payload=payload,
+            prompt_hash=prompt_hash,
+            knowledge=knowledge,
+            episode=episode,
+            trigger_reason=policy.reason,
+            error_code=skip_code,
+            error_message=retrieval_error,
+            notice=notice or "AI 调用已跳过。",
+            deterministic_result=deterministic.model_dump(mode="json"),
+            started=started,
+        )
+
+    now = datetime.now(timezone.utc)
+    cached = db.scalar(
+        select(AIExplanationCache).where(
+            AIExplanationCache.fingerprint == cache_fingerprint,
+            AIExplanationCache.expires_at > now,
+        )
+    )
+    if cached is not None:
+        cached.hit_count += 1
+        cached.last_hit_at = now
+        explanation = AIStructuredExplanation.model_validate(cached.explanation_json)
+        saved = _save_record(
+            db,
+            diagnosis=diagnosis,
+            settings=settings,
+            payload=payload,
+            prompt_hash=prompt_hash,
+            status="succeeded",
+            attempt_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            explanation=explanation,
+            knowledge=knowledge,
+            episode=episode,
+            trigger_reason=policy.reason,
+            cache_status="hit",
+            route="cache",
+            validation_status="cache_valid",
+            estimated_cost=0.0,
+            provider=cached.provider,
+            model_name=cached.model_name,
+            transport="cache",
+        )
+        diagnosis.ai_enhancement = {
+            "status": "cache_hit",
+            "trigger_reason": policy.reason,
+            "route": "cache",
+            "cache_status": "hit",
+            "call_record_id": saved.id,
+        }
+        db.commit()
+        return _response(
+            saved,
+            explanation,
+            knowledge,
+            settings,
+            "复用了相同规则、知识版本和输入指纹的已校验解释。",
+            enhancement_status="cache_hit",
+            trigger_reason=policy.reason,
+            route="cache",
+            deterministic_result=deterministic.model_dump(mode="json"),
+        )
+
+    if not ai.configured:
+        return _skipped_response(
+            db,
+            diagnosis=diagnosis,
+            settings=settings,
+            payload=payload,
+            prompt_hash=prompt_hash,
+            knowledge=knowledge,
+            episode=episode,
+            trigger_reason=policy.reason,
+            error_code="AI_NOT_CONFIGURED",
+            error_message=None,
+            notice="AI Provider 未配置，当前仅返回确定性规则和故障树结果。",
+            deterministic_result=deterministic.model_dump(mode="json"),
+            started=started,
+        )
+
+    if settings.ai_require_knowledge and not knowledge:
+        return _skipped_response(
+            db,
+            diagnosis=diagnosis,
+            settings=settings,
+            payload=payload,
+            prompt_hash=prompt_hash,
+            knowledge=knowledge,
+            episode=episode,
+            trigger_reason=policy.reason,
+            error_code="KNOWLEDGE_NOT_READY",
+            error_message=None,
+            notice="尚无可用的已审核知识片段，已保持确定性诊断模式。",
+            deterministic_result=deterministic.model_dump(mode="json"),
+            started=started,
+        )
+
+    if estimated_input_tokens > settings.ai_input_token_limit:
+        return _skipped_response(
+            db,
+            diagnosis=diagnosis,
+            settings=settings,
+            payload=payload,
+            prompt_hash=prompt_hash,
+            knowledge=knowledge,
+            episode=episode,
+            trigger_reason=policy.reason,
+            error_code="INPUT_TOKEN_LIMIT",
+            error_message=None,
+            notice="诊断上下文超过配置的输入 Token 上限，当前返回确定性诊断。",
+            deterministic_result=deterministic.model_dump(mode="json"),
+            started=started,
+        )
+
+    projected_cost = estimate_ai_cost(
+        estimated_input_tokens, settings.ai_output_token_limit, settings
+    )
+    allowed, budget_reason = budget_allowed(
+        db, device.id, settings, episode, projected_call_cost=projected_cost
+    )
+    if not allowed:
+        return _skipped_response(
+            db,
+            diagnosis=diagnosis,
+            settings=settings,
+            payload=payload,
+            prompt_hash=prompt_hash,
+            knowledge=knowledge,
+            episode=episode,
+            trigger_reason=policy.reason,
+            error_code=budget_reason or "AI_BUDGET_LIMIT",
+            error_message=None,
+            notice="AI 调用预算或频率限制已生效，当前返回确定性诊断。",
+            deterministic_result=deterministic.model_dump(mode="json"),
+            started=started,
+            estimated_cost=projected_cost or 0.0,
+        )
+
+    system_prompt, user_prompt, prompt_hash = build_prompts(payload, settings.ai_prompt_version)
+    last_error: Exception | None = None
+    completion = None
+    explanation = None
+    attempts = 0
+    route = "cloud"
+    for candidate_route, candidate in clients:
+        route = candidate_route
+        ai = candidate
+        for _ in range(settings.ai_max_retries + 1):
+            attempts += 1
+            try:
+                completion = ai.complete_json(
+                    system_prompt=system_prompt, user_prompt=user_prompt
+                )
+                explanation = _validate_explanation(completion.content, payload)
+                break
+            except (AIProviderError, ValidationError, ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
+                user_prompt = (
+                    f"{user_prompt}\n上一次输出未通过结构或证据校验，请仅返回合法 JSON。"
+                )
+        if explanation is not None:
+            break
+    duration_ms = int((time.monotonic() - started) * 1000)
+    local_fallback = len(clients) > 1 and route == "cloud"
+    if explanation is None:
+        saved = _save_record(
+            db,
+            diagnosis=diagnosis,
+            settings=settings,
+            payload=payload,
+            prompt_hash=prompt_hash,
+            status="failed",
+            attempt_count=attempts,
+            duration_ms=duration_ms,
+            explanation=None,
+            knowledge=knowledge,
+            error_code="AI_OUTPUT_OR_PROVIDER_FAILED",
+            error_message=str(last_error) if last_error else "unknown AI failure",
+            episode=episode,
+            trigger_reason=policy.reason,
+            cache_status="miss",
+            route=route,
+            validation_status="failed",
+            fallback_reason=(
+                "LOCAL_AND_CLOUD_FAILED"
+                if len(clients) > 1
+                else "DETERMINISTIC_TEMPLATE"
+            ),
+            estimated_cost=projected_cost,
+            provider=ai.provider,
+            model_name=ai.model,
+            transport=client_transport,
+        )
+        diagnosis.ai_enhancement = {
+            "status": "failed_fallback",
+            "trigger_reason": policy.reason,
+            "route": route,
+            "cache_status": "miss",
+            "fallback_reason": (
+                "LOCAL_AND_CLOUD_FAILED"
+                if len(clients) > 1
+                else "DETERMINISTIC_TEMPLATE"
+            ),
+            "call_record_id": saved.id,
+        }
+        if episode:
+            episode.ai_call_count += 1
+        db.commit()
+        return _response(
+            saved,
+            None,
+            knowledge,
+            settings,
+            "AI 输出未通过校验或 Provider 调用失败，已降级为规则诊断。",
+            enhancement_status="failed_fallback",
+            trigger_reason=policy.reason,
+            route=route,
+            deterministic_result=deterministic.model_dump(mode="json"),
+        )
+
+    saved = _save_record(
+        db,
+        diagnosis=diagnosis,
+        settings=settings,
+        payload=payload,
+        prompt_hash=prompt_hash,
+        status="succeeded",
+        attempt_count=attempts,
+        duration_ms=duration_ms,
+        explanation=explanation,
+        knowledge=knowledge,
+        input_tokens=completion.input_tokens if completion else None,
+        output_tokens=completion.output_tokens if completion else None,
+        episode=episode,
+        trigger_reason=policy.reason,
+        cache_status="miss",
+        route=route,
+        validation_status="passed",
+        fallback_reason="LOCAL_FAILED_CLOUD_USED" if local_fallback else None,
+        estimated_cost=estimate_ai_cost(
+            (
+                completion.input_tokens
+                if completion and completion.input_tokens
+                else estimated_input_tokens
+            ),
+            completion.output_tokens if completion and completion.output_tokens else 0,
+            settings,
+        ),
+        provider=ai.provider,
+        model_name=ai.model,
+        transport=client_transport,
+    )
+    db.add(
+        AIExplanationCache(
+            fingerprint=cache_fingerprint,
+            explanation_json=explanation.model_dump(mode="json"),
+            provider=ai.provider,
+            model_name=ai.model,
+            prompt_version=settings.ai_prompt_version,
+            schema_version=settings.ai_schema_version,
+            ruleset_version=diagnosis.ruleset_version,
+            fault_tree_version=fault_tree_version,
+            knowledge_version="|".join(sorted(item.chunk_id for item in knowledge)) or None,
+            created_at=now,
+            expires_at=now + timedelta(seconds=settings.ai_cache_ttl_seconds),
+        )
+    )
+    enhancement_status = "local_success" if route == "local" else "cloud_success"
+    diagnosis.ai_enhancement = {
+        "status": enhancement_status,
+        "trigger_reason": policy.reason,
+        "route": route,
+        "cache_status": "miss",
+        "call_record_id": saved.id,
+    }
+    if episode:
+        episode.ai_call_count += 1
+    db.commit()
+    return _response(
+        saved,
+        explanation,
+        knowledge,
+        settings,
+        "AI 仅补充解释；错误类型、规则证据和故障树结果仍以确定性诊断为准。",
+        enhancement_status=enhancement_status,
+        trigger_reason=policy.reason,
+        route=route,
+        deterministic_result=deterministic.model_dump(mode="json"),
+    )

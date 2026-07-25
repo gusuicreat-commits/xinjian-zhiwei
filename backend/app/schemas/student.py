@@ -3,6 +3,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.ai.schemas import AIExplanationResponse, AIStatusResponse
+
 
 class StrictStudentModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -56,6 +58,9 @@ class StudentDiagnosisSummary(StrictStudentModel):
     matches: list[dict[str, Any]]
     evidence: list[dict[str, Any]]
     is_test_data: bool
+    deterministic_result: Optional[dict[str, Any]] = None
+    explanation: Optional[dict[str, Any]] = None
+    ai_enhancement: Optional[dict[str, Any]] = None
 
 
 class StudentGuidanceItem(StrictStudentModel):
@@ -88,6 +93,9 @@ class StudentDashboardResponse(StrictStudentModel):
     diagnosis: Optional[StudentDiagnosisSummary]
     guidance: list[StudentGuidanceItem]
     feedback: Optional[StudentFeedbackItem]
+    ai_status: AIStatusResponse
+    ai_explanation: Optional[AIExplanationResponse]
+    episode: Optional[dict[str, Any]] = None
 
 
 class StudentFeedbackCreate(StrictStudentModel):

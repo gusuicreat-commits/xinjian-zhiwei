@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "芯鉴知微 API"
-    app_version: str = "0.8.0"
+    app_version: str = "0.9.0"
     app_env: str = "development"
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
@@ -29,6 +29,48 @@ class Settings(BaseSettings):
     knowledge_embedding_provider: Optional[str] = None
     knowledge_embedding_model: Optional[str] = None
     knowledge_embedding_dimensions: Optional[int] = None
+    knowledge_embedding_transport: Literal["disabled", "openai-compatible"] = "disabled"
+    knowledge_embedding_base_url: Optional[str] = None
+    knowledge_embedding_api_key: Optional[str] = None
+    ai_transport: Literal["disabled", "openai-compatible"] = "disabled"
+    ai_provider: Optional[str] = None
+    ai_base_url: Optional[str] = None
+    ai_model: Optional[str] = None
+    ai_api_key: Optional[str] = None
+    ai_timeout_seconds: float = 15.0
+    ai_max_retries: int = 1
+    ai_prompt_version: str = "phase9-v1"
+    ai_require_knowledge: bool = True
+    ai_knowledge_limit: int = 5
+    ai_max_context_items: int = 50
+    diagnosis_episode_window_seconds: int = 300
+    ai_enabled: bool = False
+    ai_local_enabled: bool = False
+    ai_cloud_enabled: bool = False
+    ai_local_provider: Optional[str] = None
+    ai_local_base_url: Optional[str] = None
+    ai_local_model: Optional[str] = None
+    ai_local_api_key: Optional[str] = None
+    ai_cloud_provider: Optional[str] = None
+    ai_cloud_base_url: Optional[str] = None
+    ai_cloud_model: Optional[str] = None
+    ai_cloud_api_key: Optional[str] = None
+    ai_calls_per_episode: int = 2
+    ai_calls_per_device_hour: int = 4
+    ai_daily_budget: Optional[float] = None
+    ai_input_token_limit: int = 2000
+    ai_output_token_limit: int = 800
+    ai_output_language: str = "zh-CN"
+    ai_max_cost_per_call: Optional[float] = None
+    ai_low_confidence_threshold: float = 0.65
+    ai_input_cost_per_1k_tokens: Optional[float] = None
+    ai_output_cost_per_1k_tokens: Optional[float] = None
+    ai_cache_ttl_seconds: int = 86400
+    ai_schema_version: str = "phase9-light-v1"
+    rag_lexical_top_n: int = 10
+    rag_vector_top_n: int = 10
+    rag_fused_top_k: int = 5
+    rag_rrf_k: int = 60
 
     @field_validator("log_level")
     @classmethod
@@ -63,12 +105,103 @@ class Settings(BaseSettings):
             raise ValueError("knowledge_embedding_dimensions must be positive")
         return value
 
-    @field_validator("knowledge_embedding_dimensions", mode="before")
+    @field_validator("ai_timeout_seconds")
     @classmethod
-    def normalize_optional_dimensions(cls, value: Any) -> Any:
+    def validate_ai_timeout(cls, value: float) -> float:
+        if value <= 0 or value > 120:
+            raise ValueError("ai_timeout_seconds must be greater than 0 and at most 120")
+        return value
+
+    @field_validator("ai_max_retries")
+    @classmethod
+    def validate_ai_retries(cls, value: int) -> int:
+        if value < 0 or value > 3:
+            raise ValueError("ai_max_retries must be between 0 and 3")
+        return value
+
+    @field_validator("ai_knowledge_limit")
+    @classmethod
+    def validate_ai_knowledge_limit(cls, value: int) -> int:
+        if value < 1 or value > 20:
+            raise ValueError("ai_knowledge_limit must be between 1 and 20")
+        return value
+
+    @field_validator("ai_max_context_items")
+    @classmethod
+    def validate_ai_context_limit(cls, value: int) -> int:
+        if value < 1 or value > 500:
+            raise ValueError("ai_max_context_items must be between 1 and 500")
+        return value
+
+    @field_validator(
+        "diagnosis_episode_window_seconds",
+        "ai_calls_per_episode",
+        "ai_calls_per_device_hour",
+        "ai_input_token_limit",
+        "ai_output_token_limit",
+        "ai_cache_ttl_seconds",
+        "rag_lexical_top_n",
+        "rag_vector_top_n",
+        "rag_fused_top_k",
+        "rag_rrf_k",
+    )
+    @classmethod
+    def validate_positive_phase9_limit(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("Phase 9 limits must be positive")
+        return value
+
+    @field_validator("ai_low_confidence_threshold")
+    @classmethod
+    def validate_confidence_threshold(cls, value: float) -> float:
+        if value < 0 or value > 1:
+            raise ValueError("ai_low_confidence_threshold must be between 0 and 1")
+        return value
+
+    @field_validator(
+        "ai_daily_budget",
+        "ai_max_cost_per_call",
+        "ai_input_cost_per_1k_tokens",
+        "ai_output_cost_per_1k_tokens",
+    )
+    @classmethod
+    def validate_ai_cost(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and value < 0:
+            raise ValueError("AI cost and budget values must not be negative")
+        return value
+
+    @field_validator(
+        "knowledge_embedding_dimensions",
+        "ai_daily_budget",
+        "ai_max_cost_per_call",
+        "ai_input_cost_per_1k_tokens",
+        "ai_output_cost_per_1k_tokens",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_numbers(cls, value: Any) -> Any:
         return None if value == "" else value
 
-    @field_validator("knowledge_embedding_provider", "knowledge_embedding_model", mode="before")
+    @field_validator(
+        "knowledge_embedding_provider",
+        "knowledge_embedding_model",
+        "knowledge_embedding_base_url",
+        "knowledge_embedding_api_key",
+        "ai_provider",
+        "ai_base_url",
+        "ai_model",
+        "ai_api_key",
+        "ai_local_provider",
+        "ai_local_base_url",
+        "ai_local_model",
+        "ai_local_api_key",
+        "ai_cloud_provider",
+        "ai_cloud_base_url",
+        "ai_cloud_model",
+        "ai_cloud_api_key",
+        "ai_output_language",
+        mode="before",
+    )
     @classmethod
     def normalize_optional_text(cls, value: Any) -> Any:
         if isinstance(value, str):
@@ -81,6 +214,52 @@ class Settings(BaseSettings):
             self.knowledge_embedding_provider
             and self.knowledge_embedding_model
             and self.knowledge_embedding_dimensions
+        )
+
+    @property
+    def knowledge_embedding_client_configured(self) -> bool:
+        return bool(
+            self.knowledge_embedding_configured
+            and self.knowledge_embedding_transport != "disabled"
+            and self.knowledge_embedding_base_url
+            and self.knowledge_embedding_api_key
+        )
+
+    @property
+    def ai_configured(self) -> bool:
+        if not self.ai_enabled:
+            return False
+        return bool(
+            self.local_ai_configured
+            or self.cloud_ai_configured
+            or (
+                self.ai_transport != "disabled"
+                and self.ai_provider
+                and self.ai_base_url
+                and self.ai_model
+                and self.ai_api_key
+            )
+        )
+
+    @property
+    def local_ai_configured(self) -> bool:
+        return bool(
+            self.ai_enabled
+            and self.ai_local_enabled
+            and self.ai_local_provider
+            and self.ai_local_base_url
+            and self.ai_local_model
+        )
+
+    @property
+    def cloud_ai_configured(self) -> bool:
+        return bool(
+            self.ai_enabled
+            and self.ai_cloud_enabled
+            and self.ai_cloud_provider
+            and self.ai_cloud_base_url
+            and self.ai_cloud_model
+            and self.ai_cloud_api_key
         )
 
     @property
