@@ -32,6 +32,27 @@ from app.schemas.knowledge import (
     KnowledgeTextImportRequest,
 )
 
+FORMAL_SOURCE_TYPES = {
+    "official_hardware",
+    "course_material",
+    "confirmed_parameter",
+    "verified_case",
+    "supplementary",
+}
+ROOT_CAUSE_CONFIDENCE = {"confirmed", "high", "medium", "low", "unknown"}
+REVIEW_TRANSITIONS = {
+    ("draft", "pending"): "organizer",
+    ("pending", "technical_reviewed"): "technical_reviewer",
+    ("pending", "rejected"): "technical_reviewer",
+    ("technical_reviewed", "approved"): "formal_approver",
+    ("technical_reviewed", "rejected"): "formal_approver",
+    ("approved", "withdrawn"): "formal_approver",
+    ("approved", "superseded"): "formal_approver",
+    ("rejected", "draft"): "organizer",
+    ("withdrawn", "draft"): "organizer",
+    ("superseded", "draft"): "organizer",
+}
+
 
 @dataclass
 class KnowledgeServiceError(Exception):
@@ -129,6 +150,19 @@ def _document_response(
 
 
 def create_source(db: Session, payload: KnowledgeSourceCreate) -> KnowledgeSourceResponse:
+    if not payload.is_test_data:
+        if payload.source_type not in FORMAL_SOURCE_TYPES:
+            raise KnowledgeServiceError(
+                422,
+                "INVALID_FORMAL_SOURCE_TYPE",
+                "Formal knowledge must use a governed source type",
+            )
+        if not payload.source_uri or not payload.version:
+            raise KnowledgeServiceError(
+                422,
+                "FORMAL_SOURCE_TRACEABILITY_REQUIRED",
+                "Formal knowledge sources require both source_uri and version",
+            )
     source = KnowledgeSource(
         source_key=payload.source_key,
         source_type=payload.source_type,
@@ -181,6 +215,44 @@ def import_text_document(
             "KNOWLEDGE_DOCUMENT_TOO_LARGE",
             "Document text exceeds the configured character limit",
         )
+    document_is_test = source.is_test_data or payload.is_test_data
+    if not document_is_test:
+        if not payload.organizer_ref:
+            raise KnowledgeServiceError(
+                422,
+                "KNOWLEDGE_ORGANIZER_REQUIRED",
+                "Formal knowledge requires a traceable organizer_ref",
+            )
+        if not payload.metadata.get("applicable_hardware"):
+            raise KnowledgeServiceError(
+                422,
+                "APPLICABLE_HARDWARE_REQUIRED",
+                "Formal knowledge must declare applicable_hardware",
+            )
+        if source.source_type == "official_hardware" and not (
+            payload.locator_prefix.get("page")
+            or payload.locator_prefix.get("section")
+            or payload.locator_prefix.get("chapter")
+        ):
+            raise KnowledgeServiceError(
+                422,
+                "OFFICIAL_SOURCE_LOCATOR_REQUIRED",
+                "Official hardware material requires a page, section or chapter locator",
+            )
+        if source.source_type == "verified_case":
+            confidence = payload.metadata.get("root_cause_confidence")
+            if not payload.metadata.get("final_fix_action"):
+                raise KnowledgeServiceError(
+                    422,
+                    "FINAL_FIX_ACTION_REQUIRED",
+                    "Verified cases must record final_fix_action",
+                )
+            if confidence not in ROOT_CAUSE_CONFIDENCE:
+                raise KnowledgeServiceError(
+                    422,
+                    "ROOT_CAUSE_CONFIDENCE_REQUIRED",
+                    "Verified cases require a governed root_cause_confidence",
+                )
     content_hash = _hash_text(content)
     existing = db.scalar(
         select(KnowledgeDocument)
@@ -207,7 +279,8 @@ def import_text_document(
         content_hash=content_hash,
         parser_name=payload.parser_name,
         parser_version=payload.parser_version,
-        is_test_data=source.is_test_data or payload.is_test_data,
+        review_status="draft",
+        is_test_data=document_is_test,
     )
     db.add(document)
     db.flush()
@@ -222,7 +295,11 @@ def import_text_document(
                 content_hash=_hash_text(chunk_text),
                 char_count=len(chunk_text),
                 locator_json=locator,
-                metadata_json=payload.metadata,
+                metadata_json={
+                    **payload.metadata,
+                    "organizer_ref": payload.organizer_ref,
+                    "content_origin": payload.content_origin,
+                },
             )
         )
     db.commit()
@@ -244,12 +321,55 @@ def review_document(
     document = db.scalar(
         select(KnowledgeDocument)
         .where(KnowledgeDocument.id == document_id)
-        .options(joinedload(KnowledgeDocument.source), selectinload(KnowledgeDocument.chunks))
+        .options(
+            joinedload(KnowledgeDocument.source),
+            selectinload(KnowledgeDocument.chunks),
+            selectinload(KnowledgeDocument.reviews),
+        )
     )
     if document is None:
         raise KnowledgeServiceError(
             404, "KNOWLEDGE_DOCUMENT_NOT_FOUND", "Knowledge document not found"
         )
+    required_role = REVIEW_TRANSITIONS.get(
+        (document.review_status, payload.decision)
+    )
+    if required_role is None:
+        raise KnowledgeServiceError(
+            409,
+            "INVALID_KNOWLEDGE_REVIEW_TRANSITION",
+            f"Cannot transition from {document.review_status} to {payload.decision}",
+        )
+    if payload.reviewer_role != required_role:
+        raise KnowledgeServiceError(
+            403,
+            "KNOWLEDGE_REVIEW_ROLE_MISMATCH",
+            f"Transition requires reviewer role {required_role}",
+        )
+    metadata = document.chunks[0].metadata_json if document.chunks else {}
+    organizer_ref = metadata.get("organizer_ref")
+    if (
+        payload.reviewer_role in {"technical_reviewer", "formal_approver"}
+        and organizer_ref
+        and payload.reviewer_ref == organizer_ref
+    ):
+        raise KnowledgeServiceError(
+            409,
+            "KNOWLEDGE_SELF_REVIEW_FORBIDDEN",
+            "The organizer cannot perform technical or formal review",
+        )
+    if payload.reviewer_role == "formal_approver":
+        technical_reviewers = {
+            review.reviewer_ref
+            for review in document.reviews
+            if review.reviewer_role == "technical_reviewer"
+        }
+        if payload.reviewer_ref in technical_reviewers:
+            raise KnowledgeServiceError(
+                409,
+                "KNOWLEDGE_REVIEW_SEPARATION_REQUIRED",
+                "The formal approver must differ from the technical reviewer",
+            )
     if payload.decision == "approved" and not document.source.authorization_scope:
         raise KnowledgeServiceError(
             409,
@@ -262,6 +382,7 @@ def review_document(
     review = KnowledgeReview(
         document_id=document.id,
         decision=payload.decision,
+        reviewer_role=payload.reviewer_role,
         reviewer_ref=payload.reviewer_ref,
         note=payload.note,
     )
@@ -271,6 +392,7 @@ def review_document(
     return KnowledgeReviewResponse(
         document_id=document.id,
         decision=payload.decision,
+        reviewer_role=payload.reviewer_role,
         reviewer_ref=payload.reviewer_ref,
         reviewed_at=review.created_at,
         affected_chunks=len(document.chunks),
@@ -456,7 +578,11 @@ def get_knowledge_status(db: Session, settings: Settings) -> KnowledgeStatusResp
         db.scalar(
             select(func.count())
             .select_from(KnowledgeDocument)
-            .where(KnowledgeDocument.review_status == "pending")
+            .where(
+                KnowledgeDocument.review_status.in_(
+                    ("draft", "pending", "technical_reviewed")
+                )
+            )
         )
         or 0
     )

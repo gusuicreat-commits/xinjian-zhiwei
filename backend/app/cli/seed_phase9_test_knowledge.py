@@ -132,6 +132,7 @@ def seed() -> dict[str, int | str]:
                         "case": case["metadata"]["error_code"],
                     },
                     metadata=case["metadata"],
+                    organizer_ref="phase9-test-organizer",
                     is_test_data=True,
                 ),
                 settings,
@@ -140,15 +141,38 @@ def seed() -> dict[str, int | str]:
             if document is None:
                 raise RuntimeError("Phase 9 test document was not created")
             if document.review_status != "approved":
-                review_document(
-                    db,
-                    document.id,
-                    KnowledgeReviewRequest(
-                        decision="approved",
-                        reviewer_ref="phase9-automated-acceptance",
-                        note="明确标记的合成测试知识，仅用于 Phase 9 验收",
+                review_steps = {
+                    "draft": (
+                        "pending",
+                        "organizer",
+                        "phase9-test-organizer",
                     ),
-                )
+                    "pending": (
+                        "technical_reviewed",
+                        "technical_reviewer",
+                        "phase9-test-technical-reviewer",
+                    ),
+                    "technical_reviewed": (
+                        "approved",
+                        "formal_approver",
+                        "phase9-test-formal-approver",
+                    ),
+                }
+                while document.review_status != "approved":
+                    decision, reviewer_role, reviewer_ref = review_steps[
+                        document.review_status
+                    ]
+                    review_document(
+                        db,
+                        document.id,
+                        KnowledgeReviewRequest(
+                            decision=decision,
+                            reviewer_role=reviewer_role,
+                            reviewer_ref=reviewer_ref,
+                            note="明确标记的合成测试知识，仅用于 Phase 9 验收",
+                        ),
+                    )
+                    db.refresh(document)
             chunks = sorted(document.chunks, key=lambda item: item.chunk_index)
             upsert_embeddings(
                 db,

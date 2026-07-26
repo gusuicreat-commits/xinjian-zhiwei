@@ -127,6 +127,7 @@ class KnowledgeReview(UuidPrimaryKeyMixin, Base):
         String(36), ForeignKey("knowledge_documents.id", ondelete="CASCADE"), nullable=False
     )
     decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    reviewer_role: Mapped[str] = mapped_column(String(30), nullable=False)
     reviewer_ref: Mapped[str] = mapped_column(String(200), nullable=False)
     note: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(

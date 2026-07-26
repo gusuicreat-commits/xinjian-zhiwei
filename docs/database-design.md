@@ -1,10 +1,10 @@
-# 芯鉴知微数据库设计（Phase 9）
+# 芯鉴知微数据库设计（Phase 9.5）
 
 ## 迁移基线
 
 - 数据库：PostgreSQL 16 + pgvector。
 - 迁移工具：Alembic。
-- 当前版本：`20260724_0007`。
+- 目标版本：`20260725_0008`。
 - 后端启动时先执行 `alembic upgrade head`，成功后才启动 API。
 
 ## 表结构
@@ -43,15 +43,15 @@
 
 ### `knowledge_sources`
 
-保存稳定来源标识、通用来源类型、标题、URI、版本、许可证、授权范围、可扩展元数据和测试标记。来源类型不绑定某个厂商或硬件型号。
+保存稳定来源标识、治理来源类型、标题、URI、版本、许可证、授权范围、可扩展元数据和测试标记。正式来源类型分为 `official_hardware`、`course_material`、`confirmed_parameter`、`verified_case` 和 `supplementary`；正式来源必须记录 URI 与版本。
 
 ### `knowledge_documents`
 
-保存来源关联、文档标题、媒体类型、语言、外部存储 URI、内容哈希、解析器名称/版本、审核状态和测试标记。`source_id + content_hash` 唯一，保证重复导入幂等。
+保存来源关联、文档标题、媒体类型、语言、外部存储 URI、内容哈希、解析器名称/版本、审核状态和测试标记。新导入文档从 `draft` 开始，状态可为 `draft`、`pending`、`technical_reviewed`、`approved`、`rejected`、`withdrawn` 或 `superseded`。`source_id + content_hash` 唯一，保证重复导入幂等。
 
 ### `knowledge_chunks`
 
-保存文档内顺序、文本、内容哈希、字符数、页码/章节/字符范围等通用定位 JSON、结构化过滤元数据和审核状态。未经批准的知识块不得参与检索。
+保存文档内顺序、文本、内容哈希、字符数、页码/章节/字符范围等通用定位 JSON、结构化过滤元数据和审核状态。元数据用于记录资料整理人、内容来源方式、适用硬件；真实案例还记录最终修复动作与 `confirmed/high/medium/low/unknown` 根因确认等级。官方资料必须有页码、章节或段落定位。只有 `approved` 知识块可参与正式检索。
 
 ### `knowledge_embeddings`
 
@@ -59,11 +59,11 @@
 
 ### `knowledge_reviews`
 
-追加保存文档审核决定、审核人引用、备注和时间。当前审核人引用由临时审阅令牌持有者提交，不等同于正式教师账号。
+追加保存文档审核决定、`reviewer_role`、审核人引用、备注和时间。角色分为资料整理人、技术初审人和正式审核人；服务层强制状态迁移与职责分离。当前审核人引用由临时审阅令牌持有者提交，不等同于正式教师账号。
 
 ### `ai_call_records`
 
-追加保存诊断与 Episode 关联、触发原因、缓存状态、路由、Provider/模型、Prompt、状态、耗时、结构化输出、知识引用、Token、成本占位、校验和降级原因。失败和跳过记录同样保留。
+追加保存诊断与 Episode 关联、触发原因、缓存状态、最后路由、完整 `route_path`、Provider/模型、Prompt 版本与哈希、状态、耗时、结构化输出、知识引用、Token、成本占位、校验和降级原因。输入快照只保存匿名标识、哈希、计数与隐私控制摘要；失败和跳过记录同样保留。
 
 ### `ai_explanation_cache`
 
@@ -93,7 +93,8 @@
 - `raw_payload` 只保存经过 Pydantic 校验的请求体，不包含认证头。
 - 测试和模拟记录必须设置 `is_test_data=true`。
 - 所有结构变化必须新增 Alembic revision，不允许手工修改生产表结构。
+- `20260725_0008` 只新增 `ai_call_records.route_path` 与 `knowledge_reviews.reviewer_role`；适用硬件、定位、修复动作和根因等级继续使用已有 JSON 元数据，避免重复字段。
 
 用户、班级和正式实验模板仍待设计。知识库与 AI 审计表已经建立；仅有测试记录和禁用真实 Provider 只代表框架通过验收，不能冒充正式知识或真实 AI 诊断。
 
-Phase 9 最终验收数据库保留一组明确测试标记的合成知识、测试向量、测试 Episode、Mock 调用审计与缓存。所有记录均可由来源键、测试设备和 `is_test_data` 追溯；它们不是正式课程或真实硬件数据。正式查询默认排除测试知识。Phase 10 尚未开始。
+Phase 9 最终验收数据库保留一组明确测试标记的合成知识、测试向量、测试 Episode、Mock 调用审计与缓存。Phase 9.5 不导入正式资料或真实学生信息，只补充治理流程。所有测试记录均可由来源键、测试设备和 `is_test_data` 追溯；正式查询默认排除测试知识。Phase 10 尚未开始。

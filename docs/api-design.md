@@ -1,4 +1,4 @@
-# 芯鉴知微 API 设计（Phase 9）
+# 芯鉴知微 API 设计（Phase 9.5）
 
 ## 通用约定
 
@@ -57,13 +57,15 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 ### GET `/diagnosis/ai/status`
 
-返回 Phase 9 框架、AI Provider、Embedding 客户端、知识门禁、传输类型和 Prompt 版本状态。该接口不返回 Base URL、API Key 或其他密钥。
+返回 Phase 9.5 框架、已选定的 DeepSeek Provider、`deepseek-v4-flash`、非思考模式、Embedding 客户端、知识门禁、传输类型、生产路由和 Prompt 版本状态。该接口不返回 Base URL、API Key 或其他密钥。即使 Provider 已选定，只要 `AI_ENABLED=false` 或未注入服务端密钥，状态仍明确为未启用，不会发起请求。
 
 ### POST `/diagnosis/results/{diagnosis_result_id}/ai-explanation`
 
-使用设备凭据，只能解释当前设备的诊断结果。请求体可选 `user_question`。接口先确保故障树与 Episode 存在，以结构化过滤、全文检索和可选 pgvector 检索审核知识，再执行策略、预算、稳定指纹缓存及本地/云端可替换 `AIClient` 路由。AI 不能修改确定性错误类型；证据必须来自规则白名单，知识引用必须来自本次检索结果。
+使用设备凭据，只能解释当前设备的诊断结果。请求体可选 `user_question`。接口先确保故障树与 Episode 存在，以结构化过滤、全文检索和可选 pgvector 检索审核知识，再执行策略、预算、稳定指纹缓存及统一 `AIClient`。Phase 9.5 的唯一生产调用路径为 `cache → deepseek → deterministic_fallback`，不做多模型分层。AI 不能修改确定性错误类型；证据必须来自规则白名单，知识引用必须来自本次检索结果。
 
-未配置 Provider、知识未就绪、预算受限、检索失败、AI 超时或输出校验失败时仍返回 201，并携带 `deterministic_result`；`enhancement_status` 明确为 `disabled/skipped/cache_hit/local_success/cloud_success/failed_fallback`，同时保存审计记录。成功时仍返回兼容字段 `mode=ai_enhanced` 和严格结构化解释。
+送往 Provider 的上下文先经过 `phase9.5-allowlist-v1` 最小化：设备标识匿名化；日志只保留最多 3–10 条相关项；读数和心跳转换为统计摘要；令牌、密钥、Wi-Fi、学生身份、联系方式和自由文本中的敏感片段被删除或遮蔽。知识正文按字符上限截断，原始 Prompt 不写入审计表。
+
+未配置密钥、知识未就绪、预算受限、检索失败、AI 超时或输出校验失败时仍返回 201，并携带 `deterministic_result`；`enhancement_status` 保留兼容状态值，同时通过 `route_path` 明确记录 `cache_hit`、`cache_miss → deepseek_success`、`cache_miss → deepseek_failed → deterministic_fallback` 或跳过原因。成功时仍返回兼容字段 `mode=ai_enhanced` 和严格结构化解释。
 
 结构化策略触发原因通过 `trigger_reason` 返回并写入审计。已知高置信单规则、只读页面刷新、教师统计和普通知识检索不会触发 Provider；低置信、未知异常、多规则、Episode 升级或显式自然语言追问才可能进入缓存和 Provider 路由。知识引用包含来源、版本、定位、审核状态、融合分数和全文/向量/RRF 分项分数。
 
@@ -97,15 +99,23 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 ### GET/POST `/knowledge/sources`
 
-查询或登记资料来源。`source_key` 是外部稳定标识；同时保存类型、标题、来源 URI、版本、许可证、授权范围、元数据和 `is_test_data`。重复 `source_key` 返回 409。
+查询或登记资料来源。`source_key` 是外部稳定标识；同时保存类型、标题、来源 URI、版本、许可证、授权范围、元数据和 `is_test_data`。正式来源类型限定为 `official_hardware`、`course_material`、`confirmed_parameter`、`verified_case` 或 `supplementary`，且必须提供 URI 和版本；重复 `source_key` 返回 409。
 
 ### POST `/knowledge/sources/{source_id}/documents/text`
 
-只接收已经提取的 `text/*` 文本，不直接解析 PDF、DOCX 或扫描件。服务端规范化换行、按可配置字符窗口切分、保存字符定位和 SHA-256；同一来源重复导入相同内容返回原文档并设置 `idempotent_replay=true`。
+只接收已经提取的 `text/*` 文本，不直接解析 PDF、DOCX 或扫描件。正式导入还必须提供整理人、适用硬件和内容来源类型；官方资料必须有页码、章节或段落定位，已验证案例必须记录最终修复动作与根因置信度。服务端规范化换行、按可配置字符窗口切分、保存字符定位和 SHA-256；同一来源重复导入相同内容返回原文档并设置 `idempotent_replay=true`。新文档从 `draft` 开始。
 
 ### PATCH `/knowledge/documents/{document_id}/review`
 
-接受 `approved` 或 `rejected`、审核人引用和备注。来源未记录 `authorization_scope` 时不能批准。审核状态同步到文档的全部知识块，并追加不可覆盖的审核历史。
+接受目标状态、审核角色、审核人引用和备注。正式流程为：
+
+```text
+draft --organizer--> pending
+pending --technical_reviewer--> technical_reviewed
+technical_reviewed --formal_approver--> approved
+```
+
+还支持 `rejected`、`withdrawn` 和 `superseded`。整理人不得兼任本条技术审核人，技术审核人与正式批准人也必须分离。来源未记录 `authorization_scope` 时不能批准。状态同步到文档的全部知识块，并追加不可覆盖的审核历史。
 
 ### POST `/knowledge/documents/{document_id}/embeddings`
 
@@ -128,6 +138,6 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
 | 503 | 教师审阅凭据或正式 Embedding Provider 尚未配置 |
 
-当前提供设备凭据保护的临时学生 API，以及审阅令牌保护的教师聚合和知识库管理 API；Phase 9 只提供默认关闭的 AI 通用框架，不代表已经配置真实 AI 服务。仍不提供正式账号、班级、实验任务或公开设备注册接口。
+当前提供设备凭据保护的临时学生 API，以及审阅令牌保护的教师聚合和知识库管理 API；Phase 9.5 已固定 DeepSeek 官方 API、`deepseek-v4-flash` 和非思考模式，但 `AI_ENABLED=false`、密钥为空，因此不代表已经配置或调用真实 AI 服务。统一 `AIClient` 仍作为可替换边界。当前仍不提供正式账号、班级、实验任务或公开设备注册接口。
 
 当前数据库中的 `phase9.synthetic-acceptance` 来源及 `phase9-test-vector` 向量只用于自动化验收，默认查询排除；它们不是正式知识或真实 Provider 产物。Phase 10 尚未开始。

@@ -40,6 +40,7 @@ class AICallRecord(UuidPrimaryKeyMixin, Base):
     trigger_reason: Mapped[Optional[str]] = mapped_column(String(100))
     cache_status: Mapped[Optional[str]] = mapped_column(String(30))
     route: Mapped[Optional[str]] = mapped_column(String(30))
+    route_path: Mapped[Optional[str]] = mapped_column(String(200))
     estimated_cost: Mapped[Optional[float]] = mapped_column(Float)
     latency_ms: Mapped[Optional[int]] = mapped_column(Integer)
     validation_status: Mapped[Optional[str]] = mapped_column(String(30))

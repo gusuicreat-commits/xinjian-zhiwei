@@ -1,8 +1,11 @@
-# Phase 9 Provider 无关 AI 诊断设计
+# Phase 9.5 DeepSeek 解释增强与 Provider 无关诊断设计
 
 ## 当前结论
 
-Phase 9 完成的是可配置、可审计、失败可降级的轻量框架，不是正式 AI 诊断上线。当前没有已确认的 AI/Embedding Provider、模型、密钥或正式知识，默认配置不会发起任何外部请求，学生端仍能显示完整确定性解释。
+Phase 9.5 固定生产对话 Provider 为 DeepSeek 官方 API，模型为
+`deepseek-v4-flash`，显式使用非思考模式。它仍只是可选解释增强，不是诊断
+前置条件。`AI_ENABLED=false` 且仓库没有真实 API Key，所以默认不会发起外部
+请求；学生端仍显示完整确定性解释。
 
 ## 不可覆盖的主链路
 
@@ -15,7 +18,7 @@ Phase 9 完成的是可配置、可审计、失败可降级的轻量框架，不
   → 确定性说明模板
   → AIExplanationPolicy
   → 指纹缓存
-  → 可选本地/云端 AI 解释
+  → 可选 DeepSeek 非思考解释
 ```
 
 `diagnosis_results` 与 `guidance_history` 在 AI 调用前已经确定。AI 返回内容只作为解释增强保存到 `ai_call_records`，不能改写错误类型、规则证据、原因评分或基础提示。
@@ -25,7 +28,9 @@ Phase 9 完成的是可配置、可审计、失败可降级的轻量框架，不
 - `AIClient.complete_json()`：接收系统提示与用户 JSON，返回原始 JSON 文本及可选 Token 计数。
 - `EmbeddingClient.embed()`：接收检索文本，返回配置维度的查询向量。
 - 默认实现为 `DisabledAIClient` 和 `DisabledEmbeddingClient`。
-- 可选 `openai-compatible` 只是传输协议适配器，不表示选定任何厂商。
+- 生产配置选择 DeepSeek，但继续复用 `OpenAICompatibleClient`，没有复制平行诊断逻辑。
+- Provider 适配层为 DeepSeek 请求发送 `thinking: {"type": "disabled"}`，不默认启用长推理。
+- Mock、Disabled 和本地扩展 Client 保留用于测试或明确扩展；本地 Client 不进入生产默认路由。
 - Provider 名称、Base URL、模型、密钥、超时和重试全部由后端环境变量注入，前端和数据库不保存密钥。
 
 ## 事件、核心与确定性说明
@@ -53,7 +58,12 @@ Phase 9 完成的是可配置、可审计、失败可降级的轻量框架，不
 
 稳定指纹只包含实验/硬件、主要错误、设备状态、排序后的规则与证据代码、Top 原因、知识块、提示等级及规则/故障树/知识/Prompt/Schema 版本，不包含无关时间戳、数据库 ID 或原始日志顺序。
 
-路由顺序为：确定性模板 → 策略跳过 → PostgreSQL 缓存 → 可选本地 OpenAI-compatible → 可选云端 OpenAI-compatible → 校验 → 确定性降级。缓存命中不计 Provider 调用次数。真实调用前检查每 Episode、每设备每小时、单次预算、每日预算和输入 Token；输出 Token 通过兼容传输参数限制。
+生产路由为：确定性模板 → 策略判断 → PostgreSQL 缓存 → DeepSeek
+`deepseek-v4-flash` 非思考模式 → Pydantic 校验 → 确定性降级。正式表达为
+`cache → deepseek → deterministic_fallback`，不执行本地小模型到云模型、
+简单模型到复杂模型或便宜模型到昂贵模型的自动分层。缓存命中不计 Provider
+调用次数。真实调用前检查每 Episode、每设备每小时、单次预算、每日人民币
+预算和输入 Token；输出 Token 由请求参数限制。
 
 稳定指纹包含规则、故障树、知识块、Hint Level、Prompt、Schema、输出语言和可选用户问题；不包含诊断数据库 ID、时间戳或日志顺序。修改任一语义版本或输出语言都会失效缓存。
 
@@ -70,9 +80,18 @@ Phase 9 完成的是可配置、可审计、失败可降级的轻量框架，不
 
 ## 输入和隐私
 
-模型输入包含受数量上限约束的设备状态、日志、心跳、传感器读数、规则命中、故障树结果和知识引用。设备令牌、审阅令牌、数据库密码和 Provider API Key 不进入 Prompt、审计快照或响应。
+模型请求统一经过 `phase9.5-allowlist-v1`：
 
-当前上下文仍可能包含设备日志正文。真实 Provider 接入前必须由项目方确认数据外发范围、隐私策略和日志脱敏要求。
+- 设备 ID 转换为稳定的不可逆短哈希；
+- 只保留 Episode/Diagnosis、错误码、规则、证据、原因、Hint Level 和限制；
+- 日志仅选取最近 3–10 条与当前规则直接相关的记录，并对文本再次脱敏；
+- 传感器读数转换为样本数、最小值、最大值和最新值等聚合；
+- 知识正文按配置截断，不发送来源私有 URI；
+- 学生技术问题在发送前应用同一脱敏规则。
+
+学生姓名、学号、班级实名、手机号、身份证号、邮箱、账号密码、设备令牌、
+Authorization、DeepSeek Key、数据库密码/连接串、Wi-Fi 密码、教师私人备注、
+完整原始请求、无关日志和环境变量都不进入 Prompt 或审计。
 
 ## 结构化输出
 
@@ -86,11 +105,18 @@ Phase 9 完成的是可配置、可审计、失败可降级的轻量框架，不
 
 ## 审计
 
-`ai_call_records` 保存成功、失败和跳过三类记录，包括触发原因、Episode、缓存、路由、Provider/模型、Prompt、尝试次数、耗时、结构化输出、知识引用、Token、校验和降级原因。完整日志/读数正文沿用原诊断上下文追溯，不在 AI 审计表重复保存；API Key 永不保存。
+`ai_call_records` 保存成功、失败和跳过三类记录，包括触发原因、Episode、缓存、
+最后路由、`route_path`、Provider/模型、Prompt 版本与哈希、尝试次数、耗时、结构化输出、
+知识引用、Token、校验和降级原因。审计输入只保存匿名标识、内容哈希、计数、
+规则/错误码/知识块 ID 和隐私控制摘要，不保存完整 Prompt、完整日志、API Key
+或 Authorization。典型路径包括 `cache_hit`、`cache_miss → deepseek_success`、
+`cache_miss → deepseek_failed → deterministic_fallback` 和
+`ai_disabled → deterministic_only`。
 
 ## 待项目方提供
 
-- `TODO[待补充]: AI Provider、模型、Base URL、服务端密钥和费用限制`
+- `已确定: DeepSeek 官方 API、deepseek-v4-flash、非思考模式`
+- `TODO[待补充]: 服务端 DeepSeek API Key、人民币预算和数据外发审批`
 - `TODO[待补充]: Embedding Provider、模型、维度和服务端密钥`
 - `TODO[待补充]: 经授权、审核并完成向量化的正式知识`
 - `TODO[待补充]: 数据外发、隐私、日志脱敏和保留政策`
@@ -100,4 +126,5 @@ Phase 9 完成的是可配置、可审计、失败可降级的轻量框架，不
 
 Phase 9 最终验收允许保留一组 `is_test_data=true` 的合成知识：DHT11 读取失败、设备离线、温湿度越界和无关 LED 案例。来源键为 `phase9.synthetic-acceptance`，版本为 `phase9-acceptance-v1`，审核人引用明确标为自动化验收；配套四维向量由固定测试机制生成，不调用外部 Embedding 服务。它们只验证结构化过滤、全文检索、pgvector 和 RRF，不能作为课程资料、硬件说明书或真实专业知识。
 
-Phase 9 已完成；Phase 10 尚未开始。
+Phase 9.5 完成的是生产决策、运行边界、脱敏和知识治理补强，不包含真实收费
+调用、真实固件或正式部署。Phase 10 尚未开始。

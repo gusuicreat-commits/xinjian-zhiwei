@@ -70,6 +70,7 @@ class OpenAICompatibleClient:
         timeout_seconds: float,
         max_retries: int,
         max_output_tokens: int | None = None,
+        thinking_enabled: bool | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
@@ -78,8 +79,11 @@ class OpenAICompatibleClient:
         self._timeout_seconds = timeout_seconds
         self._max_retries = max_retries
         self._max_output_tokens = max_output_tokens
+        self._thinking_enabled = thinking_enabled
 
-    def complete_json(self, *, system_prompt: str, user_prompt: str) -> AICompletion:
+    def build_request_payload(
+        self, *, system_prompt: str, user_prompt: str
+    ) -> dict[str, Any]:
         payload = {
             "model": self.model,
             "messages": [
@@ -91,6 +95,17 @@ class OpenAICompatibleClient:
         }
         if self._max_output_tokens is not None:
             payload["max_tokens"] = self._max_output_tokens
+        if self._thinking_enabled is not None:
+            payload["thinking"] = {
+                "type": "enabled" if self._thinking_enabled else "disabled"
+            }
+        return payload
+
+    def complete_json(self, *, system_prompt: str, user_prompt: str) -> AICompletion:
+        payload = self.build_request_payload(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
         response = self._post("/chat/completions", payload)
         try:
             content = response["choices"][0]["message"]["content"]
@@ -167,19 +182,26 @@ class OpenAICompatibleEmbeddingClient:
 def build_ai_client(settings: Settings) -> AIClient:
     if not settings.ai_configured:
         return DisabledAIClient()
+    if settings.production_ai_configured:
+        return OpenAICompatibleClient(
+            provider=settings.ai_provider or "",
+            base_url=settings.ai_base_url or "",
+            model=settings.ai_model or "",
+            api_key=settings.ai_api_key or "",
+            timeout_seconds=settings.ai_timeout_seconds,
+            max_retries=settings.ai_max_retries,
+            max_output_tokens=settings.ai_output_token_limit,
+            thinking_enabled=(
+                settings.ai_thinking_enabled
+                if settings.ai_provider == "deepseek"
+                else None
+            ),
+        )
     if settings.local_ai_configured:
         return build_local_ai_client(settings)
     if settings.cloud_ai_configured:
         return build_cloud_ai_client(settings)
-    return OpenAICompatibleClient(
-        provider=settings.ai_provider or "",
-        base_url=settings.ai_base_url or "",
-        model=settings.ai_model or "",
-        api_key=settings.ai_api_key or "",
-        timeout_seconds=settings.ai_timeout_seconds,
-        max_retries=settings.ai_max_retries,
-        max_output_tokens=settings.ai_output_token_limit,
-    )
+    return DisabledAIClient()
 
 
 def build_local_ai_client(settings: Settings) -> AIClient:

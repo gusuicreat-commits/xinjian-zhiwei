@@ -210,17 +210,29 @@ def test_hybrid_retrieval_works_without_embeddings(api_context: dict) -> None:
                 title="test document",
                 content="SENSOR_READ_FAILED connection inspection procedure",
                 metadata={"error_code": "SENSOR_READ_FAILED"},
+                organizer_ref="phase9-test-organizer",
                 is_test_data=True,
             ),
             settings,
         )
-        review_document(
-            db,
-            document.id,
-            KnowledgeReviewRequest(
-                decision="approved", reviewer_ref="phase9-test-reviewer"
+        for decision, reviewer_role, reviewer_ref in (
+            ("pending", "organizer", "phase9-test-organizer"),
+            (
+                "technical_reviewed",
+                "technical_reviewer",
+                "phase9-test-technical-reviewer",
             ),
-        )
+            ("approved", "formal_approver", "phase9-test-formal-approver"),
+        ):
+            review_document(
+                db,
+                document.id,
+                KnowledgeReviewRequest(
+                    decision=decision,
+                    reviewer_role=reviewer_role,
+                    reviewer_ref=reviewer_ref,
+                ),
+            )
         replay = import_text_document(
             db,
             source.id,
@@ -228,6 +240,7 @@ def test_hybrid_retrieval_works_without_embeddings(api_context: dict) -> None:
                 title="test document",
                 content="SENSOR_READ_FAILED connection inspection procedure",
                 metadata={"error_code": "SENSOR_READ_FAILED"},
+                organizer_ref="phase9-test-organizer",
                 is_test_data=True,
             ),
             settings,
@@ -260,7 +273,7 @@ def test_hybrid_retrieval_works_without_embeddings(api_context: dict) -> None:
             ),
             settings,
         )
-        assert pending.review_status == "pending"
+        assert pending.review_status == "draft"
         excluded = hybrid_retrieve(
             db,
             "SENSOR_READ_FAILED connection",

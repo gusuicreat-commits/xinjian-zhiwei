@@ -43,7 +43,8 @@ class AIEnhancementState(StrictModel):
         "failed_fallback",
     ]
     trigger_reason: str
-    route: Literal["none", "cache", "local", "cloud"]
+    route: str
+    route_path: str = "deterministic_only"
     cache_status: Literal["not_checked", "miss", "hit"]
     fallback_reason: Optional[str] = None
     call_record_id: Optional[str] = None

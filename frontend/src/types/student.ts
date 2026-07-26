@@ -106,7 +106,8 @@ export interface AIEnhancementState {
     | 'cloud_success'
     | 'failed_fallback'
   trigger_reason: string
-  route: 'none' | 'cache' | 'local' | 'cloud'
+  route: string
+  route_path: string
   cache_status: 'not_checked' | 'miss' | 'hit'
   fallback_reason?: string | null
   call_record_id?: string | null
@@ -116,6 +117,7 @@ export interface AIKnowledgeReference {
   chunk_id: string
   source_key: string
   source_title: string
+  source_type: string | null
   source_uri: string | null
   source_version: string | null
   locator: Record<string, unknown>
@@ -159,7 +161,8 @@ export interface AIExplanationResponse {
     | 'cloud_success'
     | 'failed_fallback'
   trigger_reason: string
-  route: 'none' | 'cache' | 'local' | 'cloud'
+  route: string
+  route_path: string
   deterministic_result: DeterministicExplanation | null
 }
 
@@ -176,6 +179,8 @@ export interface AIStatus {
   ai_enabled: boolean
   local_configured: boolean
   cloud_configured: boolean
+  thinking_enabled: boolean
+  production_route: string
 }
 
 export interface RankedCause {

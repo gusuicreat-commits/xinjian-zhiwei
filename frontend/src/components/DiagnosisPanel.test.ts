@@ -46,11 +46,16 @@ const aiStatus: AIStatus = {
   provider_configured: false,
   embedding_client_configured: false,
   require_knowledge: true,
-  provider: null,
-  model: null,
-  transport: 'disabled',
-  prompt_version: 'phase9-v1',
+  provider: 'deepseek',
+  model: 'deepseek-v4-flash',
+  transport: 'openai-compatible',
+  prompt_version: 'phase9.5-v1',
   notice: 'AI Provider 未配置，系统保持确定性规则诊断模式。',
+  ai_enabled: false,
+  local_configured: false,
+  cloud_configured: false,
+  thinking_enabled: false,
+  production_route: 'cache → deepseek → deterministic_fallback',
 }
 
 function mountPanel(overrides: Record<string, unknown> = {}) {

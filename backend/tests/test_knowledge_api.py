@@ -8,6 +8,29 @@ def allow_review_access() -> None:
     app.dependency_overrides[require_review_access] = lambda: None
 
 
+def approve_test_document(client: Any, document_id: str, prefix: str) -> None:
+    steps = (
+        ("pending", "organizer", f"{prefix}-organizer"),
+        (
+            "technical_reviewed",
+            "technical_reviewer",
+            f"{prefix}-technical-reviewer",
+        ),
+        ("approved", "formal_approver", f"{prefix}-formal-approver"),
+    )
+    for decision, reviewer_role, reviewer_ref in steps:
+        response = client.patch(
+            f"/api/v1/knowledge/documents/{document_id}/review",
+            json={
+                "decision": decision,
+                "reviewer_role": reviewer_role,
+                "reviewer_ref": reviewer_ref,
+                "note": "明确标记的自动化测试审核。",
+            },
+        )
+        assert response.status_code == 200, response.text
+
+
 def test_knowledge_endpoints_fail_closed_without_review_access(
     api_context: dict[str, Any],
 ) -> None:
@@ -45,12 +68,37 @@ def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -
     ).json()
     document = client.post(
         f"/api/v1/knowledge/sources/{source['id']}/documents/text",
-        json={"title": "待审核文本", "content": "仅用于测试的文本。", "is_test_data": True},
+        json={
+            "title": "待审核文本",
+            "content": "仅用于测试的文本。",
+            "organizer_ref": "authorization-test-organizer",
+            "is_test_data": True,
+        },
     ).json()
+    client.patch(
+        f"/api/v1/knowledge/documents/{document['id']}/review",
+        json={
+            "decision": "pending",
+            "reviewer_role": "organizer",
+            "reviewer_ref": "authorization-test-organizer",
+        },
+    )
+    client.patch(
+        f"/api/v1/knowledge/documents/{document['id']}/review",
+        json={
+            "decision": "technical_reviewed",
+            "reviewer_role": "technical_reviewer",
+            "reviewer_ref": "authorization-test-technical-reviewer",
+        },
+    )
 
     response = client.patch(
         f"/api/v1/knowledge/documents/{document['id']}/review",
-        json={"decision": "approved", "reviewer_ref": "phase8-test-reviewer"},
+        json={
+            "decision": "approved",
+            "reviewer_role": "formal_approver",
+            "reviewer_ref": "authorization-test-formal-approver",
+        },
     )
 
     assert response.status_code == 409
@@ -87,6 +135,7 @@ def test_test_knowledge_import_review_embedding_and_search_are_traceable(
         "language": "zh-CN",
         "storage_uri": "test://phase8/document",
         "locator_prefix": {"section": "test"},
+        "organizer_ref": "phase8-test-organizer",
         "is_test_data": True,
     }
     document_response = client.post(
@@ -104,16 +153,7 @@ def test_test_knowledge_import_review_embedding_and_search_are_traceable(
     assert replay["idempotent_replay"] is True
     assert document["chunks"][0]["locator"]["section"] == "test"
 
-    review = client.patch(
-        f"/api/v1/knowledge/documents/{document['id']}/review",
-        json={
-            "decision": "approved",
-            "reviewer_ref": "phase8-test-reviewer",
-            "note": "只批准测试内容。",
-        },
-    )
-    assert review.status_code == 200
-    assert review.json()["affected_chunks"] == len(document["chunks"])
+    approve_test_document(client, document["id"], "phase8-test")
 
     embedding_items = [
         {"chunk_id": chunk["id"], "vector": [1.0, index + 0.5, 0.25]}
@@ -183,12 +223,14 @@ def test_real_embeddings_are_rejected_until_provider_is_configured(
     ).json()
     document = client.post(
         f"/api/v1/knowledge/sources/{source['id']}/documents/text",
-        json={"title": "门禁测试文本", "content": "测试文本", "is_test_data": True},
+        json={
+            "title": "门禁测试文本",
+            "content": "测试文本",
+            "organizer_ref": "provider-gate-organizer",
+            "is_test_data": True,
+        },
     ).json()
-    client.patch(
-        f"/api/v1/knowledge/documents/{document['id']}/review",
-        json={"decision": "approved", "reviewer_ref": "phase8-test-reviewer"},
-    )
+    approve_test_document(client, document["id"], "provider-gate")
 
     response = client.post(
         f"/api/v1/knowledge/documents/{document['id']}/embeddings",

@@ -283,7 +283,7 @@ def test_local_route_success_and_local_failure_falls_back_without_500(
         assert record.provider == valid.provider
         assert record.model == valid.model
         assert record.transport == "injected-test"
-        assert record.prompt_version == "phase9-v1"
+        assert record.prompt_version == "phase9.5-v1"
         assert record.attempt_count == 1
         assert record.input_tokens == 40
         assert record.output_tokens == 25

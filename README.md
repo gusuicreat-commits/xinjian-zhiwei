@@ -1,6 +1,6 @@
 # 芯鉴知微
 
-面向高校嵌入式与物联网实验课程的智能分析平台。当前完成的是 Phase 9 轻量、Provider 无关、确定性优先的诊断框架：系统先聚合故障 Episode，再由规则、故障树、已审核知识和模板生成完整解释；AI 仅在低置信、规则冲突、未知异常、持续升级或用户追问等场景按策略增强。由于尚未提供正式资料、Embedding Provider 和 AI Provider，当前运行模式仍是“确定性诊断，AI 增强关闭”。
+面向高校嵌入式与物联网实验课程的智能分析平台。当前完成的是 Phase 9.5 轻量 AI 诊断架构：系统先聚合故障 Episode，再由规则、故障树、已审核知识和模板生成完整解释；AI 仅在低置信、规则冲突、未知异常、持续升级或用户追问等场景按策略增强。生产对话模型已固定为 DeepSeek 官方 API 的 `deepseek-v4-flash` 非思考模式，并保留统一 `AIClient` 边界；由于尚未提供服务端密钥、正式知识、Embedding 配置和外发授权，当前运行模式仍是“确定性诊断，AI 增强关闭”。
 
 ## 当前能力
 
@@ -28,13 +28,14 @@
 - Embedding Provider 未配置时拒绝正式向量，只允许明确标记的测试向量用于框架测试。
 - Phase 9 新增 `DiagnosisCore`、确定性解释模板和 `DiagnosisEpisode`，AI 关闭时也能返回证据、原因、步骤、提示等级、教师介入状态及限制说明。
 - 知识检索采用结构化过滤 + PostgreSQL 全文检索 + 可选 pgvector 的轻量混合检索；未配置 Embedding 时仍可使用全文检索。
-- Phase 9 提供可替换的本地/云端 `AIClient` 与 `EmbeddingClient`，默认 `disabled`，不会在未配置时发起外部请求。
+- Phase 9.5 的唯一生产调用路径为 `cache → deepseek → deterministic_fallback`；统一 `AIClient`、禁用/Mock/缓存/预算/Token/Pydantic 与确定性降级能力继续保留。
+- AI 上下文执行最小化白名单：设备标识匿名化、日志限量、传感器/心跳聚合，且不发送令牌、密钥、Wi-Fi、学生身份或原始自由文本敏感内容。
 - AI 解释接口只允许引用确定性规则证据和本次检索到的知识块，不能修改规则错误类型。
 - 每次 AI 决策的触发原因、Episode、缓存、路由、Token、成本占位、耗时、校验和降级原因保存到 `ai_call_records`，密钥不入库。
 - 相同规则、故障树、知识版本和输入生成稳定指纹，成功解释可保存到 PostgreSQL `ai_explanation_cache`；单 Episode、单设备小时和每日预算均有配置门禁。
 - AI 未配置、知识未就绪、检索失败、超时或输出非法时，接口保存跳过/失败审计并返回原规则与故障树结果。
 
-正式学生/教师账号、班级与实验任务、真实知识内容、Provider 配置和真实硬件验证将在后续阶段实现。
+正式学生/教师账号、班级与实验任务、真实知识内容、Embedding 配置、真实 AI 联调和真实硬件验证将在后续阶段实现。
 
 ## 尚未确定的配置与实现边界
 
@@ -42,10 +43,10 @@
 
 ### AI Provider
 
-- 当前状态：Provider、模型名称、服务地址和生产密钥均未确定。
-- 实现方式：后端已经通过统一 `AIClient`/`EmbeddingClient` 接口接入可替换传输适配器；模型、Base URL、超时、重试、知识门禁和上下文上限通过环境变量或配置对象注入。
-- 默认行为：使用不发起外部请求的占位实现；AI 未配置或调用失败时，系统仍应返回规则诊断结果。
-- 占位配置：`.env.example` 中的 `AI_PROVIDER`、`AI_BASE_URL`、`AI_MODEL` 和 `AI_API_KEY` 仅用于声明配置入口，不代表已选择任何厂商。
+- 已确定：生产 Provider 为 DeepSeek 官方 API，Base URL 为 `https://api.deepseek.com`，模型为 `deepseek-v4-flash`，使用非思考模式；不做多模型分层。
+- 尚未提供：真实 `AI_API_KEY`、费用预算、并发/限流、数据外发审批和正式联调窗口。
+- 实现方式：后端继续通过统一 `AIClient`/`EmbeddingClient` 接口隔离厂商传输；超时、重试、预算、Token、知识门禁和上下文上限通过环境变量或配置对象注入。
+- 默认行为：`.env.example` 保持 `AI_ENABLED=false`、`AI_API_KEY=`；未显式启用或缺少密钥时不发起外部请求，失败时始终返回确定性诊断。
 
 ### ESP32 与传感器
 
@@ -79,7 +80,7 @@
 - 没有设备说明书、传感器 datasheet、正式实验手册、维修案例、行业标准或论文作为诊断依据。
 - 没有经真实故障数据验证的规则阈值、原因权重、置信区间或提示升级参数；当前 YAML 内容属于示例规则、占位故障树和待确认参数。
 - 没有导入任何正式知识来源或正式向量。数据库仅保留一组明确标记为 `is_test_data=true` 的 Phase 9 合成验收知识与测试向量，不能描述成课程知识或专业依据。
-- 没有已确认的 AI/Embedding Provider、模型、API 凭据或正式模型调用记录；`AIClient` 通用框架已经存在，但默认关闭，当前诊断仍完全属于确定性规则匹配。
+- 对话 AI 的 Provider、模型、Base URL 和非思考模式已经确定；但没有 API 凭据、外发授权或正式模型调用记录。Embedding Provider/模型仍未确定，当前诊断仍完全属于确定性规则匹配。
 
 在对外声明“真实硬件诊断可用”之前，以下资料必须由项目方提供或明确确认，并完成来源、版本和审核记录：
 
@@ -91,7 +92,7 @@
 6. 带真值的真实数据：正常样本、可控故障样本、已确认根因、修复动作和修复结果。
 7. 经教师或工程人员审核的诊断规则：故障分类、证据条件、阈值、原因权重、置信标准和介入条件。
 8. 可授权的知识来源：课程资料、设备手册、FAQ、维修案例、标准或论文，以及审核人和授权范围。
-9. AI 使用决策：是否接入、Provider/模型、数据外发限制、隐私、费用、超时、降级和审核要求。
+9. AI 运行授权：服务端 API Key、数据外发限制与审批、隐私责任人、费用预算、限流和正式联调窗口；Provider/模型已由 Phase 9.5 固定。
 10. 生产与验收要求：账号角色、设备注册、部署网络、数据保留、备份审计、准确率/误报率/漏报率目标和试运行范围。
 
 任何一项尚未确认时，必须继续使用通用接口或明确的 `TODO[待补充]`/`placeholder`，不得用开发示例值冒充真实专业知识。
@@ -257,7 +258,7 @@ xinjian-simulator normal --iterations 1
 - `GET /api/v1/knowledge/status`：返回来源、文档、待审核文档、已审核知识块、向量数量和 Provider 配置状态。
 - `POST /api/v1/knowledge/sources`：登记来源标识、类型、标题、版本、URI、授权范围和测试标记。
 - `POST /api/v1/knowledge/sources/{source_id}/documents/text`：导入已经提取的 `text/*` 内容，按配置切分并以内容哈希幂等去重。
-- `PATCH /api/v1/knowledge/documents/{document_id}/review`：批准或拒绝文档，来源未记录授权范围时禁止批准。
+- `PATCH /api/v1/knowledge/documents/{document_id}/review`：按整理人、技术审核人和正式批准人的职责执行 `draft → pending → technical_reviewed → approved`，并支持拒绝、撤回和被替代。
 - `POST /api/v1/knowledge/documents/{document_id}/embeddings`：保存外部适配器生成的向量；Provider 未确认时只接受测试向量。
 - `POST /api/v1/knowledge/search`：按 Provider、模型和维度检索审核通过的知识块，默认排除测试数据并返回完整来源引用。
 - 当前只实现提取后文本的通用导入接口，不声称已经解析 PDF、DOCX、扫描件或网页；这些格式须由后续来源适配器处理。
@@ -270,12 +271,12 @@ xinjian-simulator normal --iterations 1
 - `GET /api/v1/diagnosis/ai/status`：返回框架、AI Provider、Embedding 客户端、知识门禁和 Prompt 版本状态，不返回密钥。
 - `POST /api/v1/diagnosis/devices/{device_id}/run`：兼容原字段，并新增 `deterministic_result`、`explanation`、`ai_enhancement` 和 `episode`。
 - `POST /api/v1/diagnosis/results/{diagnosis_result_id}/ai-explanation`：设备凭据保护的按需增强入口，可选提交 `user_question`；没有 AI 时仍返回确定性解释。
-- `AI_ENABLED=false`、`AI_LOCAL_ENABLED=false`、`AI_CLOUD_ENABLED=false` 与 `KNOWLEDGE_EMBEDDING_TRANSPORT=disabled` 是默认值；只有显式启用且配置完整服务端参数后才允许外部请求。
+- `AI_ENABLED=false` 与 `KNOWLEDGE_EMBEDDING_TRANSPORT=disabled` 是默认值；DeepSeek Provider 参数虽然已经确定，仍只有显式启用且配置真实服务端密钥后才允许外部请求。
 - `AI_REQUIRE_KNOWLEDGE=true` 默认要求存在匹配的已审核知识；全文检索无需 Embedding，向量配置就绪后通过 RRF 与全文结果融合。
-- AI 输入包含设备状态、有限窗口的日志/心跳/读数、规则命中、故障树结果和带来源知识；不包含设备令牌、审阅令牌或 Provider 密钥。
+- AI 输入由 `phase9.5-allowlist-v1` 清洗：设备 ID 匿名化，日志只选相关的 3–10 条，心跳与读数聚合为摘要，知识正文限长；不包含设备令牌、审阅令牌、Provider 密钥、Wi-Fi、学生身份或其他敏感上下文。
 - AI 输出必须满足稳定 JSON Schema；错误类型必须来自规则命中，证据必须逐字来自规则证据白名单，知识引用必须来自本次检索结果。
-- AI 路由顺序为缓存、本地 Provider、云端 Provider、确定性模板降级；调用次数、小时频率、每日预算和输出 Token 都可配置。
-- 学生端以“诊断解释/确定性结果”为主，明确 AI 不是诊断前置条件。当前项目没有真实 Provider 和正式知识，因此增强按钮保持不可用。
+- 唯一生产路由为缓存、DeepSeek、确定性模板降级；调用次数、小时频率、每日人民币预算和输入/输出 Token 都可配置。
+- 学生端以“诊断解释/确定性结果”为主，明确 AI 不是诊断前置条件。当前没有真实密钥、外发授权和正式知识，因此增强保持不可用。
 
 AI 默认不是诊断前置条件。单条已知规则具有完整证据与确定性步骤、相同 Episode 重复上报、页面刷新、教师统计查询和普通知识检索都不会自行触发 Provider。低置信、未知异常、多规则或多异常组合、Episode 升级、学生主动追问以及教师明确请求案例草稿时，策略才允许进入缓存与 Provider 路由；每次判断保存具体 `trigger_reason`。
 
@@ -283,7 +284,24 @@ AI 默认不是诊断前置条件。单条已知规则具有完整证据与确�
 
 RAG 流程为：审核与测试标记门禁 → `experiment_id/error_code/device_type` 等结构化过滤 → PostgreSQL `simple` 全文检索 → 可选 pgvector 排名 → RRF 融合 → 来源、版本、定位、审核状态和分项分数输出。正式检索默认排除测试知识；只有显式 `include_test_data=true` 的验收路径才可使用测试知识与 `phase9-test-vector` 合成向量。测试向量不代表已选择 Embedding Provider。
 
-当前 Phase 9 已完成最终实现与验收范围；Phase 10 尚未开始。
+## Phase 9.5 运行与治理收口
+
+- 固定生产对话模型为 DeepSeek 官方 API 的 `deepseek-v4-flash`，显式关闭思考模式；统一 `AIClient` 继续作为厂商隔离接口。
+- 生产路径只有 `cache → deepseek → deterministic_fallback`，本地 Provider 扩展能力不作为生产默认路径。
+- 审计只保存匿名标识、输入摘要哈希、数量、路由、Token/费用占位和安全错误分类，不保存原始 Prompt、密钥或 Provider 原始错误体。
+- 正式知识采用七状态治理，整理、技术审核和正式批准三种角色分离；只有 `approved` 且非测试知识能进入正式 RAG。
+- 运行边界、局域网/公网场景、设备责任边界、隐私最小化与知识优先级见 [运行架构](docs/runtime-architecture.md)。
+- 开发、局域网演示和正式部署的配置、持久化、备份恢复与检查命令见 [部署说明](docs/deployment.md)。
+
+### 真实使用流程
+
+1. 外部传感器通过跳线连接 ESP32；ESP32 固件负责采样、生成统一日志/读数/心跳 JSON，USB 仅用于供电、烧录和串口调试。
+2. ESP32 通过 Wi-Fi 和 HTTP 将 JSON 上传到局域网中的后端 API，不直接访问 PostgreSQL，也不持有 DeepSeek 密钥。
+3. 后端完成设备认证、持久化、规则与故障树诊断、知识检索和隐私清洗；需要 AI 增强时才按生产路由调用 DeepSeek。
+4. 学生端读取当前设备状态、趋势和诊断反馈；教师端读取聚合状态、异常、介入列表和知识治理入口。
+5. 公网部署必须额外配置 HTTPS、域名/反向代理、正式身份权限、密钥管理、备份、监控和数据外发审批，不能直接沿用开发占位凭据。
+
+当前 Phase 9.5 已完成代码实现；Phase 10 尚未开始，也没有新增 ESP32 固件。
 
 实现与安全边界详见 [Phase 9 AI 诊断设计](docs/ai-diagnosis-design.md)。
 
@@ -299,5 +317,7 @@ RAG 流程为：审核与测试标记门禁 → `experiment_id/error_code/device
 - [故障树与分层提示](docs/fault-tree-guidance.md)
 - [通用知识库框架](docs/knowledge-base.md)
 - [Provider 无关 AI 诊断框架](docs/ai-diagnosis-design.md)
+- [Phase 9.5 运行架构](docs/runtime-architecture.md)
+- [部署说明](docs/deployment.md)
 - [开发计划](docs/development-plan.md)
 - [实现状态](docs/implementation-status.md)

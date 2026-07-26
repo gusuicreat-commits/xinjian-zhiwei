@@ -11,6 +11,7 @@ class AIKnowledgeReference(StrictAIModel):
     chunk_id: str
     source_key: str
     source_title: str
+    source_type: Optional[str] = None
     source_uri: Optional[str]
     source_version: Optional[str] = None
     locator: dict[str, Any] = Field(default_factory=dict)
@@ -23,6 +24,8 @@ class AIKnowledgeReference(StrictAIModel):
 
 class AIDiagnosisInput(StrictAIModel):
     diagnosis_result_id: str
+    episode_id: Optional[str] = None
+    anonymous_device_id: str
     device_state: dict[str, Any]
     logs: list[dict[str, Any]]
     sensor_readings: list[dict[str, Any]]
@@ -31,6 +34,7 @@ class AIDiagnosisInput(StrictAIModel):
     fault_tree_guidance: list[dict[str, Any]]
     knowledge: list[AIKnowledgeReference]
     allowed_evidence: list[str]
+    user_question: Optional[str] = None
     output_language: str = "zh-CN"
     is_test_data: bool
 
@@ -71,7 +75,8 @@ class AIExplanationResponse(StrictAIModel):
         "failed_fallback",
     ] = "skipped"
     trigger_reason: str = "UNSPECIFIED"
-    route: Literal["none", "cache", "local", "cloud"] = "none"
+    route: str = "none"
+    route_path: str = "deterministic_only"
     deterministic_result: Optional[dict[str, Any]] = None
 
 
@@ -88,6 +93,8 @@ class AIStatusResponse(StrictAIModel):
     ai_enabled: bool = False
     local_configured: bool = False
     cloud_configured: bool = False
+    thinking_enabled: bool = False
+    production_route: str = "cache → deepseek → deterministic_fallback"
 
 
 class AIExplanationRequest(StrictAIModel):

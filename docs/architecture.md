@@ -1,4 +1,4 @@
-# 芯鉴知微系统架构（Phase 9）
+# 芯鉴知微系统架构（Phase 9.5）
 
 ## 1. 架构目标
 
@@ -78,7 +78,8 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 3. 在 Phase 8 同一知识表上执行结构化过滤、PostgreSQL FTS 关键词检索和可选 pgvector 检索，再以 RRF 融合。
 4. 确定性模板根据核心证据、原因、知识与 Level 1–4 提示生成完整基础说明。
 5. `AIExplanationPolicy` 只对低置信、冲突、未知、多异常、明确追问或升级场景放行；高置信已知异常默认零调用。
-6. 放行后先查 PostgreSQL 指纹缓存，再按可选本地、云端 Provider 顺序增强。
+6. 放行后先查 PostgreSQL 指纹缓存；生产默认只调用 DeepSeek
+   `deepseek-v4-flash` 非思考模式，不做多模型分层。
 7. AI 输出经 Pydantic、证据白名单和知识引用校验；任何失败、限流或预算耗尽都返回确定性说明。
 
 ### 前端
@@ -101,7 +102,7 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 | 传输 | HTTP + JSON | ESP32 与浏览器易实现、易调试；第一版不引入 MQTT |
 | 数据库 | PostgreSQL + pgvector | 业务和向量数据统一治理，减少重复基础设施 |
 | 诊断优先级 | 规则/故障树先，AI 后 | 结果确定、可解释，并支持 AI 故障降级 |
-| AI 接入 | 可替换 `AIClient` | Provider 未确定，避免锁定实现 |
+| AI 接入 | DeepSeek 官方 API + 可替换 `AIClient` | 生产模型固定为 `deepseek-v4-flash` 非思考模式，业务逻辑仍不绑定厂商 |
 | API 版本 | `/api/v1` | 稳定设备协议并支持后续兼容演进 |
 | 容器基础镜像 | AWS Public ECR 的 Docker Official Images 镜像源 | 当前网络无法连接 Docker Hub；保留 `BASE_REGISTRY` 参数以便切换 |
 
@@ -111,16 +112,20 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 - 按角色校验学生、教师和管理员权限。
 - 限制请求大小、设备上传速率和 AI 超时/重试。
 - 日志不得记录密码、令牌或 AI 密钥。
-- `ai_call_records` 保存模型名、耗时、状态和失败原因，但不泄漏敏感输入。
+- `phase9.5-allowlist-v1` 在模型调用前匿名化设备、截取关键日志、聚合读数并剔除学生身份、令牌、密码、Authorization、Wi-Fi 和教师私人备注。
+- `ai_call_records` 保存模型名、完整路由路径、安全输入摘要、耗时、状态和失败分类，但不保存敏感输入或密钥。
 - 健康检查、结构化日志和容器健康状态从 Phase 1 开始建立。
 
 ## 7. 当前架构风险
 
-1. Git 已提交 Phase 1 至 Phase 8 基线；Phase 9 通用框架当前位于工作区，等待用户确认后提交。
+1. Git 已提交 Phase 1 至 Phase 9 基线；Phase 9.5 当前位于工作区，按任务要求不自动提交。
 2. Docker Desktop 4.82.0 已安装，Compose 三服务运行验收通过；PlatformIO 仍不可用，将在设备阶段处理。
 3. 本机 Python 3.9.6 与容器 Python 3.12 均用于分阶段验证；后续仍应持续验证二者行为一致。
 4. Node.js v26.3.0 已通过本地 lint、Vitest、类型检查、构建和 Playwright，但生产容器固定使用 Node 22，降低部署兼容风险。
-5. AI/Embedding Provider、ESP32 型号、接线、账号和知识来源尚未确定；核心模型保持通用，配置边界详见 README。
+5. DeepSeek Provider、`deepseek-v4-flash` 和非思考模式已经确定；真实 API Key、正式预算、Embedding、ESP32 型号、接线、账号和知识来源仍待确认。
 6. 设备令牌轮换、撤销审计、上传限流和生产保留策略尚未实现，将在安全加固阶段补充。
 7. 背景 Word 的旧技术草案与固定方案有差异，已在 `PROJECT_CONTEXT.md` 中明确裁决，后续不得同时保留两套实现。
-8. 当前运行 Docker 已同步到 Phase 9 `0.9.0`，PostgreSQL 迁移为 `20260723_0006`；AI/Embedding 传输仍默认禁用。
+8. Phase 9.5 源码版本为 `0.9.5`，目标迁移为 `20260725_0008`；AI 总开关默认关闭，无 Key 时保持 Disabled。
+
+物理拓扑、USB/Wi-Fi 职责、局域网/公网边界和三种部署模式见
+[运行架构](runtime-architecture.md) 与 [部署说明](deployment.md)。Phase 10 尚未开始。

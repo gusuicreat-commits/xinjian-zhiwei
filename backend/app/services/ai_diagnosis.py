@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -15,10 +14,9 @@ from app.ai.clients import (
     AIProviderError,
     EmbeddingClient,
     build_ai_client,
-    build_cloud_ai_client,
     build_embedding_client,
-    build_local_ai_client,
 )
+from app.ai.context_sanitizer import audit_snapshot, build_safe_ai_input
 from app.ai.prompts import build_prompts
 from app.ai.schemas import (
     AIDiagnosisInput,
@@ -49,69 +47,46 @@ from app.services.lightweight_diagnosis import (
 
 def get_ai_status(settings: Settings) -> AIStatusResponse:
     if not settings.ai_configured:
-        notice = "AI Provider 未配置，系统保持确定性规则诊断模式。"
-    elif settings.ai_require_knowledge and not settings.knowledge_embedding_client_configured:
-        notice = "AI Provider 已配置，但 Embedding Provider 未就绪，仍保持规则诊断模式。"
+        notice = (
+            "DeepSeek Provider 与模型已选定，但调用开关或服务端密钥未就绪；"
+            "系统保持确定性规则诊断模式。"
+        )
     else:
-        notice = "AI 通用接口已配置；调用仍受知识审核、结构校验和规则保护。"
+        notice = (
+            "DeepSeek 非思考模式已配置；调用仍受知识审核、隐私过滤、"
+            "预算、缓存和结构校验保护。"
+        )
     return AIStatusResponse(
         provider_configured=settings.ai_configured,
         embedding_client_configured=settings.knowledge_embedding_client_configured,
         require_knowledge=settings.ai_require_knowledge,
-        provider=settings.ai_provider if settings.ai_configured else None,
-        model=settings.ai_model if settings.ai_configured else None,
+        provider=settings.ai_provider,
+        model=settings.ai_model,
         transport=settings.ai_transport,
         prompt_version=settings.ai_prompt_version,
         notice=notice,
         ai_enabled=settings.ai_enabled,
         local_configured=settings.local_ai_configured,
         cloud_configured=settings.cloud_ai_configured,
+        thinking_enabled=settings.ai_thinking_enabled,
     )
-
-
-def _allowed_evidence(record: DiagnosisResult) -> list[str]:
-    values: list[str] = []
-    for match in record.matched_rules:
-        for item in match.get("evidence", []):
-            values.append(f"{item.get('fact')}: {item.get('observed_value')}")
-    return list(dict.fromkeys(values))
-
 
 def _build_input(
     record: DiagnosisResult,
     guidance: list[GuidanceHistory],
     knowledge: list[AIKnowledgeReference],
     settings: Settings,
+    *,
+    episode_id: str | None,
+    user_question: str | None,
 ) -> AIDiagnosisInput:
-    context = record.context_snapshot
-    limit = settings.ai_max_context_items
-    return AIDiagnosisInput(
-        diagnosis_result_id=record.id,
-        device_state={
-            "device_id": context.get("device_id"),
-            "evaluated_at": context.get("evaluated_at"),
-            "last_seen_at": context.get("last_seen_at"),
-            "experiment_template": context.get("experiment_template"),
-        },
-        logs=list(context.get("logs", []))[-limit:],
-        sensor_readings=list(context.get("readings", []))[-limit:],
-        heartbeats=list(context.get("heartbeats", []))[-limit:],
-        rule_matches=record.matched_rules,
-        fault_tree_guidance=[
-            {
-                "tree_id": item.fault_tree_id,
-                "tree_status": item.fault_tree_status,
-                "hint_level": item.hint_level,
-                "teacher_intervention_required": item.teacher_intervention_required,
-                "ranked_causes": item.ranked_causes,
-                "hints": item.hints,
-            }
-            for item in guidance
-        ],
-        knowledge=knowledge,
-        allowed_evidence=_allowed_evidence(record),
-        output_language=settings.ai_output_language,
-        is_test_data=record.is_test_data,
+    return build_safe_ai_input(
+        record,
+        guidance,
+        knowledge,
+        settings,
+        episode_id=episode_id,
+        user_question=user_question,
     )
 
 
@@ -178,6 +153,27 @@ def _validate_explanation(
     return explanation
 
 
+def _safe_error_summary(error: Exception | None) -> str:
+    if error is None:
+        return "AI_PROVIDER_UNKNOWN_FAILURE"
+    if isinstance(error, json.JSONDecodeError):
+        return "AI_RESPONSE_INVALID_JSON"
+    if isinstance(error, ValidationError):
+        return "AI_RESPONSE_SCHEMA_VALIDATION_FAILED"
+    message = str(error).lower()
+    if "timeout" in message or "timed out" in message:
+        return "AI_PROVIDER_TIMEOUT"
+    if "rate" in message or "429" in message:
+        return "AI_PROVIDER_RATE_LIMITED"
+    if "auth" in message or "401" in message or "403" in message:
+        return "AI_PROVIDER_AUTH_FAILED"
+    if "balance" in message or "402" in message:
+        return "AI_PROVIDER_BUDGET_UNAVAILABLE"
+    if isinstance(error, AIProviderError):
+        return "AI_PROVIDER_REQUEST_FAILED"
+    return "AI_RESPONSE_VALIDATION_FAILED"
+
+
 def _save_record(
     db: Session,
     *,
@@ -198,6 +194,7 @@ def _save_record(
     trigger_reason: str | None = None,
     cache_status: str | None = None,
     route: str | None = None,
+    route_path: str | None = None,
     validation_status: str | None = None,
     fallback_reason: str | None = None,
     estimated_cost: float | None = None,
@@ -232,6 +229,7 @@ def _save_record(
         trigger_reason=trigger_reason,
         cache_status=cache_status,
         route=route,
+        route_path=route_path,
         estimated_cost=estimated_cost,
         latency_ms=duration_ms,
         validation_status=validation_status,
@@ -247,31 +245,7 @@ def _save_record(
 
 
 def _audit_snapshot(payload: AIDiagnosisInput) -> dict[str, Any]:
-    full_input = payload.model_dump(mode="json")
-    digest = hashlib.sha256(
-        json.dumps(full_input, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-    return {
-        "diagnosis_result_id": payload.diagnosis_result_id,
-        "device_id": payload.device_state.get("device_id"),
-        "input_sha256": digest,
-        "item_counts": {
-            "logs": len(payload.logs),
-            "sensor_readings": len(payload.sensor_readings),
-            "heartbeats": len(payload.heartbeats),
-            "rule_matches": len(payload.rule_matches),
-            "fault_tree_guidance": len(payload.fault_tree_guidance),
-            "knowledge": len(payload.knowledge),
-        },
-        "rule_ids": [
-            item.get("rule_id") for item in payload.rule_matches if item.get("rule_id")
-        ],
-        "error_types": [
-            item.get("error_type") for item in payload.rule_matches if item.get("error_type")
-        ],
-        "knowledge_chunk_ids": [item.chunk_id for item in payload.knowledge],
-        "is_test_data": payload.is_test_data,
-    }
+    return audit_snapshot(payload)
 
 
 def _response(
@@ -284,6 +258,7 @@ def _response(
     enhancement_status: str | None = None,
     trigger_reason: str | None = None,
     route: str | None = None,
+    route_path: str | None = None,
     deterministic_result: dict[str, Any] | None = None,
 ) -> AIExplanationResponse:
     return AIExplanationResponse(
@@ -299,6 +274,7 @@ def _response(
         or ("cloud_success" if record.status == "succeeded" else "skipped"),
         trigger_reason=trigger_reason or record.trigger_reason or "UNSPECIFIED",
         route=route or record.route or "none",
+        route_path=route_path or record.route_path or "deterministic_only",
         deterministic_result=deterministic_result,
     )
 
@@ -355,6 +331,11 @@ def _skipped_response(
     started: float,
     estimated_cost: float = 0.0,
 ) -> AIExplanationResponse:
+    route_path = (
+        "ai_disabled → deterministic_only"
+        if error_code == "AI_NOT_CONFIGURED"
+        else f"{error_code.lower()} → deterministic_only"
+    )
     saved = _save_record(
         db,
         diagnosis=diagnosis,
@@ -372,6 +353,7 @@ def _skipped_response(
         trigger_reason=trigger_reason,
         cache_status="not_checked",
         route="none",
+        route_path=route_path,
         validation_status="not_run",
         estimated_cost=estimated_cost,
     )
@@ -380,6 +362,7 @@ def _skipped_response(
         "status": enhancement_status,
         "trigger_reason": trigger_reason,
         "route": "none",
+        "route_path": route_path,
         "cache_status": "not_checked",
         "call_record_id": saved.id,
     }
@@ -392,6 +375,7 @@ def _skipped_response(
         notice,
         enhancement_status=enhancement_status,
         trigger_reason=trigger_reason,
+        route_path=route_path,
         deterministic_result=deterministic_result,
     )
 
@@ -423,19 +407,25 @@ def explain_diagnosis(
     if ai_clients is not None:
         clients = list(ai_clients)
     elif ai_client is not None:
-        clients: list[tuple[str, AIClient]] = [("cloud", ai_client)]
+        injected_route = (
+            settings.ai_provider
+            if settings.ai_provider and settings.ai_provider != "unconfigured"
+            else ai_client.provider
+        )
+        clients: list[tuple[str, AIClient]] = [(injected_route, ai_client)]
     else:
-        clients = []
-        local_client = build_local_ai_client(settings)
-        cloud_client = build_cloud_ai_client(settings)
-        if local_client.configured:
-            clients.append(("local", local_client))
-        if cloud_client.configured:
-            clients.append(("cloud", cloud_client))
-        if not clients:
-            legacy_client = build_ai_client(settings)
-            if legacy_client.configured:
-                clients.append(("cloud", legacy_client))
+        production_client = build_ai_client(settings)
+        if settings.production_ai_configured:
+            default_route = settings.ai_provider or "provider"
+        elif settings.local_ai_configured:
+            default_route = "local"
+        else:
+            default_route = "cloud"
+        clients = (
+            [(default_route, production_client)]
+            if production_client.configured
+            else []
+        )
     ai = clients[0][1] if clients else build_ai_client(settings)
     embedding = embedding_client or build_embedding_client(settings)
     knowledge: list[AIKnowledgeReference] = []
@@ -454,7 +444,14 @@ def explain_diagnosis(
     policy = decide_ai_policy(
         core, settings, episode=episode, user_question=user_question
     )
-    payload = _build_input(diagnosis, guidance, knowledge, settings)
+    payload = _build_input(
+        diagnosis,
+        guidance,
+        knowledge,
+        settings,
+        episode_id=episode.id if episode else None,
+        user_question=user_question,
+    )
     _, _, prompt_hash = build_prompts(payload, settings.ai_prompt_version)
     fault_tree_version = guidance[0].fault_tree_version if guidance else None
     cache_fingerprint = explanation_fingerprint(
@@ -522,6 +519,7 @@ def explain_diagnosis(
             trigger_reason=policy.reason,
             cache_status="hit",
             route="cache",
+            route_path="cache_hit",
             validation_status="cache_valid",
             estimated_cost=0.0,
             provider=cached.provider,
@@ -532,6 +530,7 @@ def explain_diagnosis(
             "status": "cache_hit",
             "trigger_reason": policy.reason,
             "route": "cache",
+            "route_path": "cache_hit",
             "cache_status": "hit",
             "call_record_id": saved.id,
         }
@@ -545,6 +544,7 @@ def explain_diagnosis(
             enhancement_status="cache_hit",
             trigger_reason=policy.reason,
             route="cache",
+            route_path="cache_hit",
             deterministic_result=deterministic.model_dump(mode="json"),
         )
 
@@ -628,10 +628,12 @@ def explain_diagnosis(
     completion = None
     explanation = None
     attempts = 0
-    route = "cloud"
+    route = settings.ai_provider or "provider"
+    attempted_routes: list[str] = []
     for candidate_route, candidate in clients:
         route = candidate_route
         ai = candidate
+        attempted_routes.append(candidate_route)
         for _ in range(settings.ai_max_retries + 1):
             attempts += 1
             try:
@@ -650,6 +652,11 @@ def explain_diagnosis(
     duration_ms = int((time.monotonic() - started) * 1000)
     local_fallback = len(clients) > 1 and route == "cloud"
     if explanation is None:
+        route_path = (
+            "cache_miss → "
+            + " → ".join(f"{item}_failed" for item in attempted_routes)
+            + " → deterministic_fallback"
+        )
         saved = _save_record(
             db,
             diagnosis=diagnosis,
@@ -662,11 +669,12 @@ def explain_diagnosis(
             explanation=None,
             knowledge=knowledge,
             error_code="AI_OUTPUT_OR_PROVIDER_FAILED",
-            error_message=str(last_error) if last_error else "unknown AI failure",
+            error_message=_safe_error_summary(last_error),
             episode=episode,
             trigger_reason=policy.reason,
             cache_status="miss",
             route=route,
+            route_path=route_path,
             validation_status="failed",
             fallback_reason=(
                 "LOCAL_AND_CLOUD_FAILED"
@@ -682,6 +690,7 @@ def explain_diagnosis(
             "status": "failed_fallback",
             "trigger_reason": policy.reason,
             "route": route,
+            "route_path": route_path,
             "cache_status": "miss",
             "fallback_reason": (
                 "LOCAL_AND_CLOUD_FAILED"
@@ -702,9 +711,14 @@ def explain_diagnosis(
             enhancement_status="failed_fallback",
             trigger_reason=policy.reason,
             route=route,
+            route_path=route_path,
             deterministic_result=deterministic.model_dump(mode="json"),
         )
 
+    route_path_parts = ["cache_miss"]
+    route_path_parts.extend(f"{item}_failed" for item in attempted_routes[:-1])
+    route_path_parts.append(f"{route}_success")
+    route_path = " → ".join(route_path_parts)
     saved = _save_record(
         db,
         diagnosis=diagnosis,
@@ -722,6 +736,7 @@ def explain_diagnosis(
         trigger_reason=policy.reason,
         cache_status="miss",
         route=route,
+        route_path=route_path,
         validation_status="passed",
         fallback_reason="LOCAL_FAILED_CLOUD_USED" if local_fallback else None,
         estimated_cost=estimate_ai_cost(
@@ -757,6 +772,7 @@ def explain_diagnosis(
         "status": enhancement_status,
         "trigger_reason": policy.reason,
         "route": route,
+        "route_path": route_path,
         "cache_status": "miss",
         "call_record_id": saved.id,
     }
@@ -772,5 +788,6 @@ def explain_diagnosis(
         enhancement_status=enhancement_status,
         trigger_reason=policy.reason,
         route=route,
+        route_path=route_path,
         deterministic_result=deterministic.model_dump(mode="json"),
     )

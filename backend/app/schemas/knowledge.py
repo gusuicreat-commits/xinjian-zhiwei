@@ -4,6 +4,21 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+KnowledgeReviewStatus = Literal[
+    "draft",
+    "pending",
+    "technical_reviewed",
+    "approved",
+    "rejected",
+    "withdrawn",
+    "superseded",
+]
+KnowledgeReviewerRole = Literal[
+    "organizer",
+    "technical_reviewer",
+    "formal_approver",
+]
+
 
 class StrictKnowledgeModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -46,6 +61,8 @@ class KnowledgeTextImportRequest(StrictKnowledgeModel):
     parser_version: str = Field(default="1", min_length=1, max_length=50)
     locator_prefix: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    organizer_ref: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    content_origin: Literal["human", "ai_generated"] = "human"
     is_test_data: bool = False
 
 
@@ -56,7 +73,7 @@ class KnowledgeChunkResponse(StrictKnowledgeModel):
     char_count: int
     locator: dict[str, Any]
     metadata: dict[str, Any] = Field(default_factory=dict)
-    review_status: Literal["pending", "approved", "rejected"]
+    review_status: KnowledgeReviewStatus
 
 
 class KnowledgeDocumentResponse(StrictKnowledgeModel):
@@ -69,7 +86,7 @@ class KnowledgeDocumentResponse(StrictKnowledgeModel):
     content_hash: str
     parser_name: str
     parser_version: str
-    review_status: Literal["pending", "approved", "rejected"]
+    review_status: KnowledgeReviewStatus
     is_test_data: bool
     created_at: datetime
     updated_at: datetime
@@ -78,14 +95,16 @@ class KnowledgeDocumentResponse(StrictKnowledgeModel):
 
 
 class KnowledgeReviewRequest(StrictKnowledgeModel):
-    decision: Literal["approved", "rejected"]
+    decision: KnowledgeReviewStatus
+    reviewer_role: KnowledgeReviewerRole
     reviewer_ref: str = Field(min_length=1, max_length=200)
     note: Optional[str] = Field(default=None, max_length=4000)
 
 
 class KnowledgeReviewResponse(StrictKnowledgeModel):
     document_id: str
-    decision: Literal["approved", "rejected"]
+    decision: KnowledgeReviewStatus
+    reviewer_role: KnowledgeReviewerRole
     reviewer_ref: str
     reviewed_at: datetime
     affected_chunks: int
