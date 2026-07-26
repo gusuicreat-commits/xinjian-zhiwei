@@ -57,6 +57,18 @@ class MockDeepSeek:
         )
 
 
+class InvalidJsonDeepSeek(MockDeepSeek):
+    def complete_json(self, *, system_prompt: str, user_prompt: str) -> AICompletion:
+        del system_prompt
+        self.calls += 1
+        self.last_user_prompt = user_prompt
+        return AICompletion(
+            content="{invalid-deepseek-json",
+            input_tokens=120,
+            output_tokens=8,
+        )
+
+
 def _create_sensor_failure(api_context: dict[str, Any]) -> str:
     now = datetime.now(timezone.utc).isoformat()
     response = api_context["client"].post(
@@ -279,7 +291,10 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
     api_context: dict[str, Any],
 ) -> None:
     diagnosis_id = _create_sensor_failure(api_context)
-    settings = _deepseek_settings()
+    settings = _deepseek_settings(
+        ai_calls_per_episode=10,
+        ai_calls_per_device_hour=10,
+    )
     with api_context["session_factory"]() as db:
         diagnosis = db.get(DiagnosisResult, diagnosis_id)
         device = db.query(Device).one()
@@ -329,6 +344,26 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
         assert record is not None
         assert record.error_message == "AI_PROVIDER_TIMEOUT"
         assert record.route_path == failed.route_path
+
+        invalid_json = InvalidJsonDeepSeek()
+        invalid = explain_diagnosis(
+            db,
+            device,
+            diagnosis,
+            settings,
+            ai_client=invalid_json,
+            embedding_client=DisabledEmbeddingClient(),
+            user_question="这是专门验证非法 JSON 降级的不同问题。",
+        )
+        assert invalid.status == "failed"
+        assert invalid.mode == "rules_only"
+        assert invalid.route_path == (
+            "cache_miss → deepseek_failed → deterministic_fallback"
+        )
+        invalid_record = db.get(AICallRecord, invalid.call_record_id)
+        assert invalid_record is not None
+        assert invalid_record.error_message == "AI_RESPONSE_INVALID_JSON"
+        assert invalid_json.calls == 1
 
 
 def test_formal_knowledge_governance_and_rag_status_filter(
