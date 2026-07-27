@@ -1,0 +1,9 @@
+schema_version: "1"
+id: normal
+version: "1.0"
+title: 合成正常采集
+seed: 1001
+devices: 1
+cycles:
+  - actions: [heartbeat, normal-log, primary-normal-reading, secondary-normal-reading]
+    network: {drop: false, latency_ms: 0}

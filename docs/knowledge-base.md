@@ -9,18 +9,23 @@ Phase 8 已建立来源可追溯、Provider 无关的知识库后端框架，但
 - 登记资料来源、版本、URI、授权范围、许可证、扩展元数据和测试标记。
 - 导入已经提取出的 UTF-8 文本，进行规范化、确定性切分和内容哈希去重。
 - 保存文档、知识块、审核历史及向量记录。
-- 临时审阅令牌边界下仍要求整理人、技术审核人和正式批准人三种角色分离；状态同步到全部知识块。
+- 工作区导入接口仍受临时审阅令牌保护；审核状态流转必须使用具名 Bearer 会话，并分别
+  具有知识整理人、技术审核人和正式批准人角色。
+- 支持 TXT、Markdown、CSV、DOCX 和具有可提取文本层的 PDF；扫描 PDF 不启用 OCR，
+  无可提取文本时明确失败。
 - 只有审核通过的知识块可以写入向量并参与检索。
 - PostgreSQL 使用 pgvector 的 `vector` 类型；SQLite 测试使用兼容 JSON 类型。
 - 检索结果返回来源、版本、URI、文档、定位信息和测试数据标记。
 
 当前明确未完成：
 
-- 没有 PDF、DOCX、HTML 或扫描件解析器；当前接口只接收外部适配器提取后的 `text/*` 文本。
-- 没有真实知识来源、正式审核教师、授权资料、Embedding 或 pgvector 数据记录。
+- 没有 HTML、网页抓取或扫描件 OCR；不能读取的内容不会被自动补写。
+- 没有真实知识来源、正式审核教师或授权资料；长期数据库中的知识、Embedding 和
+  pgvector 记录均为明确标记的合成测试数据。
 - 没有确定 Embedding Provider、模型和向量维度；DeepSeek 对话模型的确定不等同于选择云端 Embedding。
 - 没有文本问题自动转向量的外部模型调用，也没有 AI 生成诊断。
-- 临时 `X-Review-Token` 不能证明真实教师身份，正式账号与审核责任人模型仍待建立。
+- 七类 RBAC 角色和审核职责分离框架已建立，但正式审核账号和责任人名单尚未导入。
+  临时 `X-Review-Token` 只保护工作区导入接口，不能替代审核人的 Bearer 身份。
 
 ## 数据模型
 
@@ -37,8 +42,9 @@ Phase 8 已建立来源可追溯、Provider 无关的知识库后端框架，但
 ## 导入和审核流程
 
 1. 通过 `POST /api/v1/knowledge/sources` 登记来源。
-2. 原始 PDF、DOCX、扫描件或网页由来源适配器提取为文本。
-3. 通过 `POST /api/v1/knowledge/sources/{source_id}/documents/text` 导入文本。
+2. TXT、Markdown、CSV、DOCX 和可提取文本 PDF 可经文件导入接口解析；其他来源由
+   授权适配器提取为文本，扫描件必须由人工确认的外部流程处理。
+3. 通过文本文档或文件导入接口导入内容。
 4. 系统按配置切分，并以 `source_id + content_hash` 保证幂等。
 5. 整理人将 `draft` 提交为 `pending`，技术审核人转为 `technical_reviewed`，正式批准人才能转为 `approved`。
 6. 状态全集为 `draft`、`pending`、`technical_reviewed`、`approved`、`rejected`、`withdrawn` 和 `superseded`；不同状态只允许经过预定义转移。

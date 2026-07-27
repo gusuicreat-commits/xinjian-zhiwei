@@ -1,0 +1,9 @@
+schema_version: "1"
+id: value-stuck
+version: "1.0"
+title: 合成数值卡死
+seed: 1005
+devices: 1
+cycles:
+  - actions: [heartbeat, primary-stuck-reading]
+    network: {drop: false, latency_ms: 0}

@@ -1,4 +1,4 @@
-# 芯鉴知微 API 设计（Phase 9.5）
+# 芯鉴知微 API 设计（P1 设备协议 V1）
 
 ## 通用约定
 
@@ -21,6 +21,22 @@ X-Device-Token: <secret token>
 
 ## 接口
 
+### POST `/device/ingest`
+
+设备协议 V1 的幂等批量入口。请求携带 `protocolVersion`、`schemaVersion`、UUID
+`requestId`、`bootId`、`sequenceNo`、可选设备时间/运行时/固件信息，以及日志、读数
+和心跳记录数组。服务端采用全有或全无事务；同一请求重放不重复写入，相同序列冲突返回
+409，缺失或不可信设备时间使用服务端接收时间并标记时间质量。默认限制为每批 100 条、
+262144 字节、单设备每分钟 120 个新请求。完整契约、错误码和重试语义见
+`docs/device-protocol.md`。
+
+下列三个单条上传端点继续保留，以兼容 Phase 2 客户端；新模拟器默认使用批量入口。
+
+### DELETE `/device/test-runs/{test_run_id}`
+
+使用设备凭据定向删除当前设备、指定 `testRunId` 下的合成批次及其日志、读数和心跳。
+只有 `isTestData=true` 的批次能关联运行 ID；接口不会删除其他运行或非测试数据。
+
 ### POST `/device/logs`
 
 必填字段：`level`、`message`、`occurred_at`。可选字段：`event_code`、`sensor_snapshot`、`is_test_data`。`level` 仅接受 `debug`、`info`、`warning`、`error`、`critical`。
@@ -36,6 +52,16 @@ X-Device-Token: <secret token>
 ### GET `/device/{device_id}/status`
 
 返回 `online`、`offline` 或 `never_seen`。离线阈值由 `DEVICE_OFFLINE_AFTER_SECONDS` 配置，默认开发值为 90 秒。
+
+### P4–P11 新增边界
+
+- `/auth/session`、`/auth/me`、`/auth/classes`：正式用户会话和资源范围。
+- `/experiments/templates`、`/experiments/template-versions/*`：模板草稿与发布门禁。
+- `/knowledge/sources/{id}/documents/file`、`/knowledge/documents/{id}/workspace`、
+  `/knowledge/chunks/*`：文件导入与草稿分块工作区。
+- `/teacher-workflow/*`：处置动作、时间线、课堂消息和 CSV 报告。
+- `/health/live`、`/health/ready`、`/health/dependencies`、`/ops/status`：运维状态。
+- `/readiness/status`：证据驱动的项目就绪门禁。
 
 ### POST `/diagnosis/devices/{device_id}/run`
 
@@ -53,7 +79,10 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 ### GET `/diagnosis/interventions`
 
-返回达到 Level 4 的设备与故障树记录。当前用户与教师角色尚未建立，因此使用环境变量 `REVIEW_ACCESS_TOKEN` 和 `X-Review-Token` 作为临时、默认关闭的审阅边界；未配置返回 503，凭据错误返回 401。正式角色模型落地后必须替换该临时边界。
+返回达到 Level 4 的设备与故障树记录。旧教师总览页面仍使用环境变量
+`REVIEW_ACCESS_TOKEN` 和 `X-Review-Token` 作为临时、默认关闭的审阅边界；未配置返回
+503，凭据错误返回 401。P4 的课堂资源接口已使用 Bearer 会话与班级范围 RBAC，后续
+正式前端迁移完成后应移除旧令牌边界。
 
 ### GET `/diagnosis/ai/status`
 
@@ -91,7 +120,9 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 ## 知识库接口
 
-以下接口全部使用临时 `X-Review-Token` 边界；没有正式教师身份模型时不开放匿名知识导入或审核。
+来源登记、文件导入、知识块编辑和检索管理接口仍使用临时 `X-Review-Token` 工作区
+边界；文档审核状态流转使用 `/auth/session` 签发的 Bearer 会话，并校验知识整理人、
+技术审核人和正式批准人三个独立 RBAC 角色。仓库没有预置正式审核账号。
 
 ### GET `/knowledge/status`
 
@@ -138,6 +169,12 @@ technical_reviewed --formal_approver--> approved
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
 | 503 | 教师审阅凭据或正式 Embedding Provider 尚未配置 |
 
-当前提供设备凭据保护的临时学生 API，以及审阅令牌保护的教师聚合和知识库管理 API；Phase 9.5 已固定 DeepSeek 官方 API、`deepseek-v4-flash` 和非思考模式，但 `AI_ENABLED=false`、密钥为空，因此不代表已经配置或调用真实 AI 服务。统一 `AIClient` 仍作为可替换边界。当前仍不提供正式账号、班级、实验任务或公开设备注册接口。
+当前继续提供设备凭据保护的兼容学生 API，以及审阅令牌保护的教师聚合和知识库管理
+API；P4 另行建立了正式账号、班级、实验任务与 RBAC 通用接口，但长期数据库中的正式
+记录仍为 0，也不提供公开设备注册。Phase 9.5 已固定 DeepSeek 官方 API、
+`deepseek-v4-flash` 和非思考模式，但 `AI_ENABLED=false`、密钥为空，因此不代表已经
+配置或调用真实 AI 服务。统一 `AIClient` 仍作为可替换边界。
 
-当前数据库中的 `phase9.synthetic-acceptance` 来源及 `phase9-test-vector` 向量只用于自动化验收，默认查询排除；它们不是正式知识或真实 Provider 产物。Phase 10 尚未开始。
+当前数据库中的 `phase9.synthetic-acceptance` 来源及 `phase9-test-vector` 向量只用于
+自动化验收，默认查询排除；它们不是正式知识或真实 Provider 产物。无真实硬件路线
+P1–P11 已完成，但没有自动生成正式业务数据。

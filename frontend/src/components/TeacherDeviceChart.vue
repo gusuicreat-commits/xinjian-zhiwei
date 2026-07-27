@@ -66,4 +66,9 @@ onBeforeUnmount(() => {
   chart?.dispose()
 })
 </script>
-<template><div ref="element" class="teacher-chart" role="img" aria-label="设备状态图" /></template>
+<template>
+  <div ref="element" class="teacher-chart" role="img" aria-label="设备状态图" />
+  <ul class="sr-only" aria-label="设备状态文本数据">
+    <li v-for="item in data" :key="item.status">{{ labels[item.status] }}：{{ item.count }}</li>
+  </ul>
+</template>

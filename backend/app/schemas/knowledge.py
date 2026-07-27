@@ -66,6 +66,51 @@ class KnowledgeTextImportRequest(StrictKnowledgeModel):
     is_test_data: bool = False
 
 
+class KnowledgeFileImportRequest(StrictKnowledgeModel):
+    filename: str = Field(min_length=1, max_length=300)
+    content_base64: str = Field(min_length=1)
+    media_type: str = Field(min_length=1, max_length=150)
+    language: Optional[str] = Field(default=None, max_length=30)
+    storage_uri: Optional[str] = Field(default=None, max_length=1000)
+    locator_prefix: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    organizer_ref: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    content_origin: Literal["human", "ai_generated"] = "human"
+    is_test_data: bool = False
+
+
+class KnowledgeChunkWorkspaceItem(StrictKnowledgeModel):
+    id: str
+    chunk_index: int
+    content: str
+    content_hash: str
+    char_count: int
+    locator: dict[str, Any]
+    metadata: dict[str, Any]
+    review_status: KnowledgeReviewStatus
+    embedding_count: int
+
+
+class KnowledgeWorkspaceResponse(StrictKnowledgeModel):
+    document_id: str
+    title: str
+    review_status: KnowledgeReviewStatus
+    chunks: list[KnowledgeChunkWorkspaceItem]
+
+
+class KnowledgeChunkUpdate(StrictKnowledgeModel):
+    content: Optional[str] = Field(default=None, min_length=1)
+    metadata: Optional[dict[str, Any]] = None
+
+
+class KnowledgeChunkSplitRequest(StrictKnowledgeModel):
+    offset: int = Field(ge=1)
+
+
+class KnowledgeChunkMergeRequest(StrictKnowledgeModel):
+    chunk_ids: list[str] = Field(min_length=2, max_length=20)
+
+
 class KnowledgeChunkResponse(StrictKnowledgeModel):
     id: str
     chunk_index: int

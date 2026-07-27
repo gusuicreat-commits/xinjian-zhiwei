@@ -1,10 +1,10 @@
-# 芯鉴知微数据库设计（Phase 9.5）
+# 芯鉴知微数据库设计（1.0.0）
 
 ## 迁移基线
 
 - 数据库：PostgreSQL 16 + pgvector。
 - 迁移工具：Alembic。
-- 目标版本：`20260725_0008`。
+- 目标版本：`20260727_0014`。
 - 后端启动时先执行 `alembic upgrade head`，成功后才启动 API。
 
 ## 表结构
@@ -24,6 +24,15 @@
 ### `device_heartbeats`
 
 保存每次心跳的设备观察时间、固件版本、扩展元数据、原始请求、测试数据标记和服务端接收时间。心跳同时更新 `devices.last_seen_at`。
+
+### `ingestion_requests`
+
+保存设备协议 V1 的 UUID 请求 ID、协议/Schema 版本、启动 ID、序列号、设备发送时间、
+运行时、固件版本、规范化载荷 SHA-256、记录数、原始成功响应、测试标记和服务端接收
+时间。`device_id + request_id` 和 `device_id + boot_id + sequence_no` 分别唯一，用于
+持久化幂等与序列冲突检测。三个采集表通过可空 `ingestion_request_id` 回指批次，并保存
+协议版本、启动 ID、序列号、运行时和 `time_quality`；旧单条接口产生的历史记录保持为空。
+P2 的可空 `test_run_id` 只标记合成场景运行并建立索引，用于设备范围的精确定向清理。
 
 ### `diagnosis_results`
 
@@ -69,9 +78,22 @@
 
 以规则、故障树、知识、Prompt、Schema 和规范化核心输入生成的稳定指纹保存已校验解释，记录来源 Provider/模型、过期时间和命中次数。
 
+### P4–P7 课堂与治理表
+
+- `users`、`roles`、`permissions`、`user_roles`、`role_permissions`、`auth_sessions`：
+  正式身份与不透明会话骨架。
+- `courses`、`classes`、`enrollments`、`teaching_assignments`、
+  `experiment_assignments`、`device_bindings`：课堂资源范围。
+- `audit_events`：认证、模板、导出等不可覆盖审计事件。
+- `experiment_templates`、`experiment_template_versions`、`diagnostic_artifacts`：
+  模板及规则/故障树不可变版本。
+- `intervention_cases`、`intervention_events`、`classroom_messages`：教师处置、私人备注、
+  状态历史和课堂消息撤回。
+
 ## 关系与索引
 
-- 三类采集记录都通过 `device_id` 外键关联 `devices`。
+- 三类采集记录都通过 `device_id` 外键关联 `devices`，V1 批次记录还关联
+  `ingestion_requests`。
 - 设备删除时级联其采集记录；生产环境执行删除前必须另行设计审计和保留策略。
 - 日志按设备和发生时间建立联合索引。
 - 读数按设备/观察时间及指标/观察时间建立联合索引。
@@ -93,8 +115,17 @@
 - `raw_payload` 只保存经过 Pydantic 校验的请求体，不包含认证头。
 - 测试和模拟记录必须设置 `is_test_data=true`。
 - 所有结构变化必须新增 Alembic revision，不允许手工修改生产表结构。
-- `20260725_0008` 只新增 `ai_call_records.route_path` 与 `knowledge_reviews.reviewer_role`；适用硬件、定位、修复动作和根因等级继续使用已有 JSON 元数据，避免重复字段。
+- `20260727_0009` 增加协议请求表和三类采集记录的通用协议追踪列，不导入或修改任何
+  现有业务数据。
+- `20260727_0010` 只增加合成场景 `test_run_id` 与索引，不创建场景记录或测试数据。
+- `20260727_0011` 增加课堂身份、RBAC、课程班级、任务绑定、会话和审计表。
+- `20260727_0012` 增加版本化实验模板与诊断工件，并让任务绑定精确版本。
+- `20260727_0013` 增加教师处置事件和课堂消息。
+- `20260727_0014` 移除字段唯一索引之外的重复唯一约束，使升级库和全新库的
+  SQLAlchemy 元数据一致；不修改业务数据。
 
-用户、班级和正式实验模板仍待设计。知识库与 AI 审计表已经建立；仅有测试记录和禁用真实 Provider 只代表框架通过验收，不能冒充正式知识或真实 AI 诊断。
+用户、班级和实验模板通用框架已经建立，但正式用户、班级、任务与模板内容仍待人工
+录入和审核。知识库与 AI 审计表已经建立；仅有测试记录和禁用真实 Provider 只代表
+框架通过验收，不能冒充正式知识或真实 AI 诊断。
 
-Phase 9 最终验收数据库保留一组明确测试标记的合成知识、测试向量、测试 Episode、Mock 调用审计与缓存。Phase 9.5 不导入正式资料或真实学生信息，只补充治理流程。所有测试记录均可由来源键、测试设备和 `is_test_data` 追溯；正式查询默认排除测试知识。Phase 10 尚未开始。
+Phase 9 最终验收数据库保留一组明确测试标记的合成知识、测试向量、测试 Episode、Mock 调用审计与缓存。P1 只新增协议结构与测试，不导入正式资料、真实学生信息或真实设备数据。所有测试记录均可由来源键、测试设备和 `is_test_data` 追溯；正式查询默认排除测试知识。

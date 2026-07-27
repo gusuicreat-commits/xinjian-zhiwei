@@ -8,6 +8,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+.simulator-runs/
 .ruff_cache/
 .venv/
 backend/.coverage
@@ -27,6 +28,10 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+*.dump
+*.backup
+*.bak
+backups/
 postgres_data/
 data/postgres/
 # Knowledge originals and parser output may contain licensed or private course material.

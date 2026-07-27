@@ -181,4 +181,5 @@ draft → pending → technical_reviewed → approved
 - DeepSeek 服务端 API Key、预算、数据外发和保留政策；
 - 实验室网络、部署机器、备份方案和真实故障样本。
 
-以上条件未满足时不得声称已具备真实硬件诊断能力。Phase 10 尚未开始。
+以上条件未满足时不得声称已具备真实硬件诊断能力。无真实硬件路线 P1–P11 已完成，
+但这些人工输入仍由 readiness 门禁保持为受阻。

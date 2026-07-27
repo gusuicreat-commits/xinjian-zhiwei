@@ -1,0 +1,29 @@
+{
+  "dataset": "synthetic-retrieval-golden-v1",
+  "is_test_data": true,
+  "basis": "合成词法检索验收语料，不是正式知识库",
+  "documents": [
+    {"id":"d1","text":"SENSOR_READ_FAILED 读取失败 检查数据连接与采集返回值"},
+    {"id":"d2","text":"DEVICE_OFFLINE 离线 检查网络连接与心跳上报"},
+    {"id":"d3","text":"VALUE_OUT_OF_RANGE 数值越界 检查模板范围和单位"},
+    {"id":"d4","text":"幂等 requestId 重试不会重复写入"},
+    {"id":"d5","text":"知识审核 approved 才能进入正式检索"},
+    {"id":"d6","text":"AI 禁用时返回确定性规则解释"},
+    {"id":"d7","text":"bootId sequenceNo 用于启动周期和乱序保护"},
+    {"id":"d8","text":"timeQuality server_fallback 表示设备时间不可信"},
+    {"id":"d9","text":"testRunId 只标识合成场景并支持定向清理"},
+    {"id":"d10","text":"恢复场景先产生读取失败再产生正常读数"}
+  ],
+  "queries": [
+    {"id":"q1","text":"传感器读取失败 SENSOR_READ_FAILED","expected":"d1"},
+    {"id":"q2","text":"设备离线心跳","expected":"d2"},
+    {"id":"q3","text":"读数超过模板范围","expected":"d3"},
+    {"id":"q4","text":"重试幂等 requestId","expected":"d4"},
+    {"id":"q5","text":"approved 知识审核","expected":"d5"},
+    {"id":"q6","text":"AI 关闭确定性解释","expected":"d6"},
+    {"id":"q7","text":"sequenceNo 乱序","expected":"d7"},
+    {"id":"q8","text":"server_fallback 时间","expected":"d8"},
+    {"id":"q9","text":"testRunId 清理","expected":"d9"},
+    {"id":"q10","text":"失败之后恢复正常","expected":"d10"}
+  ]
+}

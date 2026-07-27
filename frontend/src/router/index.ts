@@ -32,6 +32,11 @@ const router = createRouter({
       component: () => import('@/views/TeacherDashboardView.vue'),
       meta: { requiresTeacherSession: true },
     },
+    {
+      path: '/readiness',
+      name: 'readiness',
+      component: () => import('@/views/ReadinessView.vue'),
+    },
   ],
 })
 

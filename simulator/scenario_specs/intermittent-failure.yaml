@@ -1,0 +1,13 @@
+schema_version: "1"
+id: intermittent-failure
+version: "1.0"
+title: 合成间歇读取失败
+seed: 1006
+devices: 1
+cycles:
+  - actions: [heartbeat, primary-normal-reading]
+    network: {drop: false, latency_ms: 0}
+  - actions: [heartbeat, read-failure-log]
+    network: {drop: false, latency_ms: 120}
+  - actions: [heartbeat, primary-normal-reading]
+    network: {drop: false, latency_ms: 0}

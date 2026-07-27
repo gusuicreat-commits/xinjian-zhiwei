@@ -1,0 +1,14 @@
+schema_version: "1"
+id: multi-anomaly
+version: "1.0"
+title: 合成读取失败与数值越界组合
+seed: 1010
+devices: 1
+cycles:
+  - actions:
+      - heartbeat
+      - read-failure-log
+      - out-of-range-log
+      - primary-out-of-range-reading
+      - secondary-out-of-range-reading
+    network: {drop: false, latency_ms: 0}

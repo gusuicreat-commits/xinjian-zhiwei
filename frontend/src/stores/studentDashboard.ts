@@ -6,6 +6,12 @@ import {
   getStudentDashboard,
   requestAIExplanation,
 } from '@/api/student'
+import {
+  classifyRequestFailure,
+  failureMessage,
+  withCappedRetry,
+  type RequestFailureKind,
+} from '@/api/resilience'
 import type { DeviceCredentials, FeedbackAction, StudentDashboard } from '@/types/student'
 
 export type DashboardState = 'idle' | 'loading' | 'ready' | 'error'
@@ -14,6 +20,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   const state = ref<DashboardState>('idle')
   const dashboard = ref<StudentDashboard | null>(null)
   const errorMessage = ref('')
+  const failureKind = ref<RequestFailureKind | null>(null)
   const feedbackLoading = ref(false)
   const aiLoading = ref(false)
 
@@ -21,11 +28,13 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     state.value = dashboard.value ? 'ready' : 'loading'
     errorMessage.value = ''
     try {
-      dashboard.value = await getStudentDashboard(credentials)
+      dashboard.value = await withCappedRetry(() => getStudentDashboard(credentials))
       state.value = 'ready'
-    } catch {
+      failureKind.value = null
+    } catch (error) {
       state.value = 'error'
-      errorMessage.value = '学生数据加载失败，请检查会话或后端服务。'
+      failureKind.value = classifyRequestFailure(error)
+      errorMessage.value = failureMessage(failureKind.value)
     }
   }
 
@@ -63,12 +72,14 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     state.value = 'idle'
     dashboard.value = null
     errorMessage.value = ''
+    failureKind.value = null
   }
 
   return {
     state,
     dashboard,
     errorMessage,
+    failureKind,
     feedbackLoading,
     aiLoading,
     load,

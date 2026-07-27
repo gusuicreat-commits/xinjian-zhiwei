@@ -39,7 +39,7 @@ def test_read_failure_has_no_fabricated_reading(config: SimulationConfig) -> Non
 
     assert_test_data(actions)
     assert [action.kind for action in actions] == ["heartbeat", "log"]
-    assert actions[1].payload["event_code"] == "TEST_SENSOR_READ_FAILED"
+    assert actions[1].payload["event_code"] == "SENSOR_READ_FAILED"
     assert actions[1].payload["sensor_snapshot"]["simulation"]["scenario"] == "read-failure"
 
 
@@ -59,6 +59,10 @@ def test_out_of_range_values_come_from_configuration(config: SimulationConfig) -
     readings = [action.payload for action in actions if action.kind == "reading"]
 
     assert_test_data(actions)
+    assert any(
+        action.payload.get("event_code") == "VALUE_OUT_OF_RANGE"
+        for action in actions
+    )
     assert [reading["value"] for reading in readings] == [999.0, -999.0]
     assert all(reading["sensor_type"] == "generic-test-sensor" for reading in readings)
 

@@ -65,4 +65,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div ref="element" class="teacher-chart" role="img" aria-label="七日错误趋势图" />
+  <ol class="sr-only" aria-label="错误趋势文本数据">
+    <li v-for="item in data" :key="item.day">{{ item.day }}：{{ item.count }}</li>
+  </ol>
 </template>

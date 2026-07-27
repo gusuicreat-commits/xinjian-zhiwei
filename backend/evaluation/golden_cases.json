@@ -1,0 +1,47 @@
+{
+  "dataset": "synthetic-diagnosis-golden-v1",
+  "is_test_data": true,
+  "basis": "开发阶段示例规则，不是硬件说明书、行业标准或真实故障真值",
+  "expected_causes_by_error": {
+    "SENSOR_READ_FAILED": "传感器数据通路、供电连接或读取时序方向需要继续排查",
+    "DEVICE_OFFLINE": "设备未继续上报心跳或采集数据",
+    "VALUE_OUT_OF_RANGE": "采集值确实超出当前实验模板配置范围"
+  },
+  "required_step_fragments_by_error": {
+    "SENSOR_READ_FAILED": ["保留失败日志", "故障树"],
+    "DEVICE_OFFLINE": ["最后一次正常上报时间", "网络状态"],
+    "VALUE_OUT_OF_RANGE": ["采集值", "多个时间点"]
+  },
+  "cases": [
+    {"id":"normal-01","event":null,"seconds_since_seen":0,"value":50,"expected":[]},
+    {"id":"normal-02","event":null,"seconds_since_seen":30,"value":0,"expected":[]},
+    {"id":"normal-03","event":null,"seconds_since_seen":89,"value":100,"expected":[]},
+    {"id":"read-01","event":"SENSOR_READ_FAILED","seconds_since_seen":0,"value":50,"expected":["SENSOR_READ_FAILED"]},
+    {"id":"read-02","event":"SENSOR_READ_FAILED","seconds_since_seen":30,"value":50,"expected":["SENSOR_READ_FAILED"]},
+    {"id":"read-03","event":"SENSOR_READ_FAILED","seconds_since_seen":89,"value":50,"expected":["SENSOR_READ_FAILED"]},
+    {"id":"offline-01","event":null,"seconds_since_seen":90,"value":50,"expected":["DEVICE_OFFLINE"]},
+    {"id":"offline-02","event":null,"seconds_since_seen":120,"value":50,"expected":["DEVICE_OFFLINE"]},
+    {"id":"offline-03","event":null,"seconds_since_seen":3600,"value":50,"expected":["DEVICE_OFFLINE"]},
+    {"id":"range-low-01","event":null,"seconds_since_seen":0,"value":-1,"expected":["VALUE_OUT_OF_RANGE"]},
+    {"id":"range-low-02","event":null,"seconds_since_seen":30,"value":-999,"expected":["VALUE_OUT_OF_RANGE"]},
+    {"id":"range-high-01","event":null,"seconds_since_seen":0,"value":101,"expected":["VALUE_OUT_OF_RANGE"]},
+    {"id":"range-high-02","event":null,"seconds_since_seen":89,"value":999,"expected":["VALUE_OUT_OF_RANGE"]},
+    {"id":"conflict-01","event":"SENSOR_READ_FAILED","seconds_since_seen":90,"value":50,"expected":["SENSOR_READ_FAILED","DEVICE_OFFLINE"]},
+    {"id":"conflict-02","event":"SENSOR_READ_FAILED","seconds_since_seen":0,"value":101,"expected":["SENSOR_READ_FAILED","VALUE_OUT_OF_RANGE"]},
+    {"id":"conflict-03","event":null,"seconds_since_seen":90,"value":-1,"expected":["DEVICE_OFFLINE","VALUE_OUT_OF_RANGE"]},
+    {"id":"conflict-04","event":"SENSOR_READ_FAILED","seconds_since_seen":90,"value":101,"expected":["SENSOR_READ_FAILED","DEVICE_OFFLINE","VALUE_OUT_OF_RANGE"]},
+    {"id":"edge-time-01","event":null,"seconds_since_seen":89.9,"value":50,"expected":[]},
+    {"id":"edge-time-02","event":null,"seconds_since_seen":90.0,"value":50,"expected":["DEVICE_OFFLINE"]},
+    {"id":"edge-range-01","event":null,"seconds_since_seen":0,"value":0.0,"expected":[]},
+    {"id":"edge-range-02","event":null,"seconds_since_seen":0,"value":100.0,"expected":[]},
+    {"id":"edge-range-03","event":null,"seconds_since_seen":0,"value":-0.001,"expected":["VALUE_OUT_OF_RANGE"]},
+    {"id":"edge-range-04","event":null,"seconds_since_seen":0,"value":100.001,"expected":["VALUE_OUT_OF_RANGE"]},
+    {"id":"unknown-event-01","event":"UNKNOWN_SYNTHETIC","seconds_since_seen":0,"value":50,"expected":[]},
+    {"id":"unknown-event-02","event":"TEST_SENSOR_READ_FAILED","seconds_since_seen":0,"value":50,"expected":[]},
+    {"id":"priority-01","event":"SENSOR_READ_FAILED","seconds_since_seen":91,"value":101,"expected":["SENSOR_READ_FAILED","DEVICE_OFFLINE","VALUE_OUT_OF_RANGE"]},
+    {"id":"priority-02","event":"SENSOR_READ_FAILED","seconds_since_seen":91,"value":50,"expected":["SENSOR_READ_FAILED","DEVICE_OFFLINE"]},
+    {"id":"priority-03","event":"SENSOR_READ_FAILED","seconds_since_seen":1,"value":-1,"expected":["SENSOR_READ_FAILED","VALUE_OUT_OF_RANGE"]},
+    {"id":"repeat-01","event":"SENSOR_READ_FAILED","seconds_since_seen":0,"value":50,"expected":["SENSOR_READ_FAILED"]},
+    {"id":"repeat-02","event":null,"seconds_since_seen":120,"value":101,"expected":["DEVICE_OFFLINE","VALUE_OUT_OF_RANGE"]}
+  ]
+}

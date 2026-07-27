@@ -64,4 +64,7 @@ onBeforeUnmount(() => {
 <template>
   <el-empty v-if="data.length === 0" description="暂无诊断错误记录" :image-size="54" />
   <div v-else ref="element" class="teacher-chart" role="img" aria-label="高频错误横向柱状图" />
+  <ol class="sr-only" aria-label="高频错误文本数据">
+    <li v-for="item in data" :key="item.error_code">{{ item.error_code }}：{{ item.count }}</li>
+  </ol>
 </template>

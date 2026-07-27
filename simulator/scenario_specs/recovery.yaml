@@ -1,0 +1,11 @@
+schema_version: "1"
+id: recovery
+version: "1.0"
+title: 合成故障恢复
+seed: 1007
+devices: 1
+cycles:
+  - actions: [heartbeat, read-failure-log]
+    network: {drop: false, latency_ms: 0}
+  - actions: [heartbeat, primary-normal-reading, normal-log]
+    network: {drop: false, latency_ms: 0}

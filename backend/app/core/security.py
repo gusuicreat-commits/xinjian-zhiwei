@@ -38,3 +38,11 @@ def verify_device_token(token: str, encoded_hash: str) -> bool:
 
     actual = hashlib.pbkdf2_hmac("sha256", token.encode(), salt, iterations)
     return hmac.compare_digest(actual, expected)
+
+
+hash_password = hash_device_token
+verify_password = verify_device_token
+
+
+def hash_session_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

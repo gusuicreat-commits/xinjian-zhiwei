@@ -1,14 +1,60 @@
 from typing import Any
 
 from app.api.dependencies import require_review_access
+from app.core.security import hash_password
 from app.main import app
+from app.models import User
+from app.services.rbac import assign_role, ensure_rbac_catalog
 
 
 def allow_review_access() -> None:
     app.dependency_overrides[require_review_access] = lambda: None
 
 
-def approve_test_document(client: Any, document_id: str, prefix: str) -> None:
+def _review_headers(api_context: dict[str, Any]) -> dict[str, dict[str, str]]:
+    cached = api_context.get("knowledge_review_headers")
+    if cached is not None:
+        return cached
+    password = "synthetic-review-password"
+    users = {}
+    with api_context["session_factory"]() as db:
+        roles = ensure_rbac_catalog(db)
+        for reviewer_role, role_code in (
+            ("organizer", "knowledge_organizer"),
+            ("technical_reviewer", "technical_reviewer"),
+            ("formal_approver", "formal_approver"),
+            ("teacher", "teacher"),
+        ):
+            user = User(
+                username=f"synthetic-{reviewer_role.replace('_', '-')}",
+                display_name=f"Synthetic {reviewer_role}",
+                password_hash=hash_password(password, iterations=1_000),
+                is_test_data=True,
+            )
+            db.add(user)
+            db.flush()
+            assign_role(db, user, roles[role_code])
+            users[reviewer_role] = user.username
+        db.commit()
+    headers = {}
+    for reviewer_role, username in users.items():
+        response = api_context["client"].post(
+            "/api/v1/auth/session",
+            json={"username": username, "password": password},
+        )
+        assert response.status_code == 200
+        headers[reviewer_role] = {
+            "Authorization": f"Bearer {response.json()['access_token']}"
+        }
+    api_context["knowledge_review_headers"] = headers
+    return headers
+
+
+def approve_test_document(
+    api_context: dict[str, Any], document_id: str, prefix: str
+) -> None:
+    client = api_context["client"]
+    headers = _review_headers(api_context)
     steps = (
         ("pending", "organizer", f"{prefix}-organizer"),
         (
@@ -21,6 +67,7 @@ def approve_test_document(client: Any, document_id: str, prefix: str) -> None:
     for decision, reviewer_role, reviewer_ref in steps:
         response = client.patch(
             f"/api/v1/knowledge/documents/{document_id}/review",
+            headers=headers[reviewer_role],
             json={
                 "decision": decision,
                 "reviewer_role": reviewer_role,
@@ -57,6 +104,7 @@ def test_empty_knowledge_status_is_explicit(api_context: dict[str, Any]) -> None
 def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -> None:
     allow_review_access()
     client = api_context["client"]
+    headers = _review_headers(api_context)
     source = client.post(
         "/api/v1/knowledge/sources",
         json={
@@ -77,6 +125,7 @@ def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -
     ).json()
     client.patch(
         f"/api/v1/knowledge/documents/{document['id']}/review",
+        headers=headers["organizer"],
         json={
             "decision": "pending",
             "reviewer_role": "organizer",
@@ -85,6 +134,7 @@ def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -
     )
     client.patch(
         f"/api/v1/knowledge/documents/{document['id']}/review",
+        headers=headers["technical_reviewer"],
         json={
             "decision": "technical_reviewed",
             "reviewer_role": "technical_reviewer",
@@ -94,6 +144,7 @@ def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -
 
     response = client.patch(
         f"/api/v1/knowledge/documents/{document['id']}/review",
+        headers=headers["formal_approver"],
         json={
             "decision": "approved",
             "reviewer_role": "formal_approver",
@@ -153,7 +204,7 @@ def test_test_knowledge_import_review_embedding_and_search_are_traceable(
     assert replay["idempotent_replay"] is True
     assert document["chunks"][0]["locator"]["section"] == "test"
 
-    approve_test_document(client, document["id"], "phase8-test")
+    approve_test_document(api_context, document["id"], "phase8-test")
 
     embedding_items = [
         {"chunk_id": chunk["id"], "vector": [1.0, index + 0.5, 0.25]}
@@ -230,7 +281,7 @@ def test_real_embeddings_are_rejected_until_provider_is_configured(
             "is_test_data": True,
         },
     ).json()
-    approve_test_document(client, document["id"], "provider-gate")
+    approve_test_document(api_context, document["id"], "provider-gate")
 
     response = client.post(
         f"/api/v1/knowledge/documents/{document['id']}/embeddings",
@@ -244,3 +295,42 @@ def test_real_embeddings_are_rejected_until_provider_is_configured(
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "EMBEDDING_PROVIDER_NOT_CONFIGURED"
+
+
+def test_ordinary_teacher_cannot_impersonate_knowledge_reviewer(
+    api_context: dict[str, Any],
+) -> None:
+    allow_review_access()
+    client = api_context["client"]
+    headers = _review_headers(api_context)
+    source = client.post(
+        "/api/v1/knowledge/sources",
+        json={
+            "source_key": "teacher-review-denied",
+            "source_type": "synthetic",
+            "title": "Teacher role boundary fixture",
+            "authorization_scope": "test only",
+            "is_test_data": True,
+        },
+    ).json()
+    document = client.post(
+        f"/api/v1/knowledge/sources/{source['id']}/documents/text",
+        json={
+            "title": "Teacher boundary",
+            "content": "Synthetic reviewer boundary.",
+            "is_test_data": True,
+        },
+    ).json()
+
+    response = client.patch(
+        f"/api/v1/knowledge/documents/{document['id']}/review",
+        headers=headers["teacher"],
+        json={
+            "decision": "pending",
+            "reviewer_role": "organizer",
+            "reviewer_ref": "forged-organizer",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "KNOWLEDGE_REVIEW_ROLE_DENIED"

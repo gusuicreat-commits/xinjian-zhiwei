@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "芯鉴知微 API"
-    app_version: str = "0.9.5"
+    app_version: str = "1.0.0"
     app_env: str = "development"
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
@@ -23,10 +23,19 @@ class Settings(BaseSettings):
         "postgresql+psycopg://xinjian_app:TODO_CHANGE_ME@localhost:5432/xinjian_zhiwei"
     )
     device_offline_after_seconds: int = 90
+    device_protocol_version: str = "1.0"
+    device_schema_version: str = "1"
+    device_ingest_max_records: int = 100
+    device_ingest_max_body_bytes: int = 262_144
+    device_ingest_requests_per_minute: int = 120
+    auth_session_hours: int = 8
+    auth_login_max_failures: int = 5
+    auth_login_window_seconds: int = 300
     review_access_token: Optional[str] = None
     knowledge_chunk_size_chars: int = 1200
     knowledge_chunk_overlap_chars: int = 150
     knowledge_max_document_chars: int = 500_000
+    knowledge_max_file_bytes: int = 10_485_760
     knowledge_embedding_provider: Optional[str] = None
     knowledge_embedding_model: Optional[str] = None
     knowledge_embedding_dimensions: Optional[int] = None
@@ -102,14 +111,26 @@ class Settings(BaseSettings):
     def normalize_log_level(cls, value: str) -> str:
         return value.upper()
 
-    @field_validator("device_offline_after_seconds")
+    @field_validator(
+        "device_offline_after_seconds",
+        "device_ingest_max_records",
+        "device_ingest_max_body_bytes",
+        "device_ingest_requests_per_minute",
+        "auth_session_hours",
+        "auth_login_max_failures",
+        "auth_login_window_seconds",
+    )
     @classmethod
     def validate_offline_threshold(cls, value: int) -> int:
         if value < 1:
-            raise ValueError("device_offline_after_seconds must be positive")
+            raise ValueError("device ingestion limits must be positive")
         return value
 
-    @field_validator("knowledge_chunk_size_chars", "knowledge_max_document_chars")
+    @field_validator(
+        "knowledge_chunk_size_chars",
+        "knowledge_max_document_chars",
+        "knowledge_max_file_bytes",
+    )
     @classmethod
     def validate_positive_knowledge_limit(cls, value: int) -> int:
         if value < 1:

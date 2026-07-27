@@ -85,5 +85,20 @@ onBeforeUnmount(() => {
     </div>
     <el-empty v-if="readings.length === 0" description="设备尚未上传传感器读数" :image-size="72" />
     <div v-else ref="chartElement" class="sensor-chart" role="img" aria-label="传感器读数折线图" />
+    <details v-if="readings.length" class="chart-data-fallback">
+      <summary>查看图表文本数据</summary>
+      <table>
+        <caption>传感器读数（最多显示最近 50 条）</caption>
+        <thead><tr><th>时间</th><th>指标</th><th>数值</th><th>单位</th></tr></thead>
+        <tbody>
+          <tr v-for="reading in readings.slice(-50)" :key="reading.id">
+            <td>{{ new Date(reading.observed_at).toLocaleString('zh-CN') }}</td>
+            <td>{{ reading.sensor_type }} · {{ reading.metric_key }}</td>
+            <td>{{ reading.value }}</td>
+            <td>{{ reading.unit || '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </details>
   </article>
 </template>

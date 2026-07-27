@@ -1,6 +1,8 @@
+import json
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_authenticated_device
@@ -8,14 +10,20 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.device import Device
 from app.schemas.device import (
+    DeviceBatchIngestRequest,
+    DeviceBatchIngestResponse,
     DeviceHeartbeatCreate,
     DeviceLogCreate,
     DeviceStatusResponse,
     IngestResponse,
     SensorReadingCreate,
+    TestRunCleanupResponse,
 )
 from app.services.device_ingest import (
+    ProtocolIngestError,
     calculate_device_status,
+    cleanup_test_run,
+    ingest_device_batch,
     save_heartbeat,
     save_log,
     save_reading,
@@ -24,6 +32,90 @@ from app.services.device_ingest import (
 router = APIRouter(prefix="/device", tags=["device"])
 AuthenticatedDevice = Annotated[Device, Depends(get_authenticated_device)]
 DatabaseSession = Annotated[Session, Depends(get_db)]
+
+
+@router.post(
+    "/ingest",
+    response_model=DeviceBatchIngestResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Device Protocol V1 idempotent batch ingestion",
+)
+def create_device_batch(
+    payload: DeviceBatchIngestRequest,
+    request: Request,
+    device: AuthenticatedDevice,
+    db: DatabaseSession,
+) -> DeviceBatchIngestResponse:
+    settings = get_settings()
+    content_length = request.headers.get("content-length")
+    declared_size = int(content_length) if content_length and content_length.isdigit() else None
+    estimated_size = len(
+        json.dumps(
+            payload.model_dump(mode="json", by_alias=True),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    if (
+        (declared_size is not None and declared_size > settings.device_ingest_max_body_bytes)
+        or estimated_size > settings.device_ingest_max_body_bytes
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "error_code": "INGESTION_BODY_TOO_LARGE",
+                "message": "request body exceeds the configured byte limit",
+                "request_id": payload.request_id,
+                "details": {"max_bytes": settings.device_ingest_max_body_bytes},
+                "retryable": False,
+            },
+        )
+    try:
+        return ingest_device_batch(
+            db=db,
+            device=device,
+            payload=payload,
+            expected_protocol_version=settings.device_protocol_version,
+            expected_schema_version=settings.device_schema_version,
+            max_records=settings.device_ingest_max_records,
+            requests_per_minute=settings.device_ingest_requests_per_minute,
+        )
+    except ProtocolIngestError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=error.status_code,
+            detail={
+                "error_code": error.error_code,
+                "message": error.message,
+                "request_id": error.request_id,
+                "details": error.details,
+                "retryable": error.retryable,
+            },
+        ) from error
+
+
+@router.delete(
+    "/test-runs/{test_run_id}",
+    response_model=TestRunCleanupResponse,
+    summary="Delete only records belonging to one synthetic scenario run",
+)
+def delete_test_run(
+    test_run_id: str,
+    device: AuthenticatedDevice,
+    db: DatabaseSession,
+) -> TestRunCleanupResponse:
+    try:
+        normalized_id = str(UUID(test_run_id))
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="test_run_id must be a UUID") from error
+    counts = cleanup_test_run(db, device, normalized_id)
+    return TestRunCleanupResponse(
+        test_run_id=normalized_id,
+        deleted_requests=counts["requests"],
+        deleted_logs=counts["logs"],
+        deleted_readings=counts["readings"],
+        deleted_heartbeats=counts["heartbeats"],
+    )
 
 
 @router.post("/logs", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)

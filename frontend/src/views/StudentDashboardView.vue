@@ -107,6 +107,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
 
 <template>
   <main class="student-app" :class="{ 'sidebar-is-collapsed': sidebarCollapsed }">
+    <a class="skip-link" href="#main-student-content">跳到主要内容</a>
     <header class="app-topbar">
       <div class="brand-lockup">
         <img src="/assets/xinjian-brand-mark.png" alt="芯鉴知微" />
@@ -149,7 +150,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
       </button>
     </aside>
 
-    <section class="app-content">
+    <section id="main-student-content" class="app-content" tabindex="-1">
       <div class="content-toolbar">
         <div>
           <p>学生实验工作台</p>

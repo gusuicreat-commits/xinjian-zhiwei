@@ -1,4 +1,4 @@
-# 芯鉴知微系统架构（Phase 9.5）
+# 芯鉴知微系统架构（P1 设备协议 V1）
 
 ## 1. 架构目标
 
@@ -53,7 +53,7 @@ xinjian-zhiwei/
 └── .env.example
 ```
 
-Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断、可配置故障树与分层提示、学生/教师工作台、来源可追溯的知识框架，以及 Provider 无关的 AI/Embedding 客户端、结构化输出校验、审计和降级。当前没有正式知识资料或 Provider，空库和禁用状态不会冒充知识或 AI 能力。
+Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断、可配置故障树与分层提示、学生/教师工作台、来源可追溯的知识框架，以及 Provider 无关的 AI/Embedding 客户端、结构化输出校验、审计和降级。P1 在此基础上增加协议 V1、持久化幂等、批量原子上传、乱序保护、时间质量和模拟器重试。当前没有真实设备数据或正式知识，禁用状态不会冒充硬件、知识或 AI 能力。
 
 ## 4. 模块职责
 
@@ -118,14 +118,17 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 
 ## 7. 当前架构风险
 
-1. Git 已提交 Phase 1 至 Phase 9 基线；Phase 9.5 当前位于工作区，按任务要求不自动提交。
+1. Git 已包含 Phase 9.5/9.6 基线；无真实硬件路线 P1–P11 经最终独立审计后纳入
+   `1.0.0` 软件就绪提交。
 2. Docker Desktop 4.82.0 已安装，Compose 三服务运行验收通过；PlatformIO 仍不可用，将在设备阶段处理。
 3. 本机 Python 3.9.6 与容器 Python 3.12 均用于分阶段验证；后续仍应持续验证二者行为一致。
 4. Node.js v26.3.0 已通过本地 lint、Vitest、类型检查、构建和 Playwright，但生产容器固定使用 Node 22，降低部署兼容风险。
 5. DeepSeek Provider、`deepseek-v4-flash` 和非思考模式已经确定；真实 API Key、正式预算、Embedding、ESP32 型号、接线、账号和知识来源仍待确认。
-6. 设备令牌轮换、撤销审计、上传限流和生产保留策略尚未实现，将在安全加固阶段补充。
+6. 上传限流与保留 dry-run 已实现；设备令牌轮换、生产保留策略和责任人仍待确认。
 7. 背景 Word 的旧技术草案与固定方案有差异，已在 `PROJECT_CONTEXT.md` 中明确裁决，后续不得同时保留两套实现。
-8. Phase 9.5 源码版本为 `0.9.5`，目标迁移为 `20260725_0008`；AI 总开关默认关闭，无 Key 时保持 Disabled。
+8. 当前源码和 Docker 版本为 `1.0.0`，迁移 Head 为 `20260727_0014`；AI 总开关默认
+   关闭，无 Key 时保持 Disabled。
 
 物理拓扑、USB/Wi-Fi 职责、局域网/公网边界和三种部署模式见
-[运行架构](runtime-architecture.md) 与 [部署说明](deployment.md)。Phase 10 尚未开始。
+[运行架构](runtime-architecture.md) 与 [部署说明](deployment.md)。P1–P11 的通用框架
+完成不代表真实硬件、正式知识或生产部署已经就绪。

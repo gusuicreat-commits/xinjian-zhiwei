@@ -11,9 +11,20 @@ def test_health_check_returns_structured_status() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "芯鉴知微 API",
-        "version": "0.9.5",
+        "version": "1.0.0",
         "environment": "development",
     }
+
+
+def test_root_probe_paths_are_available() -> None:
+    with TestClient(app) as client:
+        live = client.get("/health/live")
+        openapi = client.get("/openapi.json").json()
+
+    assert live.status_code == 200
+    assert live.json()["version"] == "1.0.0"
+    assert "/health/ready" in openapi["paths"]
+    assert "/health/dependencies" in openapi["paths"]
 
 
 def test_openapi_exposes_health_endpoint() -> None:

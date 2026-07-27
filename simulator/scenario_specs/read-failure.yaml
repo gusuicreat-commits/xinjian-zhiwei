@@ -1,0 +1,9 @@
+schema_version: "1"
+id: read-failure
+version: "1.0"
+title: 合成传感器读取失败
+seed: 1002
+devices: 1
+cycles:
+  - actions: [heartbeat, read-failure-log]
+    network: {drop: false, latency_ms: 0}

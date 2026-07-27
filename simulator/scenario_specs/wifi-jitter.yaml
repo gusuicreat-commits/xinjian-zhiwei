@@ -1,0 +1,13 @@
+schema_version: "1"
+id: wifi-jitter
+version: "1.0"
+title: 合成 Wi-Fi 抖动与恢复
+seed: 1009
+devices: 1
+cycles:
+  - actions: [heartbeat, primary-normal-reading]
+    network: {drop: false, latency_ms: 80}
+  - actions: [heartbeat, primary-normal-reading]
+    network: {drop: true, latency_ms: 0}
+  - actions: [heartbeat, primary-normal-reading]
+    network: {drop: false, latency_ms: 240}

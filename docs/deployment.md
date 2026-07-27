@@ -1,4 +1,4 @@
-# 芯鉴知微部署说明（Phase 9.5）
+# 芯鉴知微部署说明（1.0.0）
 
 ## 开发模式
 
@@ -56,6 +56,17 @@ Phase 9.5 不执行正式生产部署。
 Compose 使用 `postgres_data` 命名卷。容器重建不应删除该卷。备份必须包含 PostgreSQL 业务表、pgvector 向量、Alembic 版本和恢复校验；仅复制容器文件系统不是备份。
 
 开发阶段可以使用 `pg_dump`/`pg_restore` 演练，但正式备份位置、加密、保留周期、恢复时间目标和负责人尚待项目方确认。未经确认不得自动上传数据库备份到第三方服务。
+
+仓库提供：
+
+```bash
+scripts/backup_database.sh /explicit/existing-directory/backup.dump
+scripts/restore_drill.sh /explicit/path/backup.dump
+PYTHONPATH=backend backend/.venv/bin/python -m app.cli.retention_dry_run --days 30
+```
+
+备份拒绝覆盖；恢复使用临时隔离数据库并在退出时删除该临时库，不删除 Compose 数据卷。
+保留命令只报告候选数量，实际删除策略仍待项目方确认。
 
 ## DeepSeek 配置边界
 

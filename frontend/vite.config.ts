@@ -23,6 +23,22 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (
+            id.includes('/node_modules/echarts/') ||
+            id.includes('/node_modules/zrender/')
+          ) {
+            return 'charts'
+          }
+          return undefined
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

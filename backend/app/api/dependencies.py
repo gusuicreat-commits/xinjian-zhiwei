@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.security import verify_device_token
 from app.db.session import get_db
+from app.models.classroom import User
 from app.models.device import Device
+from app.services.auth import resolve_session, user_access
 
 
 def require_review_access(
@@ -59,3 +61,40 @@ def get_authenticated_device(
             headers={"WWW-Authenticate": "DeviceToken"},
         )
     return device
+
+
+def get_current_user(
+    db: Annotated[Session, Depends(get_db)],
+    authorization: Annotated[Optional[str], Header()] = None,
+) -> User:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "SESSION_REQUIRED", "message": "Bearer session is required"},
+        )
+    user = resolve_session(db, authorization[7:])
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "INVALID_SESSION", "message": "Session is invalid or expired"},
+        )
+    return user
+
+
+def require_permission(permission_code: str):
+    def dependency(
+        user: Annotated[User, Depends(get_current_user)],
+        db: Annotated[Session, Depends(get_db)],
+    ) -> User:
+        _, permissions = user_access(db, user.id)
+        if permission_code not in permissions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "PERMISSION_DENIED",
+                    "message": f"Permission {permission_code} is required",
+                },
+            )
+        return user
+
+    return dependency

@@ -1,7 +1,7 @@
 import hashlib
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import Float, cast, func, literal, select
 from sqlalchemy.exc import IntegrityError
@@ -18,6 +18,7 @@ from app.models.knowledge import (
 )
 from app.schemas.knowledge import (
     KnowledgeChunkResponse,
+    KnowledgeChunkWorkspaceItem,
     KnowledgeDocumentResponse,
     KnowledgeEmbeddingUpsertRequest,
     KnowledgeEmbeddingUpsertResponse,
@@ -30,6 +31,7 @@ from app.schemas.knowledge import (
     KnowledgeSourceResponse,
     KnowledgeStatusResponse,
     KnowledgeTextImportRequest,
+    KnowledgeWorkspaceResponse,
 )
 
 FORMAL_SOURCE_TYPES = {
@@ -200,11 +202,17 @@ def import_text_document(
     source = db.get(KnowledgeSource, source_id)
     if source is None:
         raise KnowledgeServiceError(404, "KNOWLEDGE_SOURCE_NOT_FOUND", "Knowledge source not found")
-    if not payload.media_type.startswith("text/"):
+    if payload.media_type not in {
+        "text/plain",
+        "text/markdown",
+        "text/csv",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }:
         raise KnowledgeServiceError(
             422,
             "UNSUPPORTED_KNOWLEDGE_MEDIA_TYPE",
-            "The generic importer accepts extracted text only",
+            "Knowledge media type is not supported",
         )
     content = _normalize_text(payload.content)
     if not content:
@@ -315,6 +323,178 @@ def import_text_document(
     return _document_response(document)
 
 
+def get_document_workspace(db: Session, document_id: str) -> KnowledgeWorkspaceResponse:
+    document = db.scalar(
+        select(KnowledgeDocument)
+        .where(KnowledgeDocument.id == document_id)
+        .options(selectinload(KnowledgeDocument.chunks).selectinload(KnowledgeChunk.embeddings))
+    )
+    if document is None:
+        raise KnowledgeServiceError(
+            404,
+            "KNOWLEDGE_DOCUMENT_NOT_FOUND",
+            "Knowledge document not found",
+        )
+    return KnowledgeWorkspaceResponse(
+        document_id=document.id,
+        title=document.title,
+        review_status=document.review_status,
+        chunks=[
+            KnowledgeChunkWorkspaceItem(
+                id=chunk.id,
+                chunk_index=chunk.chunk_index,
+                content=chunk.content,
+                content_hash=chunk.content_hash,
+                char_count=chunk.char_count,
+                locator=chunk.locator_json,
+                metadata=chunk.metadata_json,
+                review_status=chunk.review_status,
+                embedding_count=len(chunk.embeddings),
+            )
+            for chunk in sorted(document.chunks, key=lambda item: item.chunk_index)
+        ],
+    )
+
+
+def _editable_chunk(db: Session, chunk_id: str) -> KnowledgeChunk:
+    chunk = db.scalar(
+        select(KnowledgeChunk)
+        .where(KnowledgeChunk.id == chunk_id)
+        .options(joinedload(KnowledgeChunk.document))
+    )
+    if chunk is None:
+        raise KnowledgeServiceError(404, "KNOWLEDGE_CHUNK_NOT_FOUND", "Knowledge chunk not found")
+    if chunk.document.review_status != "draft":
+        raise KnowledgeServiceError(
+            409,
+            "KNOWLEDGE_CHUNK_IMMUTABLE",
+            "Only draft document chunks can be edited",
+        )
+    return chunk
+
+
+def update_chunk(
+    db: Session,
+    chunk_id: str,
+    *,
+    content: Optional[str],
+    metadata: Optional[dict[str, Any]],
+) -> KnowledgeWorkspaceResponse:
+    chunk = _editable_chunk(db, chunk_id)
+    if content is not None:
+        normalized = _normalize_text(content)
+        if not normalized:
+            raise KnowledgeServiceError(422, "EMPTY_KNOWLEDGE_CHUNK", "Chunk cannot be empty")
+        chunk.content = normalized
+        chunk.content_hash = _hash_text(normalized)
+        chunk.char_count = len(normalized)
+    if metadata is not None:
+        chunk.metadata_json = metadata
+    document_id = chunk.document_id
+    db.commit()
+    return get_document_workspace(db, document_id)
+
+
+def _reindex_chunks(db: Session, chunks: list[KnowledgeChunk]) -> None:
+    for index, chunk in enumerate(chunks):
+        chunk.chunk_index = -(index + 1)
+    db.flush()
+    for index, chunk in enumerate(chunks):
+        chunk.chunk_index = index
+
+
+def split_chunk_at(
+    db: Session,
+    chunk_id: str,
+    offset: int,
+) -> KnowledgeWorkspaceResponse:
+    chunk = _editable_chunk(db, chunk_id)
+    if offset >= len(chunk.content):
+        raise KnowledgeServiceError(422, "INVALID_CHUNK_SPLIT", "Split offset is outside content")
+    left = chunk.content[:offset].strip()
+    right = chunk.content[offset:].strip()
+    if not left or not right:
+        raise KnowledgeServiceError(422, "INVALID_CHUNK_SPLIT", "Split creates an empty chunk")
+    document = chunk.document
+    chunks = sorted(document.chunks, key=lambda item: item.chunk_index)
+    chunk.content = left
+    chunk.content_hash = _hash_text(left)
+    chunk.char_count = len(left)
+    new_chunk = KnowledgeChunk(
+        document=document,
+        chunk_index=-999999,
+        content=right,
+        content_hash=_hash_text(right),
+        char_count=len(right),
+        locator_json={**chunk.locator_json, "manually_split": True},
+        metadata_json=dict(chunk.metadata_json),
+        review_status="draft",
+    )
+    position = chunks.index(chunk) + 1
+    chunks.insert(position, new_chunk)
+    db.add(new_chunk)
+    _reindex_chunks(db, chunks)
+    db.commit()
+    return get_document_workspace(db, document.id)
+
+
+def merge_chunks(
+    db: Session,
+    chunk_ids: list[str],
+) -> KnowledgeWorkspaceResponse:
+    chunks = list(
+        db.scalars(
+            select(KnowledgeChunk)
+            .where(KnowledgeChunk.id.in_(chunk_ids))
+            .options(joinedload(KnowledgeChunk.document))
+        )
+    )
+    if len(chunks) != len(set(chunk_ids)):
+        raise KnowledgeServiceError(404, "KNOWLEDGE_CHUNK_NOT_FOUND", "A chunk was not found")
+    chunks.sort(key=lambda item: item.chunk_index)
+    if len({item.document_id for item in chunks}) != 1:
+        raise KnowledgeServiceError(422, "CHUNK_DOCUMENT_MISMATCH", "Chunks must share a document")
+    if any(item.document.review_status != "draft" for item in chunks):
+        raise KnowledgeServiceError(409, "KNOWLEDGE_CHUNK_IMMUTABLE", "Document is not draft")
+    indexes = [item.chunk_index for item in chunks]
+    if indexes != list(range(indexes[0], indexes[0] + len(indexes))):
+        raise KnowledgeServiceError(422, "CHUNKS_NOT_CONSECUTIVE", "Chunks must be consecutive")
+    document = chunks[0].document
+    keeper = chunks[0]
+    merged = "\n".join(item.content for item in chunks)
+    keeper.content = merged
+    keeper.content_hash = _hash_text(merged)
+    keeper.char_count = len(merged)
+    all_chunks = sorted(document.chunks, key=lambda item: item.chunk_index)
+    for item in chunks[1:]:
+        all_chunks.remove(item)
+        document.chunks.remove(item)
+        db.delete(item)
+    db.flush()
+    _reindex_chunks(db, all_chunks)
+    db.commit()
+    return get_document_workspace(db, document.id)
+
+
+def delete_chunk(db: Session, chunk_id: str) -> KnowledgeWorkspaceResponse:
+    chunk = _editable_chunk(db, chunk_id)
+    document = chunk.document
+    chunks = sorted(document.chunks, key=lambda item: item.chunk_index)
+    if len(chunks) == 1:
+        raise KnowledgeServiceError(
+            409,
+            "LAST_CHUNK_DELETE_FORBIDDEN",
+            "A document must retain at least one chunk",
+        )
+    chunks.remove(chunk)
+    document.chunks.remove(chunk)
+    db.delete(chunk)
+    db.flush()
+    _reindex_chunks(db, chunks)
+    db.commit()
+    return get_document_workspace(db, document.id)
+
+
 def review_document(
     db: Session, document_id: str, payload: KnowledgeReviewRequest
 ) -> KnowledgeReviewResponse:
@@ -376,6 +556,12 @@ def review_document(
             "KNOWLEDGE_AUTHORIZATION_REQUIRED",
             "Authorization scope must be recorded before approval",
         )
+    if payload.reviewer_role == "organizer" and payload.decision == "pending":
+        for chunk in document.chunks:
+            chunk.metadata_json = {
+                **chunk.metadata_json,
+                "organizer_ref": payload.reviewer_ref,
+            }
     document.review_status = payload.decision
     for chunk in document.chunks:
         chunk.review_status = payload.decision

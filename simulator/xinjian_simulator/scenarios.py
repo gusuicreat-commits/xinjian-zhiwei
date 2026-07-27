@@ -98,7 +98,7 @@ class ReadFailureScenario:
             _log(
                 now,
                 "error",
-                "TEST_SENSOR_READ_FAILED",
+                "SENSOR_READ_FAILED",
                 "Phase 3 simulated sensor read failure",
                 self.name,
             ),
@@ -136,7 +136,7 @@ class OutOfRangeScenario:
             _log(
                 now,
                 "warning",
-                "TEST_VALUE_OUT_OF_RANGE",
+                "VALUE_OUT_OF_RANGE",
                 "Phase 3 simulated out-of-range values",
                 self.name,
             ),

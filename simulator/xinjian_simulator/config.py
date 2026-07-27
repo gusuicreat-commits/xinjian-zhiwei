@@ -16,6 +16,13 @@ def _positive_float_env(name: str, default: str) -> float:
     return value
 
 
+def _positive_int_env(name: str, default: str) -> int:
+    value = int(os.getenv(name, default))
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+
 @dataclass(frozen=True)
 class SimulationConfig:
     api_base_url: str
@@ -34,6 +41,10 @@ class SimulationConfig:
     stuck_value: float = 17.0
     firmware_version: str = "phase3-test-simulator"
     request_timeout_seconds: float = 8.0
+    protocol_version: str = "1.0"
+    schema_version: str = "1"
+    retry_max_attempts: int = 3
+    retry_base_delay_seconds: float = 0.25
 
     @classmethod
     def from_env(cls) -> "SimulationConfig":
@@ -58,4 +69,11 @@ class SimulationConfig:
             stuck_value=float(os.getenv("XINJIAN_STUCK_VALUE", "17")),
             firmware_version=os.getenv("XINJIAN_FIRMWARE_VERSION", "phase3-test-simulator"),
             request_timeout_seconds=_positive_float_env("XINJIAN_REQUEST_TIMEOUT_SECONDS", "8"),
+            protocol_version=os.getenv("XINJIAN_PROTOCOL_VERSION", "1.0"),
+            schema_version=os.getenv("XINJIAN_SCHEMA_VERSION", "1"),
+            retry_max_attempts=_positive_int_env("XINJIAN_RETRY_MAX_ATTEMPTS", "3"),
+            retry_base_delay_seconds=_positive_float_env(
+                "XINJIAN_RETRY_BASE_DELAY_SECONDS",
+                "0.25",
+            ),
         )

@@ -1,0 +1,13 @@
+schema_version: "1"
+id: out-of-range
+version: "1.0"
+title: 合成数值越界
+seed: 1004
+devices: 1
+cycles:
+  - actions:
+      - heartbeat
+      - out-of-range-log
+      - primary-out-of-range-reading
+      - secondary-out-of-range-reading
+    network: {drop: false, latency_ms: 0}

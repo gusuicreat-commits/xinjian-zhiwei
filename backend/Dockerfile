@@ -8,12 +8,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml ./
+COPY requirements.lock ./
+RUN python -m pip install --upgrade pip && \
+    python -m pip install -r requirements.lock
+
 COPY alembic.ini ./
 COPY app ./app
 COPY migrations ./migrations
 
-RUN python -m pip install --upgrade pip && \
-    python -m pip install .
+RUN python -m pip install --no-deps .
 
 EXPOSE 8000
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -18,6 +18,15 @@ class SensorReading(UuidPrimaryKeyMixin, Base):
     device_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
     )
+    ingestion_request_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("ingestion_requests.id", ondelete="SET NULL"), index=True
+    )
+    protocol_version: Mapped[Optional[str]] = mapped_column(String(20))
+    schema_version: Mapped[Optional[str]] = mapped_column(String(20))
+    boot_id: Mapped[Optional[str]] = mapped_column(String(100))
+    sequence_no: Mapped[Optional[int]] = mapped_column(Integer)
+    uptime_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    time_quality: Mapped[Optional[str]] = mapped_column(String(30))
     sensor_type: Mapped[str] = mapped_column(String(100), nullable=False)
     metric_key: Mapped[str] = mapped_column(String(100), nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)

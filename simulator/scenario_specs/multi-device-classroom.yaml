@@ -1,0 +1,13 @@
+schema_version: "1"
+id: multi-device-classroom
+version: "1.0"
+title: 合成多设备课堂
+seed: 1008
+devices: 3
+cycles:
+  - actions: [heartbeat, primary-normal-reading]
+    network: {drop: false, latency_ms: 20}
+  - actions: [heartbeat, read-failure-log]
+    network: {drop: false, latency_ms: 80}
+  - actions: [heartbeat, primary-normal-reading]
+    network: {drop: false, latency_ms: 0}
