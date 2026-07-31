@@ -19,6 +19,7 @@ function dashboard(overrides: Record<string, unknown> = {}) {
     diagnosis: null,
     guidance: [],
     feedback: null,
+    intervention: null,
     ai_status: {
       framework_ready: true,
       provider_configured: false,
@@ -59,15 +60,27 @@ async function mockStudentApi(page: Page, payload: ReturnType<typeof dashboard>)
       await route.fulfill({ json: payload })
       return
     }
+    const feedback = {
+      id: 'feedback-test',
+      action: 'request_teacher_help',
+      note: null,
+      is_test_data: true,
+      created_at: '2026-07-20T09:01:00Z',
+    }
+    Object.assign(payload, {
+      feedback,
+      intervention: {
+        id: 'intervention-test',
+        status: 'open',
+        version_no: 1,
+        assigned_teacher_user_id: null,
+        resolution_summary: null,
+        updated_at: '2026-07-20T09:01:00Z',
+      },
+    })
     await route.fulfill({
       status: 201,
-      json: {
-        id: 'feedback-test',
-        action: 'request_teacher_help',
-        note: null,
-        is_test_data: true,
-        created_at: '2026-07-20T09:01:00Z',
-      },
+      json: feedback,
     })
   })
 }
@@ -189,5 +202,6 @@ test('shows abnormal evidence and submits teacher-help feedback', async ({ page 
   await expect(page.getByText('连接异常')).toBeVisible()
   await page.getByRole('button', { name: '请求教师协助' }).click()
   await expect(page.getByText('已记录：请求教师协助')).toBeVisible()
+  await expect(page.getByText('求助已提交，等待教师认领')).toBeVisible()
   expect(errors).toEqual([])
 })

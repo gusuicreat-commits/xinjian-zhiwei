@@ -9,16 +9,23 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
   })
   page.on('pageerror', (error) => consoleErrors.push(error.message))
 
-  await page.route('**/api/v1/teacher/**', async (route) => {
-    if (route.request().url().endsWith('/session')) {
-      await route.fulfill({
-        json: {
-          auth_mode: 'review_token_placeholder',
-          notice: 'Phase 9 browser acceptance',
-        },
-      })
-      return
-    }
+  await page.route('**/api/v1/auth/session', async (route) => {
+    await route.fulfill({
+      json: {
+        access_token: 'browser-test-bearer-token',
+        token_type: 'bearer',
+        expires_at: '2099-07-25T08:00:00Z',
+        user_id: 'browser-test-teacher',
+        username: 'browser-teacher',
+        display_name: '浏览器测试教师',
+        roles: ['teacher'],
+        permissions: ['dashboard.read', 'class.read'],
+        is_test_data: true,
+      },
+    })
+  })
+
+  await page.route('**/api/v1/teacher/dashboard', async (route) => {
     await route.fulfill({
       json: {
         generated_at: '2026-07-25T08:00:00Z',
@@ -35,9 +42,7 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
           { status: 'offline', count: 1 },
           { status: 'abnormal', count: 1 },
         ],
-        error_ranking: [
-          { error_code: 'SENSOR_READ_FAILED', count: 5, test_data_only: true },
-        ],
+        error_ranking: [{ error_code: 'SENSOR_READ_FAILED', count: 5, test_data_only: true }],
         error_trend: [
           { day: '2026-07-24', count: 2 },
           { day: '2026-07-25', count: 5 },
@@ -68,6 +73,12 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
         ],
         interventions: [
           {
+            case_id: 'phase9-case',
+            source: 'student_request',
+            status: 'open',
+            version_no: 1,
+            assigned_teacher_user_id: null,
+            resolution_summary: null,
             device_id: 'phase9-browser-device',
             diagnosis_result_id: 'phase9-diagnosis',
             tree_title: '测试故障树',
@@ -94,13 +105,15 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
   })
 
   await page.goto('/teacher/login')
-  await page.getByPlaceholder('审阅访问令牌').fill('browser-test-token-not-a-secret')
+  await page.getByPlaceholder('教师用户名').fill('browser-teacher')
+  await page.getByPlaceholder('密码').fill('browser-test-password')
   await page.getByRole('button', { name: '进入教师端' }).click()
   await expect(page).toHaveURL(/\/teacher$/)
   await expect(page.getByText('在线设备数')).toBeVisible()
   await expect(page.getByText('高频错误排行')).toBeVisible()
   await expect(page.getByText('错误趋势图')).toBeVisible()
   await expect(page.getByText('需要教师介入的设备')).toBeVisible()
+  await expect(page.getByText('学生主动求助')).toBeVisible()
   await expect(page.getByText('SENSOR_READ_FAILED').first()).toBeVisible()
   await expect(page.getByText('知识案例审核入口')).toBeVisible()
   expect(consoleErrors).toEqual([])

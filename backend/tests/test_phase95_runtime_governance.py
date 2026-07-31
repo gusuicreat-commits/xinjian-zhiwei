@@ -415,11 +415,6 @@ def test_formal_knowledge_governance_and_rag_status_filter(
 
         for decision, role, reviewer in (
             ("pending", "organizer", "phase95-organizer"),
-            (
-                "technical_reviewed",
-                "technical_reviewer",
-                "phase95-technical-reviewer",
-            ),
             ("approved", "formal_approver", "phase95-formal-approver"),
         ):
             review_document(
@@ -448,7 +443,6 @@ def test_formal_knowledge_governance_and_rag_status_filter(
         for status in (
             "draft",
             "pending",
-            "technical_reviewed",
             "rejected",
             "withdrawn",
             "superseded",

@@ -148,11 +148,6 @@ def seed() -> dict[str, int | str]:
                         "phase9-test-organizer",
                     ),
                     "pending": (
-                        "technical_reviewed",
-                        "technical_reviewer",
-                        "phase9-test-technical-reviewer",
-                    ),
-                    "technical_reviewed": (
                         "approved",
                         "formal_approver",
                         "phase9-test-formal-approver",

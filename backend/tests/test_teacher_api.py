@@ -1,29 +1,47 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from app.api.dependencies import require_review_access
-from app.main import app
+from app.core.security import hash_password
+from app.models import User
+from app.services.rbac import assign_role, ensure_rbac_catalog
 
 
-def allow_review_access() -> None:
-    app.dependency_overrides[require_review_access] = lambda: None
+def _admin_headers(api_context: dict[str, Any]) -> dict[str, str]:
+    with api_context["session_factory"]() as db:
+        roles = ensure_rbac_catalog(db)
+        admin = User(
+            username="teacher-dashboard-admin",
+            display_name="合成管理员",
+            password_hash=hash_password("synthetic-password", iterations=1_000),
+            is_test_data=True,
+        )
+        db.add(admin)
+        db.flush()
+        assign_role(db, admin, roles["admin"])
+        db.commit()
+    response = api_context["client"].post(
+        "/api/v1/auth/session",
+        json={
+            "username": "teacher-dashboard-admin",
+            "password": "synthetic-password",
+        },
+    )
+    assert response.status_code == 200
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 def test_teacher_access_is_protected(api_context: dict[str, Any]) -> None:
     response = api_context["client"].get("/api/v1/teacher/dashboard")
-    assert response.status_code == 503
+    assert response.status_code == 401
 
 
 def test_teacher_dashboard_empty_state_does_not_invent_domain_data(
     api_context: dict[str, Any],
 ) -> None:
     client = api_context["client"]
-    allow_review_access()
-    session = client.post("/api/v1/teacher/session")
-    response = client.get("/api/v1/teacher/dashboard")
+    headers = _admin_headers(api_context)
+    response = client.get("/api/v1/teacher/dashboard", headers=headers)
 
-    assert session.status_code == 200
-    assert session.json()["auth_mode"] == "review_token_placeholder"
     assert response.status_code == 200
     payload = response.json()
     assert payload["metrics"]["online_devices"] == 0
@@ -38,7 +56,7 @@ def test_teacher_dashboard_aggregates_ingested_and_diagnosed_test_data(
     api_context: dict[str, Any],
 ) -> None:
     client = api_context["client"]
-    allow_review_access()
+    teacher_headers = _admin_headers(api_context)
     device_headers = api_context["headers"]
     now = datetime.now(timezone.utc).isoformat()
     assert (
@@ -70,7 +88,7 @@ def test_teacher_dashboard_aggregates_ingested_and_diagnosed_test_data(
     )
     assert diagnosis.status_code == 201
 
-    response = client.get("/api/v1/teacher/dashboard")
+    response = client.get("/api/v1/teacher/dashboard", headers=teacher_headers)
     assert response.status_code == 200
     payload = response.json()
     assert payload["metrics"]["online_devices"] == 1

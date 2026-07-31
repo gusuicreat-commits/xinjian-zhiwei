@@ -17,12 +17,14 @@ import type {
   StudentDiagnosis,
   StudentFeedback,
   StudentGuidance,
+  StudentIntervention,
 } from '@/types/student'
 
 const props = defineProps<{
   diagnosis: StudentDiagnosis | null
   guidance: StudentGuidance[]
   feedback: StudentFeedback | null
+  intervention: StudentIntervention | null
   feedbackLoading: boolean
   aiStatus: AIStatus
   aiExplanation: AIExplanationResponse | null
@@ -46,6 +48,37 @@ const evidenceItems = computed(
 )
 const rankedCauses = computed(() => props.guidance.flatMap((item) => item.ranked_causes))
 const hints = computed(() => props.guidance.flatMap((item) => item.hints))
+const interventionStatus = computed(() => {
+  if (!props.intervention) return null
+  const statusCopy = {
+    open: {
+      title: '求助已提交，等待教师认领',
+      detail: '该请求已经进入教师端异常处置队列。',
+      type: 'warning',
+    },
+    claimed: {
+      title: '教师正在处理',
+      detail: '工单已被教师认领，请留意后续处理结果。',
+      type: 'primary',
+    },
+    resolved: {
+      title: '教师已标记为解决',
+      detail: props.intervention.resolution_summary || '教师已完成本次协助处理。',
+      type: 'success',
+    },
+    unconfirmed: {
+      title: '教师暂时无法确认',
+      detail: '当前证据不足，教师可能需要更多日志或现场信息。',
+      type: 'warning',
+    },
+    closed: {
+      title: '教师协助已关闭',
+      detail: props.intervention.resolution_summary || '本次教师协助流程已经结束。',
+      type: 'info',
+    },
+  } as const
+  return statusCopy[props.intervention.status]
+})
 
 function scorePercent(score: number): number {
   return Math.min(100, Math.round(score <= 1 ? score * 100 : score))
@@ -176,6 +209,15 @@ function scorePercent(score: number): number {
     </article>
 
     <div v-if="primaryMatch" class="feedback-area">
+      <el-alert
+        v-if="interventionStatus"
+        class="intervention-status-alert"
+        :title="interventionStatus.title"
+        :description="interventionStatus.detail"
+        :type="interventionStatus.type"
+        :closable="false"
+        show-icon
+      />
       <div v-if="feedback" class="feedback-record">
         <CircleCheck /> 已记录：{{ actionLabels[feedback.action] }}
       </div>

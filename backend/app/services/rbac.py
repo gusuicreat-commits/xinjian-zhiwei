@@ -17,12 +17,6 @@ ROLE_PERMISSIONS = {
         "assignment.manage",
         "intervention.manage",
     },
-    "teaching_assistant": {
-        "dashboard.read",
-        "class.read",
-        "assignment.read",
-        "intervention.manage",
-    },
     "admin": {
         "dashboard.read",
         "class.read",
@@ -32,7 +26,6 @@ ROLE_PERMISSIONS = {
         "user.manage",
     },
     "knowledge_organizer": {"knowledge.organize"},
-    "technical_reviewer": {"knowledge.review.technical"},
     "formal_approver": {"knowledge.review.approve"},
 }
 

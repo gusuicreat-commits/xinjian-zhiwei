@@ -146,7 +146,7 @@ def test_invalid_credentials_and_unassigned_user_are_closed(
     assert classes.json() == []
 
 
-def test_all_seven_roles_have_separated_permissions(
+def test_all_five_roles_have_separated_permissions(
     api_context: dict[str, object],
 ) -> None:
     with api_context["session_factory"]() as db:
@@ -157,23 +157,17 @@ def test_all_seven_roles_have_separated_permissions(
         assert set(roles) == {
             "student",
             "teacher",
-            "teaching_assistant",
             "admin",
             "knowledge_organizer",
-            "technical_reviewer",
             "formal_approver",
         }
         assert "knowledge.review.approve" not in ROLE_PERMISSIONS["teacher"]
-        assert "assignment.manage" not in ROLE_PERMISSIONS["teaching_assistant"]
         assert ROLE_PERMISSIONS["knowledge_organizer"] == {"knowledge.organize"}
-        assert ROLE_PERMISSIONS["technical_reviewer"] == {
-            "knowledge.review.technical"
-        }
         assert ROLE_PERMISSIONS["formal_approver"] == {
             "knowledge.review.approve"
         }
         assert db.scalar(select(func.count(Permission.id))) >= 1
-        assert db.scalar(select(func.count(Role.id))) == 7
+        assert db.scalar(select(func.count(Role.id))) == 5
 
 
 def test_student_and_teacher_device_dashboards_are_resource_scoped(

@@ -75,12 +75,16 @@ def main() -> None:
         )
         db.commit()
     print(f"prefix={args.prefix}")
-    print(f"device_id={device_key}")
-    print(f"device_token={device_token}")
-    print(f"student_username={args.prefix}student")
-    print(f"student_password={student_password}")
-    print(f"teacher_username={args.prefix}teacher")
-    print(f"teacher_password={teacher_password}")
+    print(f"student_page_device_id={device_key}")
+    print(f"student_page_device_token={device_token}")
+    print(f"rbac_student_username={args.prefix}student")
+    print(f"rbac_student_password={student_password}")
+    print(f"teacher_page_username={args.prefix}teacher")
+    print(f"teacher_page_password={teacher_password}")
+    print(
+        "The current student page uses the device pair; the RBAC student pair "
+        "is reserved for scoped classroom APIs."
+    )
     print("All credentials above are synthetic, shown once, and were not written to Git.")
 
 

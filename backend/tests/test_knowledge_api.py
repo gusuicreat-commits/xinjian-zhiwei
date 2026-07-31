@@ -21,7 +21,6 @@ def _review_headers(api_context: dict[str, Any]) -> dict[str, dict[str, str]]:
         roles = ensure_rbac_catalog(db)
         for reviewer_role, role_code in (
             ("organizer", "knowledge_organizer"),
-            ("technical_reviewer", "technical_reviewer"),
             ("formal_approver", "formal_approver"),
             ("teacher", "teacher"),
         ):
@@ -57,11 +56,6 @@ def approve_test_document(
     headers = _review_headers(api_context)
     steps = (
         ("pending", "organizer", f"{prefix}-organizer"),
-        (
-            "technical_reviewed",
-            "technical_reviewer",
-            f"{prefix}-technical-reviewer",
-        ),
         ("approved", "formal_approver", f"{prefix}-formal-approver"),
     )
     for decision, reviewer_role, reviewer_ref in steps:
@@ -132,16 +126,6 @@ def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -
             "reviewer_ref": "authorization-test-organizer",
         },
     )
-    client.patch(
-        f"/api/v1/knowledge/documents/{document['id']}/review",
-        headers=headers["technical_reviewer"],
-        json={
-            "decision": "technical_reviewed",
-            "reviewer_role": "technical_reviewer",
-            "reviewer_ref": "authorization-test-technical-reviewer",
-        },
-    )
-
     response = client.patch(
         f"/api/v1/knowledge/documents/{document['id']}/review",
         headers=headers["formal_approver"],

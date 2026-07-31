@@ -99,12 +99,7 @@ export interface DeterministicExplanation {
 
 export interface AIEnhancementState {
   status:
-    | 'disabled'
-    | 'skipped'
-    | 'cache_hit'
-    | 'local_success'
-    | 'cloud_success'
-    | 'failed_fallback'
+    'disabled' | 'skipped' | 'cache_hit' | 'local_success' | 'cloud_success' | 'failed_fallback'
   trigger_reason: string
   route: string
   route_path: string
@@ -154,12 +149,7 @@ export interface AIExplanationResponse {
   knowledge_references: AIKnowledgeReference[]
   notice: string
   enhancement_status:
-    | 'disabled'
-    | 'skipped'
-    | 'cache_hit'
-    | 'local_success'
-    | 'cloud_success'
-    | 'failed_fallback'
+    'disabled' | 'skipped' | 'cache_hit' | 'local_success' | 'cloud_success' | 'failed_fallback'
   trigger_reason: string
   route: string
   route_path: string
@@ -226,6 +216,15 @@ export interface StudentFeedback {
   created_at: string
 }
 
+export interface StudentIntervention {
+  id: string
+  status: 'open' | 'claimed' | 'resolved' | 'unconfirmed' | 'closed'
+  version_no: number
+  assigned_teacher_user_id: string | null
+  resolution_summary: string | null
+  updated_at: string
+}
+
 export interface StudentDashboard {
   generated_at: string
   task: CurrentTask
@@ -235,6 +234,7 @@ export interface StudentDashboard {
   diagnosis: StudentDiagnosis | null
   guidance: StudentGuidance[]
   feedback: StudentFeedback | null
+  intervention: StudentIntervention | null
   ai_status: AIStatus
   ai_explanation: AIExplanationResponse | null
   episode: {

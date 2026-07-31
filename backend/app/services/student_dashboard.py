@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models.ai_call_record import AICallRecord
+from app.models.classroom import DeviceBinding
 from app.models.device import Device
 from app.models.device_log import DeviceLog
 from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
+from app.models.intervention import InterventionCase
 from app.models.sensor_reading import SensorReading
 from app.schemas.student import (
     CurrentTaskSummary,
@@ -20,11 +22,13 @@ from app.schemas.student import (
     StudentFeedbackCreate,
     StudentFeedbackItem,
     StudentGuidanceItem,
+    StudentInterventionSummary,
     StudentLogItem,
     StudentReadingItem,
 )
 from app.services.ai_diagnosis import get_ai_status, serialize_ai_call
 from app.services.device_ingest import calculate_device_status
+from app.services.interventions import ensure_intervention_case
 
 
 def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResponse:
@@ -51,6 +55,7 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
     feedback = None
     ai_call = None
     episode = None
+    intervention = None
     if diagnosis is not None:
         guidance = db.scalars(
             select(GuidanceHistory)
@@ -73,6 +78,12 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
             select(DiagnosisEpisode)
             .where(DiagnosisEpisode.last_diagnosis_result_id == diagnosis.id)
             .order_by(DiagnosisEpisode.updated_at.desc())
+            .limit(1)
+        )
+        intervention = db.scalar(
+            select(InterventionCase)
+            .where(InterventionCase.diagnosis_result_id == diagnosis.id)
+            .order_by(InterventionCase.updated_at.desc())
             .limit(1)
         )
     settings = get_settings()
@@ -153,6 +164,18 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
             if feedback is not None
             else None
         ),
+        intervention=(
+            StudentInterventionSummary(
+                id=intervention.id,
+                status=intervention.status,
+                version_no=intervention.version_no,
+                assigned_teacher_user_id=intervention.assigned_teacher_user_id,
+                resolution_summary=intervention.resolution_summary,
+                updated_at=intervention.updated_at,
+            )
+            if intervention is not None
+            else None
+        ),
         ai_status=get_ai_status(settings),
         ai_explanation=serialize_ai_call(ai_call, settings) if ai_call is not None else None,
         episode=(
@@ -204,6 +227,25 @@ def save_student_feedback(
         elif payload.action == "request_teacher_help":
             episode.status = "escalated"
             episode.current_hint_level = 4
+    if payload.action == "request_teacher_help":
+        binding = db.scalar(
+            select(DeviceBinding)
+            .where(
+                DeviceBinding.device_id == device.id,
+                DeviceBinding.is_active.is_(True),
+                DeviceBinding.student_user_id.is_not(None),
+            )
+            .order_by(DeviceBinding.created_at)
+            .limit(1)
+        )
+        if binding is not None and binding.student_user_id is not None:
+            ensure_intervention_case(
+                db,
+                diagnosis,
+                class_id=binding.class_id,
+                actor_user_id=binding.student_user_id,
+                source="student_device_feedback",
+            )
     db.commit()
     db.refresh(record)
     return record

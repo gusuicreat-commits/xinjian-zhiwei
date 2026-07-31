@@ -61,9 +61,11 @@ Phase 9.6 使用实际仓库状态作为权威证据，并通过本审计记录�
 
 ## 5. 知识治理审计
 
-- 状态：`draft`、`pending`、`technical_reviewed`、`approved`、`rejected`、`withdrawn`、`superseded`。
-- 角色：`organizer`、`technical_reviewer`、`formal_approver`。
-- 禁止整理人技术/正式自审；正式批准人与技术审核人必须不同。
+> 本文最初记录的三角色流程已由 `20260730_0015` 收敛，以下为当前有效设计。
+
+- 状态：`draft`、`pending`、`approved`、`rejected`、`withdrawn`、`superseded`。
+- 角色：`organizer`、`formal_approver`。
+- 禁止整理人正式批准自己提交的资料。
 - 正式来源要求治理类型、URI、版本、整理人和适用硬件。
 - 官方资料要求页码、章节或段落定位。
 - 已验证案例要求最终修复动作和根因置信等级。

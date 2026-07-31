@@ -44,10 +44,8 @@ FORMAL_SOURCE_TYPES = {
 ROOT_CAUSE_CONFIDENCE = {"confirmed", "high", "medium", "low", "unknown"}
 REVIEW_TRANSITIONS = {
     ("draft", "pending"): "organizer",
-    ("pending", "technical_reviewed"): "technical_reviewer",
-    ("pending", "rejected"): "technical_reviewer",
-    ("technical_reviewed", "approved"): "formal_approver",
-    ("technical_reviewed", "rejected"): "formal_approver",
+    ("pending", "approved"): "formal_approver",
+    ("pending", "rejected"): "formal_approver",
     ("approved", "withdrawn"): "formal_approver",
     ("approved", "superseded"): "formal_approver",
     ("rejected", "draft"): "organizer",
@@ -529,27 +527,15 @@ def review_document(
     metadata = document.chunks[0].metadata_json if document.chunks else {}
     organizer_ref = metadata.get("organizer_ref")
     if (
-        payload.reviewer_role in {"technical_reviewer", "formal_approver"}
+        payload.reviewer_role == "formal_approver"
         and organizer_ref
         and payload.reviewer_ref == organizer_ref
     ):
         raise KnowledgeServiceError(
             409,
             "KNOWLEDGE_SELF_REVIEW_FORBIDDEN",
-            "The organizer cannot perform technical or formal review",
+            "The organizer cannot perform formal approval",
         )
-    if payload.reviewer_role == "formal_approver":
-        technical_reviewers = {
-            review.reviewer_ref
-            for review in document.reviews
-            if review.reviewer_role == "technical_reviewer"
-        }
-        if payload.reviewer_ref in technical_reviewers:
-            raise KnowledgeServiceError(
-                409,
-                "KNOWLEDGE_REVIEW_SEPARATION_REQUIRED",
-                "The formal approver must differ from the technical reviewer",
-            )
     if payload.decision == "approved" and not document.source.authorization_scope:
         raise KnowledgeServiceError(
             409,
@@ -766,7 +752,7 @@ def get_knowledge_status(db: Session, settings: Settings) -> KnowledgeStatusResp
             .select_from(KnowledgeDocument)
             .where(
                 KnowledgeDocument.review_status.in_(
-                    ("draft", "pending", "technical_reviewed")
+                    ("draft", "pending")
                 )
             )
         )

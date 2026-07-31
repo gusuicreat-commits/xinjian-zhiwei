@@ -1,10 +1,18 @@
-export interface TeacherCredentials {
-  reviewToken: string
-}
-
-export interface TeacherSession {
-  auth_mode: 'review_token_placeholder'
-  notice: string
+export interface TeacherIntervention {
+  case_id: string | null
+  source: 'student_request' | 'manual_request' | 'automatic_guidance'
+  status: 'open' | 'claimed' | 'resolved' | 'unconfirmed' | 'closed' | 'recommended'
+  version_no: number | null
+  assigned_teacher_user_id: string | null
+  resolution_summary: string | null
+  device_id: string
+  diagnosis_result_id: string
+  tree_title: string
+  failure_count: number
+  anomaly_duration_seconds: number
+  created_at: string
+  is_test_data: boolean
+  student_identity_configured: boolean
 }
 
 export interface TeacherDashboard {
@@ -43,16 +51,7 @@ export interface TeacherDashboard {
     occurred_at: string
     is_test_data: boolean
   }>
-  interventions: Array<{
-    device_id: string
-    diagnosis_result_id: string
-    tree_title: string
-    failure_count: number
-    anomaly_duration_seconds: number
-    created_at: string
-    is_test_data: boolean
-    student_identity_configured: boolean
-  }>
+  interventions: TeacherIntervention[]
   knowledge_cases: {
     configured: boolean
     framework_ready: boolean

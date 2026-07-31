@@ -84,7 +84,7 @@ def readiness_status(db: DatabaseSession) -> ReadinessResponse:
             label="正式知识",
             status="ready" if knowledge_ready else "blocked",
             evidence=f"已批准非测试文档数：{formal_approved}",
-            required_input=None if formal_approved else "可授权资料与三角色审核结论",
+            required_input=None if formal_approved else "可授权资料与双角色审核结论",
         ),
         ReadinessItem(
             key="ai",

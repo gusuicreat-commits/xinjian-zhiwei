@@ -20,7 +20,6 @@ from app.models.diagnosis_result import DiagnosisResult
 from app.models.intervention import (
     ClassroomMessage,
     InterventionCase,
-    InterventionEvent,
 )
 from app.schemas.intervention import (
     ClassroomMessageCreate,
@@ -30,7 +29,12 @@ from app.schemas.intervention import (
     InterventionTimelineItem,
 )
 from app.services.auth import user_access
-from app.services.interventions import InterventionConflict, apply_action, timeline
+from app.services.interventions import (
+    InterventionConflict,
+    apply_action,
+    ensure_intervention_case,
+    timeline,
+)
 
 router = APIRouter(prefix="/teacher-workflow", tags=["teacher-workflow"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -66,7 +70,7 @@ def _teacher_has_class_access(
     roles = _roles(db, actor)
     if "admin" in roles:
         return True
-    if not roles.intersection({"teacher", "teaching_assistant"}):
+    if "teacher" not in roles:
         return False
     return (
         db.scalar(
@@ -106,7 +110,7 @@ def _accessible_binding_for_diagnosis(
     )
     if "admin" in roles:
         binding = db.scalar(query.order_by(DeviceBinding.created_at))
-    elif roles.intersection({"teacher", "teaching_assistant"}):
+    elif "teacher" in roles:
         binding = db.scalar(
             query.join(
                 TeachingAssignment,
@@ -138,7 +142,7 @@ def _assert_case_access(
     roles = _roles(db, actor)
     if "admin" in roles:
         return
-    if roles.intersection({"teacher", "teaching_assistant"}):
+    if "teacher" in roles:
         _assert_teacher_class_access(db, actor, case.class_id)
         return
     if allow_student and "student" in roles:
@@ -177,32 +181,12 @@ def open_intervention(
     if diagnosis is None:
         raise HTTPException(status_code=404, detail="diagnosis not found")
     binding = _accessible_binding_for_diagnosis(db, actor, diagnosis)
-    existing = db.scalar(
-        select(InterventionCase).where(InterventionCase.diagnosis_result_id == diagnosis_id)
-    )
-    if existing is not None:
-        return _case_response(existing)
-    case = InterventionCase(
-        diagnosis_result_id=diagnosis_id,
+    case = ensure_intervention_case(
+        db,
+        diagnosis,
         class_id=binding.class_id,
-        status="open",
-        version_no=1,
-        is_test_data=diagnosis.is_test_data,
-    )
-    db.add(case)
-    db.flush()
-    db.add(
-        InterventionEvent(
-            case_id=case.id,
-            actor_user_id=actor.id,
-            action="request_help",
-            from_status=None,
-            to_status="open",
-            note=None,
-            is_private=False,
-            metadata_json={"diagnosis_result_id": diagnosis_id},
-            created_at=utc_now(),
-        )
+        actor_user_id=actor.id,
+        source="authenticated_user_request",
     )
     try:
         db.commit()

@@ -79,10 +79,10 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 ### GET `/diagnosis/interventions`
 
-返回达到 Level 4 的设备与故障树记录。旧教师总览页面仍使用环境变量
-`REVIEW_ACCESS_TOKEN` 和 `X-Review-Token` 作为临时、默认关闭的审阅边界；未配置返回
-503，凭据错误返回 401。P4 的课堂资源接口已使用 Bearer 会话与班级范围 RBAC，后续
-正式前端迁移完成后应移除旧令牌边界。
+返回达到 Level 4 的设备与故障树记录。该兼容查询仍使用环境变量
+`REVIEW_ACCESS_TOKEN` 和 `X-Review-Token` 作为默认关闭的知识/运维工作区边界；未配置
+返回 503，凭据错误返回 401。教师前端不再调用此兼容接口，而是使用正式 Bearer 会话的
+`/teacher/dashboard`。
 
 ### GET `/diagnosis/ai/status`
 
@@ -104,25 +104,38 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 ### GET `/student/dashboard`
 
-使用设备凭据读取当前设备状态、最近 100 条日志、最近 500 条读数、最新诊断、对应提示及最新反馈。实验任务模型尚未建立，因此任务始终明确返回 `configured=false`，不会生成虚构任务。
+使用设备凭据读取当前设备状态、最近 100 条日志、最近 500 条读数、最新诊断、对应提示、
+最新反馈及该诊断对应的教师处置状态。处置状态只包含公开结果，不返回教师私人备注。
 
 ### POST `/student/diagnoses/{diagnosis_result_id}/feedback`
 
-保存 `resolved`、`unresolved` 或 `request_teacher_help`。只能反馈当前凭据所属设备的诊断结果；其他设备或不存在的结果返回 404。反馈继承诊断的 `is_test_data` 标记。
-
-### POST `/teacher/session`
-
-使用 `X-Review-Token` 验证临时教师审阅会话。该接口不创建教师账号，也不签发服务端会话；`REVIEW_ACCESS_TOKEN` 未配置时返回 503。
+保存 `resolved`、`unresolved` 或 `request_teacher_help`。只能反馈当前凭据所属设备的诊断
+结果；其他设备或不存在的结果返回 404。反馈继承诊断的 `is_test_data` 标记。选择
+`request_teacher_help` 时，若设备存在启用中的班级与学生绑定，服务端以诊断结果为唯一键
+幂等创建 `intervention_cases` 工单和公开 `request_help` 事件；未配置归属时只保存反馈与
+Episode 升级状态，不猜测学生或班级。
 
 ### GET `/teacher/dashboard`
 
-返回设备在线/离线/未上报与异常数量、互斥的设备状态图数据、全部诊断记录的错误排行与七日趋势、最新异常设备、最近 80 条设备日志及 Level 4 介入队列。学生、班级和实验任务尚未建模，对应结构明确返回 `configured=false`，实验完成率返回 `null`。知识卡片返回实际知识来源、文档、审核知识块和向量数量。
+要求 `/auth/session` 签发的 Bearer 会话，且账号必须具有 `teacher` 或 `admin` 角色。
+教师只统计授课班级绑定的设备；管理员可查看全部设备。返回在线/离线/未上报与异常数量、
+互斥状态图、错误排行、七日趋势、最新异常、最近日志，以及学生求助工单与自动 Level 4
+建议合并后的介入列表。同一诊断已有工单时不会重复显示自动建议。正式实验结果尚未导入
+时，完成率保持 `null`，不会生成虚构进度。
+
+### POST `/teacher-workflow/interventions/{case_id}/actions`
+
+要求具有 `intervention.manage` 权限且能访问工单所属班级。前端闭环使用
+`claim → resolve → close`；每次请求必须携带当前 `expected_version`，并发版本不一致返回
+409。`resolve` 必须提供公开解决说明，结果会通过学生 Dashboard 回显；解决或关闭同时将
+对应诊断 Episode 标记为已解决。服务端仍支持转交、内部备注和“证据不足”状态，私人备注
+不会进入学生端响应。
 
 ## 知识库接口
 
 来源登记、文件导入、知识块编辑和检索管理接口仍使用临时 `X-Review-Token` 工作区
 边界；文档审核状态流转使用 `/auth/session` 签发的 Bearer 会话，并校验知识整理人、
-技术审核人和正式批准人三个独立 RBAC 角色。仓库没有预置正式审核账号。
+正式批准人两个独立 RBAC 角色。仓库没有预置正式审核账号。
 
 ### GET `/knowledge/status`
 
@@ -142,11 +155,13 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 ```text
 draft --organizer--> pending
-pending --technical_reviewer--> technical_reviewed
-technical_reviewed --formal_approver--> approved
+pending --formal_approver--> approved
 ```
 
-还支持 `rejected`、`withdrawn` 和 `superseded`。整理人不得兼任本条技术审核人，技术审核人与正式批准人也必须分离。来源未记录 `authorization_scope` 时不能批准。状态同步到文档的全部知识块，并追加不可覆盖的审核历史。
+正式批准人也可将 `pending` 驳回为 `rejected`；批准后还支持 `withdrawn` 和
+`superseded`，相应资料可由整理员重新回到 `draft`。整理人不得正式批准自己提交的资料。
+来源未记录 `authorization_scope` 时不能批准。状态同步到文档的全部知识块，并追加不可
+覆盖的审核历史。
 
 ### POST `/knowledge/documents/{document_id}/embeddings`
 
@@ -167,11 +182,11 @@ technical_reviewed --formal_approver--> approved
 | 409 | 来源重复、授权缺失、文档未审核或 Embedding 配置不一致 |
 | 413 | 提取文本超过配置的最大字符数 |
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
-| 503 | 教师审阅凭据或正式 Embedding Provider 尚未配置 |
+| 503 | 知识工作区审阅凭据或正式 Embedding Provider 尚未配置 |
 
-当前继续提供设备凭据保护的兼容学生 API，以及审阅令牌保护的教师聚合和知识库管理
-API；P4 另行建立了正式账号、班级、实验任务与 RBAC 通用接口，但长期数据库中的正式
-记录仍为 0，也不提供公开设备注册。Phase 9.5 已固定 DeepSeek 官方 API、
+当前继续提供设备凭据保护的学生总览 API，以及审阅令牌保护的知识工作区管理 API；
+教师聚合已迁移到正式 Bearer 账号、班级范围和 RBAC。长期数据库中的正式记录仍为 0，
+也不提供公开设备注册。Phase 9.5 已固定 DeepSeek 官方 API、
 `deepseek-v4-flash` 和非思考模式，但 `AI_ENABLED=false`、密钥为空，因此不代表已经
 配置或调用真实 AI 服务。统一 `AIClient` 仍作为可替换边界。
 

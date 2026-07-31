@@ -16,6 +16,7 @@ import {
   UserFilled,
   Warning,
 } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -24,6 +25,7 @@ import TeacherErrorRankingChart from '@/components/TeacherErrorRankingChart.vue'
 import TeacherErrorTrendChart from '@/components/TeacherErrorTrendChart.vue'
 import { useTeacherDashboardStore } from '@/stores/teacherDashboard'
 import { useTeacherSessionStore } from '@/stores/teacherSession'
+import type { TeacherIntervention } from '@/types/teacher'
 
 const router = useRouter()
 const sessionStore = useTeacherSessionStore()
@@ -84,8 +86,8 @@ const navItems = [
 ]
 
 async function refresh(): Promise<void> {
-  if (!sessionStore.credentials) return
-  await dashboardStore.load(sessionStore.credentials)
+  if (!sessionStore.accessToken) return
+  await dashboardStore.load(sessionStore.accessToken)
   await nextTick()
   syncActiveNavigation()
 }
@@ -124,6 +126,65 @@ function selectDevice(deviceId: string): void {
     .getElementById('device-log-detail')
     ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
+const interventionStatusLabels: Record<TeacherIntervention['status'], string> = {
+  open: '待认领',
+  claimed: '处理中',
+  resolved: '已解决',
+  unconfirmed: '待补充证据',
+  closed: '已关闭',
+  recommended: '建议介入',
+}
+
+async function handleIntervention(item: TeacherIntervention): Promise<void> {
+  if (!sessionStore.accessToken || !item.case_id || item.version_no === null) return
+  try {
+    if (item.status === 'open') {
+      await dashboardStore.act(sessionStore.accessToken, item.case_id, {
+        action: 'claim',
+        expected_version: item.version_no,
+        is_private: false,
+      })
+      ElMessage.success('已认领该学生求助')
+      return
+    }
+    if (item.status === 'claimed') {
+      const result = await ElMessageBox.prompt(
+        '请填写将同步给学生的处理结果。',
+        '解决教师协助工单',
+        {
+          confirmButtonText: '标记为已解决',
+          cancelButtonText: '取消',
+          inputPlaceholder: '例如：已指导重新连接传感器并确认读数恢复',
+          inputValidator: (value) => Boolean(value.trim()) || '请填写处理结果',
+        },
+      )
+      await dashboardStore.act(sessionStore.accessToken, item.case_id, {
+        action: 'resolve',
+        expected_version: item.version_no,
+        note: result.value.trim(),
+        is_private: false,
+      })
+      ElMessage.success('处理结果已同步给学生')
+      return
+    }
+    if (item.status === 'resolved' || item.status === 'unconfirmed') {
+      await ElMessageBox.confirm('关闭后该工单将保留在历史记录中。', '关闭教师协助工单', {
+        confirmButtonText: '确认关闭',
+        cancelButtonText: '取消',
+        type: 'warning',
+      })
+      await dashboardStore.act(sessionStore.accessToken, item.case_id, {
+        action: 'close',
+        expected_version: item.version_no,
+        is_private: false,
+      })
+      ElMessage.success('工单已关闭')
+    }
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error('工单操作失败，可能已被其他教师更新，请刷新后重试')
+  }
+}
 async function logout(): Promise<void> {
   sessionStore.logout()
   dashboardStore.clear()
@@ -156,7 +217,10 @@ onBeforeUnmount(() => {
       <button type="button" class="teacher-icon-button" aria-label="通知"><Bell /></button>
       <div class="teacher-user">
         <span><UserFilled /></span>
-        <div><strong>教师审阅会话</strong><small>临时令牌授权</small></div>
+        <div>
+          <strong>{{ sessionStore.session?.display_name || '教师账号' }}</strong>
+          <small>Bearer 账号会话</small>
+        </div>
       </div>
       <button type="button" class="teacher-icon-button" aria-label="退出教师端" @click="logout">
         <SwitchButton />
@@ -283,7 +347,13 @@ onBeforeUnmount(() => {
               <h2>
                 设备异常列表 <i>{{ filteredAnomalies.length }}</i>
               </h2>
-              <small>未建立学生归属关系</small>
+              <small>
+                {{
+                  filteredAnomalies.some((item) => item.student_identity_configured)
+                    ? '学生归属来自设备绑定'
+                    : '未建立学生归属关系'
+                }}
+              </small>
             </header>
             <div v-if="filteredAnomalies.length" class="teacher-table-wrap">
               <table>
@@ -354,17 +424,49 @@ onBeforeUnmount(() => {
                 <i>{{ dashboard.interventions.length }}</i>
               </header>
               <div v-if="dashboard.interventions.length" class="teacher-action-list">
-                <button
+                <div
                   v-for="item in dashboard.interventions"
                   :key="item.diagnosis_result_id"
-                  type="button"
+                  class="teacher-action-item"
                   @click="selectDevice(item.device_id)"
                 >
                   <span
                     ><b>{{ item.device_id }}</b
-                    ><small>{{ item.tree_title }}</small></span
-                  ><em>失败 {{ item.failure_count }} 次</em>
-                </button>
+                    ><small>{{ item.tree_title }}</small>
+                    <small class="intervention-source">
+                      {{
+                        item.source === 'student_request'
+                          ? '学生主动求助'
+                          : item.source === 'automatic_guidance'
+                            ? '系统建议介入'
+                            : '人工创建'
+                      }}
+                    </small></span
+                  >
+                  <div class="intervention-action-copy">
+                    <em :class="`intervention-${item.status}`">{{
+                      interventionStatusLabels[item.status]
+                    }}</em>
+                    <el-button
+                      v-if="
+                        item.case_id &&
+                        ['open', 'claimed', 'resolved', 'unconfirmed'].includes(item.status)
+                      "
+                      size="small"
+                      :type="item.status === 'claimed' ? 'success' : 'primary'"
+                      :loading="dashboardStore.actionLoadingCaseId === item.case_id"
+                      @click.stop="handleIntervention(item)"
+                    >
+                      {{
+                        item.status === 'open'
+                          ? '认领'
+                          : item.status === 'claimed'
+                            ? '解决'
+                            : '关闭'
+                      }}
+                    </el-button>
+                  </div>
+                </div>
               </div>
               <el-empty v-else description="暂无 Level 4 介入记录" :image-size="48" />
             </article>

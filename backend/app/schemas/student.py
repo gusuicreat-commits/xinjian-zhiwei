@@ -84,6 +84,15 @@ class StudentFeedbackItem(StrictStudentModel):
     created_at: datetime
 
 
+class StudentInterventionSummary(StrictStudentModel):
+    id: str
+    status: Literal["open", "claimed", "resolved", "unconfirmed", "closed"]
+    version_no: int
+    assigned_teacher_user_id: Optional[str]
+    resolution_summary: Optional[str]
+    updated_at: datetime
+
+
 class StudentDashboardResponse(StrictStudentModel):
     generated_at: datetime
     task: CurrentTaskSummary
@@ -93,6 +102,7 @@ class StudentDashboardResponse(StrictStudentModel):
     diagnosis: Optional[StudentDiagnosisSummary]
     guidance: list[StudentGuidanceItem]
     feedback: Optional[StudentFeedbackItem]
+    intervention: Optional[StudentInterventionSummary] = None
     ai_status: AIStatusResponse
     ai_explanation: Optional[AIExplanationResponse]
     episode: Optional[dict[str, Any]] = None

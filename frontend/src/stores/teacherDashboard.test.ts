@@ -38,7 +38,7 @@ describe('teacher dashboard store', () => {
     vi.mocked(getTeacherDashboard).mockResolvedValue(dashboard)
     const store = useTeacherDashboardStore()
 
-    await store.load({ reviewToken: 'explicit-test-token' })
+    await store.load('explicit-test-bearer-token')
 
     expect(store.state).toBe('ready')
     expect(store.dashboard?.metrics.experiment_completion_rate).toBeNull()
@@ -49,7 +49,7 @@ describe('teacher dashboard store', () => {
     vi.mocked(getTeacherDashboard).mockRejectedValue(new Error('offline'))
     const store = useTeacherDashboardStore()
 
-    await store.load({ reviewToken: 'explicit-test-token' })
+    await store.load('explicit-test-bearer-token')
 
     expect(store.state).toBe('error')
     expect(store.errorMessage).toContain('数据加载失败')

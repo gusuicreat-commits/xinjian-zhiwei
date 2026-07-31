@@ -126,7 +126,7 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 5. DeepSeek Provider、`deepseek-v4-flash` 和非思考模式已经确定；真实 API Key、正式预算、Embedding、ESP32 型号、接线、账号和知识来源仍待确认。
 6. 上传限流与保留 dry-run 已实现；设备令牌轮换、生产保留策略和责任人仍待确认。
 7. 背景 Word 的旧技术草案与固定方案有差异，已在 `PROJECT_CONTEXT.md` 中明确裁决，后续不得同时保留两套实现。
-8. 当前源码和 Docker 版本为 `1.0.0`，迁移 Head 为 `20260727_0014`；AI 总开关默认
+8. 当前源码和 Docker 版本为 `1.0.0`，迁移 Head 为 `20260730_0015`；AI 总开关默认
    关闭，无 Key 时保持 Disabled。
 
 物理拓扑、USB/Wi-Fi 职责、局域网/公网边界和三种部署模式见

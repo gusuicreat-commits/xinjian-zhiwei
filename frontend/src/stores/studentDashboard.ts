@@ -1,11 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import {
-  createDiagnosisFeedback,
-  getStudentDashboard,
-  requestAIExplanation,
-} from '@/api/student'
+import { createDiagnosisFeedback, getStudentDashboard, requestAIExplanation } from '@/api/student'
 import {
   classifyRequestFailure,
   failureMessage,
@@ -50,6 +46,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
         dashboard.value.diagnosis.id,
         action,
       )
+      await load(credentials)
     } finally {
       feedbackLoading.value = false
     }

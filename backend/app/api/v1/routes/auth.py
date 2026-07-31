@@ -122,7 +122,7 @@ def my_classes(user: CurrentUser, db: DatabaseSession) -> list[ClassroomSummary]
             select(Classroom, Course).join(Course, Course.id == Classroom.course_id)
         ).all()
         access_role = "admin"
-    elif {"teacher", "teaching_assistant"} & set(roles):
+    elif "teacher" in roles:
         rows = db.execute(
             select(Classroom, Course)
             .join(Course, Course.id == Classroom.course_id)
@@ -158,7 +158,7 @@ def _accessible_devices(db: Session, user: User) -> list[Device]:
     role_set = set(roles)
     if "admin" in role_set:
         query = select(Device).where(Device.is_active.is_(True))
-    elif role_set & {"teacher", "teaching_assistant"}:
+    elif "teacher" in role_set:
         query = (
             select(Device)
             .join(DeviceBinding, DeviceBinding.device_id == Device.id)

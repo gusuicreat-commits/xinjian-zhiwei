@@ -64,6 +64,7 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
       diagnosis: null,
       guidance: [],
       feedback: null,
+      intervention: null,
       feedbackLoading: false,
       aiStatus,
       aiExplanation: null,
@@ -112,5 +113,21 @@ describe('DiagnosisPanel', () => {
 
     await wrapper.findAll('button').at(-1)?.trigger('click')
     expect(wrapper.emitted('feedback')).toEqual([['request_teacher_help']])
+  })
+
+  it('shows the public teacher resolution returned by the workflow', () => {
+    const wrapper = mountPanel({
+      diagnosis,
+      guidance: [guidance],
+      intervention: {
+        id: 'case-test',
+        status: 'resolved',
+        version_no: 3,
+        assigned_teacher_user_id: 'teacher-test',
+        resolution_summary: '已指导重新连接传感器并确认读数恢复。',
+        updated_at: '2026-07-20T08:10:00Z',
+      },
+    })
+    expect(wrapper.text()).toContain('教师已标记为解决')
   })
 })

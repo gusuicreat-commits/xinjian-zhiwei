@@ -215,7 +215,6 @@ def review_knowledge_document(
 ) -> KnowledgeReviewResponse:
     required_role = {
         "organizer": "knowledge_organizer",
-        "technical_reviewer": "technical_reviewer",
         "formal_approver": "formal_approver",
     }[payload.reviewer_role]
     roles, _ = user_access(db, actor.id)

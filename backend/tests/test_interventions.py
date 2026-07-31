@@ -6,6 +6,7 @@ from app.models import (
     Course,
     Device,
     DeviceBinding,
+    DiagnosisEpisode,
     DiagnosisResult,
     InterventionCase,
     TeachingAssignment,
@@ -246,3 +247,157 @@ def test_student_request_teacher_queue_scope_and_unconfirmed_flow(
     with api_context["session_factory"]() as db:
         diagnosis = db.get(DiagnosisResult, diagnosis_id)
         assert diagnosis.evidence == original_evidence
+
+
+def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
+    api_context: dict[str, object],
+) -> None:
+    with api_context["session_factory"]() as db:
+        roles = ensure_rbac_catalog(db)
+        student = User(
+            username="feedback-workflow-student",
+            display_name="合成设备会话学生",
+            password_hash=hash_password("synthetic-password", iterations=1_000),
+            is_test_data=True,
+        )
+        teacher = User(
+            username="feedback-workflow-teacher",
+            display_name="合成闭环教师",
+            password_hash=hash_password("synthetic-password", iterations=1_000),
+            is_test_data=True,
+        )
+        course = Course(code="FEEDBACK-WORKFLOW", title="合成闭环课程", is_test_data=True)
+        db.add_all([student, teacher, course])
+        db.flush()
+        classroom = Classroom(
+            course_id=course.id,
+            code="FEEDBACK-WORKFLOW-A",
+            name="合成闭环班级",
+            is_test_data=True,
+        )
+        db.add(classroom)
+        db.flush()
+        assign_role(db, student, roles["student"])
+        assign_role(db, teacher, roles["teacher"])
+        db.add(TeachingAssignment(class_id=classroom.id, user_id=teacher.id))
+        device = db.query(Device).filter_by(device_key="phase2-test-device").one()
+        db.add(
+            DeviceBinding(
+                device_id=device.id,
+                class_id=classroom.id,
+                student_user_id=student.id,
+                is_active=True,
+            )
+        )
+        diagnosis = DiagnosisResult(
+            device_id=device.id,
+            evaluated_at=utc_now(),
+            ruleset_version="synthetic",
+            ruleset_hash="2" * 64,
+            input_fingerprint="3" * 64,
+            matched_rules=[
+                {
+                    "rule_id": "synthetic-help-rule",
+                    "error_type": "SYNTHETIC_HELP",
+                    "priority": 10,
+                    "summary": "合成求助异常",
+                    "evidence": [],
+                }
+            ],
+            evidence=[],
+            context_snapshot={"is_test_data": True},
+            is_test_data=True,
+        )
+        db.add(diagnosis)
+        db.flush()
+        now = utc_now()
+        db.add(
+            DiagnosisEpisode(
+                device_id=device.id,
+                primary_error_code="SYNTHETIC_HELP",
+                status="open",
+                started_at=now,
+                last_seen_at=now,
+                failure_count=1,
+                latest_context_fingerprint="4" * 64,
+                current_hint_level=1,
+                last_diagnosis_result_id=diagnosis.id,
+            )
+        )
+        db.commit()
+        diagnosis_id = diagnosis.id
+
+    client = api_context["client"]
+    feedback = client.post(
+        f"/api/v1/student/diagnoses/{diagnosis_id}/feedback",
+        headers=api_context["headers"],
+        json={"action": "request_teacher_help", "note": "请教师协助"},
+    )
+    assert feedback.status_code == 201
+    student_dashboard = client.get(
+        "/api/v1/student/dashboard", headers=api_context["headers"]
+    )
+    assert student_dashboard.status_code == 200
+    intervention = student_dashboard.json()["intervention"]
+    assert intervention["status"] == "open"
+    case_id = intervention["id"]
+
+    teacher_login = client.post(
+        "/api/v1/auth/session",
+        json={
+            "username": "feedback-workflow-teacher",
+            "password": "synthetic-password",
+        },
+    )
+    assert teacher_login.status_code == 200
+    teacher_headers = {
+        "Authorization": f"Bearer {teacher_login.json()['access_token']}"
+    }
+    teacher_dashboard = client.get(
+        "/api/v1/teacher/dashboard", headers=teacher_headers
+    )
+    assert teacher_dashboard.status_code == 200
+    queue_item = next(
+        item
+        for item in teacher_dashboard.json()["interventions"]
+        if item["case_id"] == case_id
+    )
+    assert queue_item["source"] == "student_request"
+    assert queue_item["status"] == "open"
+
+    claimed = client.post(
+        f"/api/v1/teacher-workflow/interventions/{case_id}/actions",
+        headers=teacher_headers,
+        json={
+            "action": "claim",
+            "expected_version": queue_item["version_no"],
+            "is_private": False,
+        },
+    )
+    assert claimed.status_code == 200
+    assert (
+        client.get("/api/v1/student/dashboard", headers=api_context["headers"])
+        .json()["intervention"]["status"]
+        == "claimed"
+    )
+
+    resolved = client.post(
+        f"/api/v1/teacher-workflow/interventions/{case_id}/actions",
+        headers=teacher_headers,
+        json={
+            "action": "resolve",
+            "expected_version": claimed.json()["version_no"],
+            "note": "已指导重新连接传感器并确认读数恢复。",
+            "is_private": False,
+        },
+    )
+    assert resolved.status_code == 200
+    final_dashboard = client.get(
+        "/api/v1/student/dashboard", headers=api_context["headers"]
+    ).json()
+    assert final_dashboard["intervention"]["status"] == "resolved"
+    assert (
+        final_dashboard["intervention"]["resolution_summary"]
+        == "已指导重新连接传感器并确认读数恢复。"
+    )
+    assert final_dashboard["episode"]["status"] == "resolved"

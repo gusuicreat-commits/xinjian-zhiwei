@@ -10,11 +10,11 @@ from app.ai.clients import (
     DisabledEmbeddingClient,
     OpenAICompatibleClient,
 )
-from app.api.dependencies import require_review_access
 from app.core.config import Settings
-from app.main import app
-from app.models import AICallRecord, Device, DiagnosisEpisode, DiagnosisResult
+from app.core.security import hash_password
+from app.models import AICallRecord, Device, DiagnosisEpisode, DiagnosisResult, User
 from app.services.ai_diagnosis import explain_diagnosis
+from app.services.rbac import assign_role, ensure_rbac_catalog
 
 
 class SequenceAI:
@@ -251,8 +251,32 @@ def test_dashboard_refresh_and_teacher_statistics_do_not_trigger_ai(
             "/api/v1/student/dashboard", headers=api_context["headers"]
         )
         assert response.status_code == 200
-    app.dependency_overrides[require_review_access] = lambda: None
-    assert api_context["client"].get("/api/v1/teacher/dashboard").status_code == 200
+    with api_context["session_factory"]() as db:
+        roles = ensure_rbac_catalog(db)
+        admin = User(
+            username="phase9-dashboard-admin",
+            display_name="Phase 9 合成管理员",
+            password_hash=hash_password("synthetic-password", iterations=1_000),
+            is_test_data=True,
+        )
+        db.add(admin)
+        db.flush()
+        assign_role(db, admin, roles["admin"])
+        db.commit()
+    login = api_context["client"].post(
+        "/api/v1/auth/session",
+        json={
+            "username": "phase9-dashboard-admin",
+            "password": "synthetic-password",
+        },
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    assert (
+        api_context["client"].get(
+            "/api/v1/teacher/dashboard", headers=headers
+        ).status_code
+        == 200
+    )
     with api_context["session_factory"]() as db:
         assert db.query(AICallRecord).count() == 0
 

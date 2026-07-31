@@ -98,3 +98,24 @@ def require_permission(permission_code: str):
         return user
 
     return dependency
+
+
+def require_any_role(*role_codes: str):
+    allowed_roles = set(role_codes)
+
+    def dependency(
+        user: Annotated[User, Depends(get_current_user)],
+        db: Annotated[Session, Depends(get_db)],
+    ) -> User:
+        roles, _ = user_access(db, user.id)
+        if not allowed_roles.intersection(roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "ROLE_DENIED",
+                    "message": f"One of these roles is required: {', '.join(role_codes)}",
+                },
+            )
+        return user
+
+    return dependency

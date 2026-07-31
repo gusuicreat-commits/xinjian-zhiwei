@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import {
   Bell,
-  Cpu,
-  DataAnalysis,
   Document,
-  Fold,
   HomeFilled,
   List,
-  Menu as MenuIcon,
   Refresh,
   SwitchButton,
   TrendCharts,
@@ -29,8 +25,9 @@ import type { FeedbackAction } from '@/types/student'
 const router = useRouter()
 const sessionStore = useStudentSessionStore()
 const dashboardStore = useStudentDashboardStore()
-const sidebarCollapsed = ref(false)
+const activeNavTarget = ref('overview')
 let refreshTimer: number | undefined
+let navigationFrame: number | undefined
 
 const hasTestData = computed(() => {
   const data = dashboardStore.dashboard
@@ -52,13 +49,10 @@ const deviceLabel = computed(
 )
 
 const navItems = [
-  { label: '首页', target: 'overview', icon: HomeFilled },
-  { label: '实验任务', target: 'overview', icon: List },
-  { label: '实验设备', target: 'overview', icon: Cpu },
-  { label: '数据监控', target: 'readings', icon: TrendCharts },
-  { label: '日志分析', target: 'logs', icon: Document },
-  { label: '异常诊断', target: 'diagnosis', icon: Warning },
-  { label: '诊断报告', target: 'diagnosis', icon: DataAnalysis },
+  { label: '实验概览', target: 'overview', icon: HomeFilled },
+  { label: '实时日志', target: 'logs', icon: Document },
+  { label: '传感数据', target: 'readings', icon: TrendCharts },
+  { label: '诊断与反馈', target: 'diagnosis', icon: Warning },
 ]
 
 async function refresh(): Promise<void> {
@@ -89,7 +83,36 @@ async function generateAIExplanation(): Promise<void> {
 }
 
 function navigateTo(target: string): void {
-  document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  activeNavTarget.value = target
+  const section = document.getElementById(target)
+  const scrollTarget = section?.firstElementChild ?? section
+  scrollTarget?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function syncActiveNavigation(): void {
+  const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+  if (maxScroll > 80 && window.scrollY >= maxScroll - 8) {
+    activeNavTarget.value = navItems[navItems.length - 1]?.target ?? 'diagnosis'
+    return
+  }
+  const activationLine = window.innerWidth <= 780 ? 150 : 160
+  let nextTarget = navItems[0]?.target ?? 'overview'
+  for (const item of navItems) {
+    const section = document.getElementById(item.target)
+    const measuredElement = section?.firstElementChild ?? section
+    if (measuredElement && measuredElement.getBoundingClientRect().top <= activationLine) {
+      nextTarget = item.target
+    }
+  }
+  activeNavTarget.value = nextTarget
+}
+
+function handleWindowScroll(): void {
+  if (navigationFrame !== undefined) return
+  navigationFrame = window.requestAnimationFrame(() => {
+    navigationFrame = undefined
+    syncActiveNavigation()
+  })
 }
 
 async function logout(): Promise<void> {
@@ -101,12 +124,17 @@ async function logout(): Promise<void> {
 onMounted(() => {
   void refresh()
   refreshTimer = window.setInterval(() => void refresh(), 15_000)
+  window.addEventListener('scroll', handleWindowScroll, { passive: true })
 })
-onBeforeUnmount(() => window.clearInterval(refreshTimer))
+onBeforeUnmount(() => {
+  window.clearInterval(refreshTimer)
+  window.removeEventListener('scroll', handleWindowScroll)
+  if (navigationFrame !== undefined) window.cancelAnimationFrame(navigationFrame)
+})
 </script>
 
 <template>
-  <main class="student-app" :class="{ 'sidebar-is-collapsed': sidebarCollapsed }">
+  <main class="student-app">
     <a class="skip-link" href="#main-student-content">跳到主要内容</a>
     <header class="app-topbar">
       <div class="brand-lockup">
@@ -126,31 +154,19 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
       </div>
     </header>
 
-    <aside class="app-sidebar">
-      <nav aria-label="学生端导航">
+    <section id="main-student-content" class="app-content" tabindex="-1">
+      <nav class="student-section-nav" aria-label="学生端页面分区">
         <button
-          v-for="(item, index) in navItems"
-          :key="item.label"
+          v-for="item in navItems"
+          :key="item.target"
           type="button"
-          :class="{ active: index === 0 }"
-          :title="item.label"
+          :class="{ active: activeNavTarget === item.target }"
+          :aria-current="activeNavTarget === item.target ? 'location' : undefined"
           @click="navigateTo(item.target)"
         >
           <component :is="item.icon" /><span>{{ item.label }}</span>
         </button>
       </nav>
-      <button
-        type="button"
-        class="collapse-button"
-        :aria-label="sidebarCollapsed ? '展开菜单' : '收起菜单'"
-        @click="sidebarCollapsed = !sidebarCollapsed"
-      >
-        <Fold v-if="!sidebarCollapsed" /><MenuIcon v-else />
-        <span>{{ sidebarCollapsed ? '展开菜单' : '收起菜单' }}</span>
-      </button>
-    </aside>
-
-    <section id="main-student-content" class="app-content" tabindex="-1">
       <div class="content-toolbar">
         <div>
           <p>学生实验工作台</p>
@@ -199,6 +215,7 @@ onBeforeUnmount(() => window.clearInterval(refreshTimer))
             :diagnosis="dashboardStore.dashboard.diagnosis"
             :guidance="dashboardStore.dashboard.guidance"
             :feedback="dashboardStore.dashboard.feedback"
+            :intervention="dashboardStore.dashboard.intervention"
             :feedback-loading="dashboardStore.feedbackLoading"
             :ai-status="dashboardStore.dashboard.ai_status"
             :ai-explanation="dashboardStore.dashboard.ai_explanation"

@@ -77,8 +77,16 @@ async function submit(): Promise<void> {
 
       <div class="session-notice">
         <Connection />
-        <span>当前使用设备凭据，仅保留本次浏览器会话</span>
+        <span
+          >设备 ID
+          是设备的公开标识；设备令牌只在创建时显示一次，数据库只保存哈希，无法反查原令牌。</span
+        >
       </div>
+      <div class="session-notice">
+        <Lock />
+        <span>测试凭据请由后端 demo 数据脚本生成；页面仅在本次浏览器会话中保存。</span>
+      </div>
+      <router-link to="/teacher/login">教师账号登录</router-link>
       <footer>安全 · 稳定 · 可追溯</footer>
     </section>
   </main>

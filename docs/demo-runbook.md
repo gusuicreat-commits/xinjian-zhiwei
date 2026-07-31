@@ -13,6 +13,13 @@ docker compose exec backend python -m app.cli.seed_demo --prefix demo-local-
 
 若前缀已存在，脚本失败，不覆盖。请将一次性输出仅保存在本地临时安全位置。
 
+- `student_page_device_id` 与 `student_page_device_token`：用于前端 `/login`。
+- `teacher_page_username` 与 `teacher_page_password`：用于前端 `/teacher/login`。
+- `rbac_student_username` 与 `rbac_student_password`：用于课堂范围 Bearer API；当前设备
+  中心学生页面不使用这组账号。
+
+设备令牌与密码只显示一次，数据库只保存哈希，无法反向找回。
+
 ## 场景
 
 使用 seed 输出的测试设备凭据配置模拟器，然后依次执行：

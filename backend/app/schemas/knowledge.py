@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 KnowledgeReviewStatus = Literal[
     "draft",
     "pending",
-    "technical_reviewed",
     "approved",
     "rejected",
     "withdrawn",
@@ -15,7 +14,6 @@ KnowledgeReviewStatus = Literal[
 ]
 KnowledgeReviewerRole = Literal[
     "organizer",
-    "technical_reviewer",
     "formal_approver",
 ]
 

@@ -8,11 +8,6 @@ class StrictTeacherModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TeacherSessionResponse(StrictTeacherModel):
-    auth_mode: Literal["review_token_placeholder"]
-    notice: str
-
-
 class TeacherMetricSummary(StrictTeacherModel):
     online_devices: int
     offline_devices: int
@@ -74,6 +69,19 @@ class TeacherLogItem(StrictTeacherModel):
 
 
 class TeacherInterventionItem(StrictTeacherModel):
+    case_id: Optional[str] = None
+    source: Literal["student_request", "manual_request", "automatic_guidance"]
+    status: Literal[
+        "open",
+        "claimed",
+        "resolved",
+        "unconfirmed",
+        "closed",
+        "recommended",
+    ]
+    version_no: Optional[int] = None
+    assigned_teacher_user_id: Optional[str] = None
+    resolution_summary: Optional[str] = None
     device_id: str
     diagnosis_result_id: str
     tree_title: str

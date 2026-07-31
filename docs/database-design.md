@@ -4,7 +4,7 @@
 
 - 数据库：PostgreSQL 16 + pgvector。
 - 迁移工具：Alembic。
-- 目标版本：`20260727_0014`。
+- 目标版本：`20260730_0015`。
 - 后端启动时先执行 `alembic upgrade head`，成功后才启动 API。
 
 ## 表结构
@@ -56,7 +56,7 @@ P2 的可空 `test_run_id` 只标记合成场景运行并建立索引，用于�
 
 ### `knowledge_documents`
 
-保存来源关联、文档标题、媒体类型、语言、外部存储 URI、内容哈希、解析器名称/版本、审核状态和测试标记。新导入文档从 `draft` 开始，状态可为 `draft`、`pending`、`technical_reviewed`、`approved`、`rejected`、`withdrawn` 或 `superseded`。`source_id + content_hash` 唯一，保证重复导入幂等。
+保存来源关联、文档标题、媒体类型、语言、外部存储 URI、内容哈希、解析器名称/版本、审核状态和测试标记。新导入文档从 `draft` 开始，状态可为 `draft`、`pending`、`approved`、`rejected`、`withdrawn` 或 `superseded`。`source_id + content_hash` 唯一，保证重复导入幂等。
 
 ### `knowledge_chunks`
 
@@ -68,7 +68,7 @@ P2 的可空 `test_run_id` 只标记合成场景运行并建立索引，用于�
 
 ### `knowledge_reviews`
 
-追加保存文档审核决定、`reviewer_role`、审核人引用、备注和时间。角色分为资料整理人、技术初审人和正式审核人；服务层强制状态迁移与职责分离。当前审核人引用由临时审阅令牌持有者提交，不等同于正式教师账号。
+追加保存文档审核决定、`reviewer_role`、审核人引用、备注和时间。当前有效角色为资料整理人和正式批准人；审核状态流转必须使用 Bearer 账号，服务层强制角色校验并禁止整理人正式批准自己提交的资料。历史记录为追加式审计，不因角色目录收敛而删除。
 
 ### `ai_call_records`
 
@@ -123,6 +123,9 @@ P2 的可空 `test_run_id` 只标记合成场景运行并建立索引，用于�
 - `20260727_0013` 增加教师处置事件和课堂消息。
 - `20260727_0014` 移除字段唯一索引之外的重复唯一约束，使升级库和全新库的
   SQLAlchemy 元数据一致；不修改业务数据。
+- `20260730_0015` 删除 `teaching_assistant` 与 `technical_reviewer` 角色；已有助教
+  账号迁移为教师，技术审核角色不自动获得正式批准权限。历史
+  `technical_reviewed` 文档/块回退为 `pending`，审核历史继续保留。
 
 用户、班级和实验模板通用框架已经建立，但正式用户、班级、任务与模板内容仍待人工
 录入和审核。知识库与 AI 审计表已经建立；仅有测试记录和禁用真实 Provider 只代表

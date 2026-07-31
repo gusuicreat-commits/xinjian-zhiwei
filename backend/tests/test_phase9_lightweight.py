@@ -217,11 +217,6 @@ def test_hybrid_retrieval_works_without_embeddings(api_context: dict) -> None:
         )
         for decision, reviewer_role, reviewer_ref in (
             ("pending", "organizer", "phase9-test-organizer"),
-            (
-                "technical_reviewed",
-                "technical_reviewer",
-                "phase9-test-technical-reviewer",
-            ),
             ("approved", "formal_approver", "phase9-test-formal-approver"),
         ):
             review_document(

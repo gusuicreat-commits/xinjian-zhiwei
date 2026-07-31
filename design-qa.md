@@ -8,7 +8,7 @@
 - navigation audit screenshots: `docs/design-qa/phase7-teacher-ui/menu-audit-before.png` and `docs/design-qa/phase7-teacher-ui/menu-audit-after.png`
 - mobile screenshot path: `docs/design-qa/phase7-teacher-ui/dashboard-mobile.png`
 - viewport: desktop 1680×940；mobile 390×844
-- state: 已通过临时审阅令牌进入教师端；SQLite 中含 1 台明确标记的测试设备、测试日志与规则诊断，没有班级、学生、任务、知识案例或真实硬件数据
+- state: 当时通过临时审阅令牌进入教师端；当前教师端已改为正式 Bearer 测试账号。该次 SQLite 验收含 1 台明确标记的测试设备、测试日志与规则诊断，没有真实硬件数据
 
 ## Comparison evidence
 
@@ -42,7 +42,7 @@
 
 ## Primary interactions tested
 
-- 使用临时审阅令牌登录并进入 `/teacher`。
+- 使用当前测试教师用户名、密码登录并进入 `/teacher`。
 - 搜索不存在的错误码后，异常表从 1 条过滤为 0 条；清空后恢复。
 - 侧栏从 206px 折叠到 76px，再正常展开。
 - 手动刷新成功；30 秒自动刷新逻辑保持启用。
