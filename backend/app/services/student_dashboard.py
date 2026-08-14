@@ -28,6 +28,7 @@ from app.schemas.student import (
 )
 from app.services.ai_diagnosis import get_ai_status, serialize_ai_call
 from app.services.device_ingest import calculate_device_status
+from app.services.device_state_explanation import build_device_state_explanation
 from app.services.interventions import ensure_intervention_case
 
 
@@ -87,6 +88,18 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
             .limit(1)
         )
     settings = get_settings()
+    device_status = calculate_device_status(device, settings.device_offline_after_seconds)
+    device_state_explanation = build_device_state_explanation(
+        device=device,
+        device_status=device_status,
+        diagnosis=diagnosis,
+        guidance=list(guidance),
+        logs=list(reversed(logs)),
+        readings=readings,
+        ai_output=(
+            ai_call.output_json if ai_call is not None and ai_call.status == "succeeded" else None
+        ),
+    )
     return StudentDashboardResponse(
         generated_at=datetime.now(timezone.utc),
         task=CurrentTaskSummary(
@@ -96,7 +109,7 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
         device=StudentDeviceStatus(
             device_id=device.device_key,
             display_name=device.display_name,
-            status=calculate_device_status(device, settings.device_offline_after_seconds),
+            status=device_status,
             last_seen_at=device.last_seen_at,
             firmware_version=device.firmware_version,
             is_test_fixture=device.device_type in {"test-fixture", "generic-test-fixture"},
@@ -192,6 +205,7 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
             if episode is not None
             else None
         ),
+        device_state_explanation=device_state_explanation,
     )
 
 

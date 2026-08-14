@@ -1,12 +1,18 @@
+import type { DiagnosisWorkflowRecord } from '@/types/workflow'
+
 export interface DeviceCredentials {
   deviceId: string
   deviceToken: string
+  experimentSessionId?: string
 }
 
 export interface StudentSession {
   device_id: string
   display_name: string | null
   auth_mode: 'device_credential_placeholder'
+  student_user_id: string | null
+  experiment_session_id: string | null
+  experiment_assignment_id: string | null
   notice: string
 }
 
@@ -173,6 +179,8 @@ export interface AIStatus {
   production_route: string
 }
 
+export type DiagnosisWorkflow = DiagnosisWorkflowRecord
+
 export interface RankedCause {
   cause_id: string
   title: string
@@ -225,6 +233,48 @@ export interface StudentIntervention {
   updated_at: string
 }
 
+export interface DeviceStateExplanation {
+  status_title: string
+  status_summary: string
+  meaning: string
+  next_step: string
+  source: 'rule' | 'ai'
+  technical_details: {
+    device: {
+      status: 'online' | 'offline' | 'never_seen'
+      last_seen_at: string | null
+      firmware_version: string | null
+    }
+    error_code: string | null
+    error_codes: string[]
+    retry_count?: number
+    logs: Array<{
+      id: string
+      level: string
+      message: string
+      event_code: string | null
+      occurred_at: string
+    }>
+    sensor_readings: Array<{
+      id: string
+      sensor_type: string
+      metric_key: string
+      value: number
+      unit: string | null
+      observed_at: string
+    }>
+    rule_hits: DiagnosisMatch[]
+    fault_tree_evidence: Array<{
+      tree_id: string
+      tree_title: string
+      tree_status: string
+      hint_level: number
+      failure_count: number
+      ranked_causes: RankedCause[]
+    }>
+  }
+}
+
 export interface StudentDashboard {
   generated_at: string
   task: CurrentTask
@@ -237,6 +287,7 @@ export interface StudentDashboard {
   intervention: StudentIntervention | null
   ai_status: AIStatus
   ai_explanation: AIExplanationResponse | null
+  device_state_explanation: DeviceStateExplanation
   episode: {
     id: string
     status: 'open' | 'escalated' | 'resolved'

@@ -1,6 +1,7 @@
 import { apiClient } from '@/api/client'
 import type {
   AIExplanationResponse,
+  DiagnosisWorkflow,
   DeviceCredentials,
   FeedbackAction,
   StudentDashboard,
@@ -9,10 +10,35 @@ import type {
 } from '@/types/student'
 
 function authHeaders(credentials: DeviceCredentials): Record<string, string> {
-  return {
+  const headers: Record<string, string> = {
     'X-Device-ID': credentials.deviceId,
     'X-Device-Token': credentials.deviceToken,
   }
+  if (credentials.experimentSessionId) {
+    headers['X-Experiment-Session-ID'] = credentials.experimentSessionId
+  }
+  return headers
+}
+
+export async function startDiagnosisWorkflow(
+  credentials: DeviceCredentials,
+): Promise<DiagnosisWorkflow> {
+  const response = await apiClient.post<DiagnosisWorkflow>(
+    `/api/v1/diagnosis-workflows/devices/${encodeURIComponent(credentials.deviceId)}`,
+    {},
+    { headers: authHeaders(credentials) },
+  )
+  return response.data
+}
+
+export async function getLatestDiagnosisWorkflow(
+  credentials: DeviceCredentials,
+): Promise<DiagnosisWorkflow | null> {
+  const response = await apiClient.get<DiagnosisWorkflow | null>(
+    `/api/v1/diagnosis-workflows/devices/${encodeURIComponent(credentials.deviceId)}/latest`,
+    { headers: authHeaders(credentials) },
+  )
+  return response.data
 }
 
 export async function createStudentSession(

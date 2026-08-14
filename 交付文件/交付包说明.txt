@@ -1,0 +1,33 @@
+芯鉴知微 1.0.0｜队友交付包说明
+生成日期：2026-07-31
+源码基线：b5a767a309053ec9e787d459bda396355b6de54e
+数据库迁移：20260730_0015 (head)
+
+一、包内内容
+1. Git 提交 b5a767a 对应的 286 个受跟踪项目文件。
+2. 项目现状、关键缺口与未来推进路线 Word 报告。
+3. 本交付说明。
+
+二、明确排除
+不包含 .git 历史、.env、真实密钥、数据库数据、知识原始资料、
+node_modules、Python 虚拟环境、缓存、构建产物、覆盖率文件、
+Playwright 报告和测试结果目录。
+
+三、本地启动
+1. cp .env.example .env
+2. docker compose up -d --build
+3. docker compose ps
+4. 前端：http://localhost:8080
+5. Swagger：http://localhost:8000/docs
+6. 就绪页面：http://localhost:8080/readiness
+
+四、生成合成演示凭据
+docker compose exec backend python -m app.cli.seed_demo --prefix teammate-demo-
+
+该命令输出的学生设备凭据和教师账号仅用于本地合成演示，
+不要提交到 Git，也不要当作生产账号或真实设备凭据。
+
+五、当前边界
+当前包可用于软件原型演示、接口联调、合成数据诊断和课堂闭环流程演示。
+包内没有真实设备数据、正式专业知识库或已启用的真实 AI Provider；
+现有阈值和规则仍属于示例或待确认参数，不能用于宣称已完成真实硬件故障诊断验证。

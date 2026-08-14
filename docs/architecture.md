@@ -17,8 +17,10 @@
        |-- 故障树（JSON/YAML）
        |-- Episode 事件聚合
        |-- 混合 RAG（PostgreSQL FTS + pgvector + RRF）
-       |-- 确定性说明模板
+       |-- 设备状态解释层（确定性翻译 / 可选 AI 综合）
        |-- AI 策略/缓存/可选增强
+       |-- LangGraph 控制平面 / LangChain 受控能力层
+       |-- 教师 interrupt 审核与恢复
        v
 [PostgreSQL + pgvector]
        ^
@@ -76,15 +78,20 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 1. 从日志、心跳、读数和实验模板构造 `DiagnosisContext`，并把同设备、同实验、同主要错误在时间窗口内聚合为 `DiagnosisEpisode`。
 2. YAML 规则与故障树生成不可被 AI 覆盖的 `DiagnosisCore`。
 3. 在 Phase 8 同一知识表上执行结构化过滤、PostgreSQL FTS 关键词检索和可选 pgvector 检索，再以 RRF 融合。
-4. 确定性模板根据核心证据、原因、知识与 Level 1–4 提示生成完整基础说明。
-5. `AIExplanationPolicy` 只对低置信、冲突、未知、多异常、明确追问或升级场景放行；高置信已知异常默认零调用。
+4. 设备状态解释层把已确认的设备状态、错误码、规则、故障树与 Level 投影为稳定的
+   `status_title/status_summary/meaning/next_step/source/technical_details`；原始日志、读数、
+   规则和故障树证据仍保留在技术详情中。
+5. 明确错误码、正常状态和单一简单异常只使用确定性翻译。`AIExplanationPolicy` 只对
+   低置信、冲突、未知、多异常、明确追问或升级场景放行；高置信已知异常默认零调用。
 6. 放行后先查 PostgreSQL 指纹缓存；生产默认只调用 DeepSeek
    `deepseek-v4-flash` 非思考模式，不做多模型分层。
-7. AI 输出经 Pydantic、证据白名单和知识引用校验；任何失败、限流或预算耗尽都返回确定性说明。
+7. AI 输出经 Pydantic、证据白名单和知识引用校验，只能改写学生文案；任何失败、限流、
+   预算耗尽或 Provider 未配置都返回完整确定性说明。
 
 ### 前端
 
-- 学生端面向当前实验、设备、日志、趋势、诊断和反馈。
+- 学生端异常卡片先显示一句话状态、通俗含义和下一步，再用折叠区保留原始错误码、
+  日志、读数、规则命中和故障树证据。
 - 教师端面向班级进度、设备状态、错误统计和介入队列。
 - 统一 API 类型和 Axios 客户端，完整处理加载、空、错误状态。
 
@@ -121,12 +128,12 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 1. Git 已包含 Phase 9.5/9.6 基线；无真实硬件路线 P1–P11 经最终独立审计后纳入
    `1.0.0` 软件就绪提交。
 2. Docker Desktop 4.82.0 已安装，Compose 三服务运行验收通过；PlatformIO 仍不可用，将在设备阶段处理。
-3. 本机 Python 3.9.6 与容器 Python 3.12 均用于分阶段验证；后续仍应持续验证二者行为一致。
+3. LangGraph/LangChain 引入后后端最低 Python 为 3.10；容器与 CI 使用 Python 3.12，旧的本机 Python 3.9 虚拟环境必须重建。
 4. Node.js v26.3.0 已通过本地 lint、Vitest、类型检查、构建和 Playwright，但生产容器固定使用 Node 22，降低部署兼容风险。
 5. DeepSeek Provider、`deepseek-v4-flash` 和非思考模式已经确定；真实 API Key、正式预算、Embedding、ESP32 型号、接线、账号和知识来源仍待确认。
 6. 上传限流与保留 dry-run 已实现；设备令牌轮换、生产保留策略和责任人仍待确认。
 7. 背景 Word 的旧技术草案与固定方案有差异，已在 `PROJECT_CONTEXT.md` 中明确裁决，后续不得同时保留两套实现。
-8. 当前源码和 Docker 版本为 `1.0.0`，迁移 Head 为 `20260730_0015`；AI 总开关默认
+8. 当前源码和 Docker 版本为 `1.0.0`，迁移 Head 为 `20260813_0019`；AI 总开关默认
    关闭，无 Key 时保持 Disabled。
 
 物理拓扑、USB/Wi-Fi 职责、局域网/公网边界和三种部署模式见

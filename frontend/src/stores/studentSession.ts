@@ -16,7 +16,11 @@ function restoreCredentials(): DeviceCredentials | null {
   try {
     const value = JSON.parse(raw) as Partial<DeviceCredentials>
     return value.deviceId && value.deviceToken
-      ? { deviceId: value.deviceId, deviceToken: value.deviceToken }
+      ? {
+          deviceId: value.deviceId,
+          deviceToken: value.deviceToken,
+          experimentSessionId: value.experimentSessionId,
+        }
       : null
   } catch {
     sessionStorage.removeItem(STORAGE_KEY)
@@ -36,8 +40,12 @@ export const useStudentSessionStore = defineStore('student-session', () => {
     errorMessage.value = ''
     try {
       session.value = await createStudentSession(nextCredentials)
-      credentials.value = nextCredentials
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(nextCredentials))
+      const scopedCredentials = {
+        ...nextCredentials,
+        experimentSessionId: session.value.experiment_session_id ?? undefined,
+      }
+      credentials.value = scopedCredentials
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(scopedCredentials))
     } catch {
       errorMessage.value = '设备凭据无效，或后端尚未部署 Phase 6 接口。'
       throw new Error(errorMessage.value)

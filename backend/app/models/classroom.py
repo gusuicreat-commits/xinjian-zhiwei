@@ -85,9 +85,7 @@ class Classroom(UuidPrimaryKeyMixin, TimestampMixin, Base):
 
 class Enrollment(UuidPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "enrollments"
-    __table_args__ = (
-        UniqueConstraint("class_id", "user_id", name="uq_enrollments_class_user"),
-    )
+    __table_args__ = (UniqueConstraint("class_id", "user_id", name="uq_enrollments_class_user"),)
 
     class_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("classes.id", ondelete="CASCADE"), nullable=False
@@ -100,9 +98,7 @@ class Enrollment(UuidPrimaryKeyMixin, TimestampMixin, Base):
 
 class TeachingAssignment(UuidPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "teaching_assignments"
-    __table_args__ = (
-        UniqueConstraint("class_id", "user_id", name="uq_teaching_class_user"),
-    )
+    __table_args__ = (UniqueConstraint("class_id", "user_id", name="uq_teaching_class_user"),)
 
     class_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("classes.id", ondelete="CASCADE"), nullable=False
@@ -161,6 +157,26 @@ class DeviceBinding(UuidPrimaryKeyMixin, TimestampMixin, Base):
         String(36), ForeignKey("experiment_assignments.id", ondelete="SET NULL")
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class ExperimentSession(UuidPrimaryKeyMixin, TimestampMixin, Base):
+    """Immutable ownership boundary for one student's experiment on one device."""
+
+    __tablename__ = "experiment_sessions"
+
+    experiment_assignment_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("experiment_assignments.id", ondelete="RESTRICT"), nullable=False
+    )
+    student_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(30), default="active", nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class AuditEvent(UuidPrimaryKeyMixin, Base):

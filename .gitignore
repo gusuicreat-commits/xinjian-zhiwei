@@ -23,6 +23,7 @@ frontend/playwright-report/
 frontend/test-results/
 
 # Local runtime and database data
+tmp/
 *.log
 logs/
 *.db

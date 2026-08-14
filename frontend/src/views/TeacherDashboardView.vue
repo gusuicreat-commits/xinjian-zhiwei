@@ -23,9 +23,10 @@ import { useRouter } from 'vue-router'
 import TeacherDeviceChart from '@/components/TeacherDeviceChart.vue'
 import TeacherErrorRankingChart from '@/components/TeacherErrorRankingChart.vue'
 import TeacherErrorTrendChart from '@/components/TeacherErrorTrendChart.vue'
+import WorkflowEvidenceSummary from '@/components/WorkflowEvidenceSummary.vue'
 import { useTeacherDashboardStore } from '@/stores/teacherDashboard'
 import { useTeacherSessionStore } from '@/stores/teacherSession'
-import type { TeacherIntervention } from '@/types/teacher'
+import type { TeacherDiagnosisWorkflow, TeacherIntervention } from '@/types/teacher'
 
 const router = useRouter()
 const sessionStore = useTeacherSessionStore()
@@ -34,6 +35,7 @@ const sidebarCollapsed = ref(false)
 const activeNavTarget = ref('teacher-overview')
 const searchQuery = ref('')
 const selectedDeviceId = ref('')
+const expandedWorkflowId = ref<string | null>(null)
 let refreshTimer: number | undefined
 let navigationFrame: number | undefined
 
@@ -63,6 +65,20 @@ const hasTestData = computed(() =>
     dashboard.value?.interventions.some((item) => item.is_test_data),
   ),
 )
+const workflowMetrics = computed(() => dashboardStore.workflowMetrics)
+const workflowInProgressOrOtherCount = computed(() => {
+  const metrics = workflowMetrics.value
+  if (!metrics) return 0
+  if (typeof metrics.in_progress === 'number' && Number.isFinite(metrics.in_progress)) {
+    return Math.max(0, metrics.in_progress)
+  }
+  const terminalOrWaiting =
+    (metrics.completed ?? 0) +
+    (metrics.waiting_teacher ?? 0) +
+    (metrics.rejected ?? 0) +
+    (metrics.failed ?? 0)
+  return Math.max(0, (metrics.total ?? 0) - terminalOrWaiting)
+})
 
 const navItems = [
   {
@@ -126,6 +142,19 @@ function selectDevice(deviceId: string): void {
     .getElementById('device-log-detail')
     ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
+function toggleWorkflow(workflowId: string): void {
+  expandedWorkflowId.value = expandedWorkflowId.value === workflowId ? null : workflowId
+}
+function percent(value: number): string {
+  return `${Math.round(value * 100)}%`
+}
+function reviewActionLabel(action: 'approve' | 'edit' | 'reject'): string {
+  return { approve: '批准', edit: '修订', reject: '驳回' }[action]
+}
+function latestReview(item: TeacherDiagnosisWorkflow) {
+  const reviews = item.reviews ?? []
+  return reviews[reviews.length - 1]
+}
 const interventionStatusLabels: Record<TeacherIntervention['status'], string> = {
   open: '待认领',
   claimed: '处理中',
@@ -183,6 +212,52 @@ async function handleIntervention(item: TeacherIntervention): Promise<void> {
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
     ElMessage.error('工单操作失败，可能已被其他教师更新，请刷新后重试')
+  }
+}
+async function handleWorkflowReview(
+  workflowId: string,
+  action: 'approve' | 'edit' | 'reject',
+): Promise<void> {
+  if (!sessionStore.accessToken) return
+  try {
+    const result = await ElMessageBox.prompt(
+      action === 'approve'
+        ? '可填写本次审核说明。'
+        : action === 'edit'
+          ? '请填写修订后的诊断总结。规则证据和 Level 不会被修改。'
+          : '请填写驳回原因。',
+      action === 'approve' ? '批准诊断解释' : action === 'edit' ? '修订诊断解释' : '驳回诊断解释',
+      {
+        confirmButtonText: action === 'approve' ? '批准' : action === 'edit' ? '保存修订' : '驳回',
+        cancelButtonText: '取消',
+        inputPlaceholder:
+          action === 'approve'
+            ? '审核说明（可选）'
+            : action === 'edit'
+              ? '修订后的诊断总结'
+              : '需要补充的证据',
+        inputValidator: (value) => action === 'approve' || Boolean(value.trim()) || '请填写内容',
+      },
+    )
+    await dashboardStore.reviewWorkflow(
+      sessionStore.accessToken,
+      workflowId,
+      action === 'edit'
+        ? {
+            action,
+            comment: '教师修订了自然语言诊断总结',
+            edited_result: {
+              summary: result.value.trim(),
+            },
+          }
+        : { action, comment: result.value.trim() || undefined },
+    )
+    ElMessage.success(
+      action === 'approve' ? '诊断已批准' : action === 'edit' ? '诊断已修订并批准' : '诊断已驳回',
+    )
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error('诊断审核失败，请刷新后重试')
   }
 }
 async function logout(): Promise<void> {
@@ -469,6 +544,155 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <el-empty v-else description="暂无 Level 4 介入记录" :image-size="48" />
+            </article>
+            <article class="teacher-panel intervention-panel">
+              <header>
+                <h2>AI 诊断审核队列</h2>
+                <i>{{ dashboardStore.workflowQueue.length }}</i>
+              </header>
+              <div v-if="workflowMetrics" class="workflow-metric-strip" aria-label="诊断工作流指标">
+                <span
+                  ><small>流程</small><b>{{ workflowMetrics.total ?? 0 }}</b></span
+                >
+                <span
+                  ><small>待审</small><b>{{ workflowMetrics.waiting_teacher ?? 0 }}</b></span
+                >
+                <span
+                  ><small>完成</small><b>{{ workflowMetrics.completed ?? 0 }}</b></span
+                >
+                <span
+                  ><small>驳回</small><b>{{ workflowMetrics.rejected ?? 0 }}</b></span
+                >
+                <span
+                  ><small>失败</small><b>{{ workflowMetrics.failed ?? 0 }}</b></span
+                >
+                <span
+                  ><small>运行中/其他</small><b>{{ workflowInProgressOrOtherCount }}</b></span
+                >
+                <span
+                  ><small>已审</small><b>{{ workflowMetrics.reviewed ?? 0 }}</b></span
+                >
+                <span
+                  ><small>触发 RAG</small><b>{{ workflowMetrics.needs_rag_count ?? 0 }}</b></span
+                >
+                <span
+                  ><small>修订率</small><b>{{ percent(workflowMetrics.edit_rate ?? 0) }}</b></span
+                >
+                <span
+                  ><small>驳回率</small><b>{{ percent(workflowMetrics.reject_rate ?? 0) }}</b></span
+                >
+                <span
+                  ><small>恢复</small><b>{{ workflowMetrics.resume_count ?? 0 }}</b></span
+                >
+                <span>
+                  <small>节点均耗时</small>
+                  <b>{{ workflowMetrics.average_node_duration_ms?.toFixed(1) ?? '—' }}ms</b>
+                </span>
+                <span
+                  ><small>AI 调用</small><b>{{ workflowMetrics.ai_call_count ?? 0 }}</b></span
+                >
+                <span>
+                  <small>Token</small>
+                  <b>{{
+                    (workflowMetrics.ai_input_tokens ?? 0) + (workflowMetrics.ai_output_tokens ?? 0)
+                  }}</b>
+                </span>
+                <span>
+                  <small>估算成本（元）</small
+                  ><b>{{ (workflowMetrics.ai_estimated_cost ?? 0).toFixed(4) }}</b>
+                </span>
+                <span>
+                  <small>有反馈诊断</small>
+                  <b>{{ workflowMetrics.student_feedback_count ?? 0 }}</b>
+                </span>
+                <span>
+                  <small>已解决诊断</small>
+                  <b>{{ workflowMetrics.student_resolved_count ?? 0 }}</b>
+                </span>
+                <span>
+                  <small>按每个诊断最新反馈计算解决率</small>
+                  <b>{{
+                    workflowMetrics.student_resolution_rate === null
+                      ? '—'
+                      : percent(workflowMetrics.student_resolution_rate)
+                  }}</b>
+                </span>
+              </div>
+              <div v-if="dashboardStore.workflowQueue.length" class="teacher-action-list">
+                <article
+                  v-for="item in dashboardStore.workflowQueue"
+                  :key="item.id"
+                  class="teacher-workflow-card"
+                >
+                  <header>
+                    <button type="button" @click="toggleWorkflow(item.id)">
+                      <b>{{ item.device_id }}</b>
+                      <small>
+                        证据分 {{ item.evidence_score ?? '—' }} · Level
+                        {{ item.guidance_level ?? '—' }} ·
+                        {{ item.review_request?.candidates?.length ?? 0 }} 个候选 ·
+                        {{ item.review_request?.retrieved_chunks?.length ?? 0 }} 个知识引用
+                      </small>
+                      <small class="intervention-source">
+                        {{ item.graph_version }} ·
+                        {{ expandedWorkflowId === item.id ? '收起证据' : '展开证据' }}
+                      </small>
+                    </button>
+                    <div class="intervention-action-copy">
+                      <el-button
+                        size="small"
+                        type="success"
+                        :loading="dashboardStore.workflowReviewingId === item.id"
+                        @click.stop="handleWorkflowReview(item.id, 'approve')"
+                        >批准</el-button
+                      >
+                      <el-button
+                        size="small"
+                        type="primary"
+                        :loading="dashboardStore.workflowReviewingId === item.id"
+                        @click.stop="handleWorkflowReview(item.id, 'edit')"
+                        >修订</el-button
+                      >
+                      <el-button
+                        size="small"
+                        type="danger"
+                        :loading="dashboardStore.workflowReviewingId === item.id"
+                        @click.stop="handleWorkflowReview(item.id, 'reject')"
+                        >驳回</el-button
+                      >
+                    </div>
+                  </header>
+                  <WorkflowEvidenceSummary v-if="expandedWorkflowId === item.id" :workflow="item" />
+                </article>
+              </div>
+              <el-empty v-else description="暂无等待审核的 AI 诊断" :image-size="48" />
+            </article>
+            <article class="teacher-panel workflow-history-panel">
+              <header>
+                <h2>近期诊断审核历史</h2>
+                <i>{{ dashboardStore.workflowHistory.length }}</i>
+              </header>
+              <div v-if="dashboardStore.workflowHistory.length" class="workflow-history-list">
+                <article v-for="item in dashboardStore.workflowHistory" :key="item.id">
+                  <button type="button" @click="toggleWorkflow(item.id)">
+                    <span>
+                      <b>{{ item.device_id }}</b>
+                      <small>{{
+                        new Date(item.updated_at).toLocaleString('zh-CN', { hour12: false })
+                      }}</small>
+                    </span>
+                    <em :class="`review-${latestReview(item)?.action || item.status}`">
+                      {{
+                        latestReview(item)
+                          ? reviewActionLabel(latestReview(item)!.action)
+                          : item.status
+                      }}
+                    </em>
+                  </button>
+                  <WorkflowEvidenceSummary v-if="expandedWorkflowId === item.id" :workflow="item" />
+                </article>
+              </div>
+              <el-empty v-else description="暂无诊断审核历史" :image-size="48" />
             </article>
             <article id="knowledge-review" class="teacher-panel knowledge-panel">
               <header>

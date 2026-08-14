@@ -27,7 +27,9 @@ Phase 9.6 使用实际仓库状态作为权威证据，并通过本审计记录�
 - Disabled、Mock、本地扩展、缓存、Episode/设备次数、预算、Token、Pydantic 和确定性降级仍然保留。
 - 没有加入 P1 的协议 V1、批量上传、`request_id`、`boot_id` 或 `sequence_no`。
 - 没有真实 PlatformIO/ESP32 固件、GPIO、电压、接线或课程参数。
-- 没有 LangChain、LangGraph、Redis、消息队列、新向量数据库或新微服务。
+- 本文记录的是 2026-07 的 Phase 9.6 历史审计；当时没有 LangChain/LangGraph。该限制已
+  被 2026-08-13 的新工程设计替代：现在只在 FastAPI 单体内加入受控 LangGraph/
+  LangChain，仍没有 Redis、消息队列、新向量数据库或新微服务。
 
 ## 3. AI 配置与路由
 

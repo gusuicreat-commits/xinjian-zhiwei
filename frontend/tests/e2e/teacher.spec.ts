@@ -104,6 +104,84 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
     })
   })
 
+  await page.route('**/api/v1/diagnosis-workflows/review-queue/pending', async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: 'workflow-pending',
+          diagnosis_result_id: 'phase9-diagnosis',
+          device_id: 'phase9-browser-device',
+          graph_thread_id: 'diagnosis:workflow-pending',
+          graph_version: 'langgraph-v1',
+          status: 'waiting_teacher',
+          current_node: 'teacher_review',
+          evidence_score: 0.61,
+          guidance_level: 4,
+          needs_rag: true,
+          needs_teacher: true,
+          rule_engine_version: 'rules-v3',
+          fault_tree_version: 'tree-v2',
+          embedding_version: 'embedding-v1',
+          model_id: 'model-v1',
+          node_trace: ['collect_context', 'run_rules', 'retrieve_knowledge', 'teacher_review'],
+          node_metrics: [{ node: 'run_rules', duration_ms: 2.5, status: 'succeeded' }],
+          final_result: null,
+          error_messages: [],
+          review_request: {
+            rule_hits: [
+              {
+                rule_id: 'rule-workflow',
+                error_type: 'SENSOR_READ_FAILED',
+                summary: '读取失败',
+                evidence: [{ fact: 'event_count', observed_value: 5 }],
+              },
+            ],
+            candidates: [
+              { cause_id: 'connection', name: '连接异常', score: 0.75, evidence_refs: ['log:1'] },
+            ],
+            retrieved_chunks: [
+              {
+                chunk_id: 'chunk-1',
+                source_id: 'manual-sensor',
+                title: '传感器手册',
+                score: 0.83,
+                metadata: { source_version: '2026.1', review_status: 'approved' },
+              },
+            ],
+            ai_result: { summary: '建议检查连接', limitations: ['缺少电压读数'] },
+          },
+          reviews: [],
+          is_test_data: true,
+          created_at: '2026-07-25T08:00:00Z',
+          updated_at: '2026-07-25T08:00:00Z',
+          completed_at: null,
+        },
+      ],
+    })
+  })
+
+  await page.route('**/api/v1/diagnosis-workflows/review-queue/recent', async (route) => {
+    await route.fulfill({ json: [] })
+  })
+
+  await page.route('**/api/v1/diagnosis-workflows/metrics/summary', async (route) => {
+    await route.fulfill({
+      json: {
+        total: 4,
+        completed: 1,
+        waiting_teacher: 1,
+        rejected: 1,
+        failed: 0,
+        reviewed: 2,
+        edit_rate: 0.5,
+        reject_rate: 0.5,
+        needs_rag_count: 2,
+        resume_count: 2,
+        average_node_duration_ms: 12.5,
+      },
+    })
+  })
+
   await page.goto('/teacher/login')
   await page.getByPlaceholder('教师用户名').fill('browser-teacher')
   await page.getByPlaceholder('密码').fill('browser-test-password')
@@ -116,5 +194,15 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
   await expect(page.getByText('学生主动求助')).toBeVisible()
   await expect(page.getByText('SENSOR_READ_FAILED').first()).toBeVisible()
   await expect(page.getByText('知识案例审核入口')).toBeVisible()
+  await expect(page.getByText('修订率')).toBeVisible()
+  await expect(page.getByText('12.5ms')).toBeVisible()
+  await expect(page.getByLabel('诊断工作流指标')).toContainText('运行中/其他1')
+  await expect(page.getByLabel('诊断工作流指标')).toContainText('估算成本（元）0.0000')
+  await expect(page.getByLabel('诊断工作流指标')).toContainText('有反馈诊断0')
+  await expect(page.getByLabel('诊断工作流指标')).toContainText('按每个诊断最新反馈计算解决率—')
+  await page.getByRole('button', { name: /phase9-browser-device.*展开证据/ }).click()
+  await expect(page.getByText('manual-sensor / chunk-1')).toBeVisible()
+  await expect(page.getByText('RRF 0.8300')).toBeVisible()
+  await expect(page.getByText('缺少电压读数')).toBeVisible()
   expect(consoleErrors).toEqual([])
 })

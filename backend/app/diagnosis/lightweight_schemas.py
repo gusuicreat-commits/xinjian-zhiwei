@@ -33,6 +33,17 @@ class DeterministicExplanation(StrictModel):
     provenance: Literal["rules_and_reviewed_knowledge"] = "rules_and_reviewed_knowledge"
 
 
+class DeviceStateExplanation(StrictModel):
+    """Student-facing projection of device facts and immutable diagnosis results."""
+
+    status_title: str = Field(min_length=1, max_length=200)
+    status_summary: str = Field(min_length=1, max_length=1000)
+    meaning: str = Field(min_length=1, max_length=1000)
+    next_step: str = Field(min_length=1, max_length=1000)
+    source: Literal["rule", "ai"]
+    technical_details: dict[str, Any] = Field(default_factory=dict)
+
+
 class AIEnhancementState(StrictModel):
     status: Literal[
         "disabled",

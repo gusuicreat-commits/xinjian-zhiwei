@@ -14,6 +14,10 @@ from app.schemas.student import (
     StudentFeedbackItem,
     StudentSessionResponse,
 )
+from app.services.diagnosis_workflow import (
+    WorkflowConflict,
+    find_active_experiment_session,
+)
 from app.services.student_dashboard import build_student_dashboard, save_student_feedback
 
 router = APIRouter(prefix="/student", tags=["student"])
@@ -22,12 +26,27 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 @router.post("/session", response_model=StudentSessionResponse)
-def create_student_session(device: AuthenticatedDevice) -> StudentSessionResponse:
+def create_student_session(
+    device: AuthenticatedDevice, db: DatabaseSession
+) -> StudentSessionResponse:
+    try:
+        experiment_session = find_active_experiment_session(db, device)
+    except WorkflowConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return StudentSessionResponse(
         device_id=device.device_key,
         display_name=device.display_name,
         auth_mode="device_credential_placeholder",
-        notice="学生账号尚未建立；当前会话临时使用设备凭据。",
+        student_user_id=(experiment_session.student_user_id if experiment_session else None),
+        experiment_session_id=(experiment_session.id if experiment_session else None),
+        experiment_assignment_id=(
+            experiment_session.experiment_assignment_id if experiment_session else None
+        ),
+        notice=(
+            "已验证学生—实验会话—设备归属，LangGraph 诊断可用。"
+            if experiment_session
+            else "当前设备没有唯一有效的学生实验会话；LangGraph 诊断已关闭。"
+        ),
     )
 
 

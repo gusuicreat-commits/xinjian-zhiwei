@@ -24,6 +24,7 @@ jobs:
     env:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
+      TEST_DIAGNOSIS_CHECKPOINT_DSN: postgresql://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,6 +56,9 @@ jobs:
           alembic upgrade head
           alembic current
           alembic check
+          DIAGNOSIS_CHECKPOINT_BACKEND=postgres DIAGNOSIS_CHECKPOINT_DSN="$TEST_DIAGNOSIS_CHECKPOINT_DSN" python -m app.cli.setup_diagnosis_checkpoints
+          DIAGNOSIS_CHECKPOINT_BACKEND=postgres DIAGNOSIS_CHECKPOINT_DSN="$TEST_DIAGNOSIS_CHECKPOINT_DSN" python -m app.cli.setup_diagnosis_checkpoints
+          pytest tests/test_diagnosis_checkpoint_postgres.py
       - name: Frontend checks
         working-directory: frontend
         run: |

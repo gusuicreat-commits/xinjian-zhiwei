@@ -8,6 +8,7 @@ from app.models.classroom import (
     DeviceBinding,
     Enrollment,
     ExperimentAssignment,
+    ExperimentSession,
     Permission,
     Role,
     TeachingAssignment,
@@ -19,6 +20,7 @@ from app.models.device_log import DeviceLog
 from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
+from app.models.diagnosis_workflow import DiagnosisWorkflowReview, DiagnosisWorkflowRun
 from app.models.experiment import (
     DiagnosticArtifact,
     ExperimentTemplate,
@@ -50,9 +52,12 @@ __all__ = [
     "DeviceLog",
     "DiagnosisFeedback",
     "DiagnosisResult",
+    "DiagnosisWorkflowReview",
+    "DiagnosisWorkflowRun",
     "DiagnosticArtifact",
     "Enrollment",
     "ExperimentAssignment",
+    "ExperimentSession",
     "ExperimentTemplate",
     "ExperimentTemplateVersion",
     "DiagnosisEpisode",

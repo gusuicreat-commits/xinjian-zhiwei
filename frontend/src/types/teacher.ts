@@ -1,3 +1,7 @@
+import type { DiagnosisWorkflowMetrics, DiagnosisWorkflowRecord } from '@/types/workflow'
+
+export type { DiagnosisWorkflowMetrics }
+
 export interface TeacherIntervention {
   case_id: string | null
   source: 'student_request' | 'manual_request' | 'automatic_guidance'
@@ -64,3 +68,5 @@ export interface TeacherDashboard {
     notice: string
   }
 }
+
+export type TeacherDiagnosisWorkflow = DiagnosisWorkflowRecord

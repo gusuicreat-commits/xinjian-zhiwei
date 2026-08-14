@@ -69,7 +69,7 @@ ESP32 与传感器
 - 后端：Python、FastAPI、Pydantic、SQLAlchemy 2、Alembic、pytest、HTTPX。
 - 数据库：PostgreSQL + pgvector。
 - 设备端：ESP32、Arduino Framework、PlatformIO、Wi-Fi、HTTP、JSON、DHT11。
-- 诊断：Python/YAML 规则、JSON/YAML 故障树、Embedding、pgvector RAG、统一 `AIClient`、Pydantic 结构化输出。
+- 诊断：Python/YAML 规则、JSON/YAML 故障树、Embedding、pgvector RAG、统一 `AIClient`、Pydantic 结构化输出；LangGraph 内嵌编排，LangChain 受控能力适配。
 - 部署：Docker、Docker Compose、Nginx、GitHub Actions。
 
 背景 Word 中的 `ai-service` 独立目录、Chroma/FAISS 等内容属于早期草案。当前方案将 AI 诊断内聚到 FastAPI 后端，并统一使用 PostgreSQL + pgvector，避免第一版重复引入服务和数据库。
@@ -94,7 +94,7 @@ ESP32 与传感器
 
 ## 8. 明确边界
 
-第一版不引入 Spring Boot、微服务、Kubernetes、Redis、消息队列、MQTT、LangChain、LangGraph、多智能体、TinyML、图片接线识别、复杂机器学习模型或手机 App。前端不得直接访问数据库或 AI Provider，AI 不得直接执行硬件控制。
+历史第一版曾禁止 LangChain/LangGraph；2026-08-13 的新工程设计已显式替代这一条。当前只在 FastAPI 模块化单体内引入 LangGraph 控制平面和 LangChain 能力层；仍不引入 Spring Boot、微服务、Kubernetes、Redis、消息队列、MQTT、多智能体、TinyML、图片接线识别、复杂机器学习模型或手机 App。前端不得直接访问数据库或 AI Provider，AI 不得直接执行硬件控制。
 
 ## 9. 待补充事实
 

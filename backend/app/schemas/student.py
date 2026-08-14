@@ -4,6 +4,7 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.ai.schemas import AIExplanationResponse, AIStatusResponse
+from app.diagnosis.lightweight_schemas import DeviceStateExplanation
 
 
 class StrictStudentModel(BaseModel):
@@ -14,6 +15,9 @@ class StudentSessionResponse(StrictStudentModel):
     device_id: str
     display_name: Optional[str]
     auth_mode: Literal["device_credential_placeholder"]
+    student_user_id: Optional[str] = None
+    experiment_session_id: Optional[str] = None
+    experiment_assignment_id: Optional[str] = None
     notice: str
 
 
@@ -106,6 +110,7 @@ class StudentDashboardResponse(StrictStudentModel):
     ai_status: AIStatusResponse
     ai_explanation: Optional[AIExplanationResponse]
     episode: Optional[dict[str, Any]] = None
+    device_state_explanation: DeviceStateExplanation
 
 
 class StudentFeedbackCreate(StrictStudentModel):

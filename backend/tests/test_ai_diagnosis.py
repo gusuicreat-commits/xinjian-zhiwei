@@ -3,8 +3,15 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.ai.clients import AICompletion, DisabledEmbeddingClient
+from app.ai.schemas import AIKnowledgeReference
 from app.core.config import Settings
-from app.models import AICallRecord, Device, DiagnosisResult
+from app.models import (
+    AICallRecord,
+    Device,
+    DiagnosisResult,
+    DiagnosisWorkflowRun,
+    ExperimentSession,
+)
 from app.services.ai_diagnosis import explain_diagnosis
 
 
@@ -175,3 +182,155 @@ def test_untrusted_ai_evidence_fails_closed(api_context: dict[str, Any]) -> None
         call = db.get(AICallRecord, result.call_record_id)
         assert call is not None
         assert call.error_code == "AI_OUTPUT_OR_PROVIDER_FAILED"
+
+
+def test_graph_supplied_knowledge_is_reused_without_second_retrieval(
+    api_context: dict[str, Any], monkeypatch
+) -> None:
+    diagnosis_id = _create_diagnosis(api_context)
+    settings = Settings(
+        ai_transport="openai-compatible",
+        ai_provider="phase9-test-provider",
+        ai_base_url="https://provider.invalid/v1",
+        ai_model="phase9-test-model",
+        ai_api_key="phase9-test-key-not-for-production",
+        ai_require_knowledge=False,
+        ai_max_retries=0,
+    )
+    with api_context["session_factory"]() as db:
+        diagnosis = db.get(DiagnosisResult, diagnosis_id)
+        device = db.query(Device).one()
+        primary = diagnosis.matched_rules[0]
+        evidence_item = primary["evidence"][0]
+        allowed_evidence = f"{evidence_item['fact']}: {evidence_item['observed_value']}"
+        knowledge = AIKnowledgeReference(
+            chunk_id="graph-kb-chunk",
+            source_key="graph-kb-source",
+            source_title="合成图检索来源",
+            source_uri=None,
+            content="仅用于确认图节点检索结果被复用。",
+            similarity=1.0,
+            is_test_data=True,
+        )
+        fake = FakeAIClient(
+            {
+                "error_type": primary["error_type"],
+                "summary": "复用图检索证据。",
+                "evidence": [allowed_evidence],
+                "possible_causes": [
+                    {
+                        "cause": "合成候选",
+                        "confidence": 0.5,
+                        "knowledge_chunk_ids": ["graph-kb-chunk"],
+                    }
+                ],
+                "steps": ["继续核验。"],
+                "hint_level": 1,
+                "need_teacher_help": False,
+                "limitations": ["仅为合成复用测试。"],
+            }
+        )
+        monkeypatch.setattr(
+            "app.services.ai_diagnosis._retrieve_knowledge",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("the graph retrieval result must be reused")
+            ),
+        )
+
+        result = explain_diagnosis(
+            db,
+            device,
+            diagnosis,
+            settings,
+            ai_client=fake,
+            embedding_client=DisabledEmbeddingClient(),
+            retrieved_knowledge=[knowledge],
+        )
+
+        assert result.status == "succeeded"
+        assert result.knowledge_references[0].chunk_id == "graph-kb-chunk"
+
+
+def test_workflow_ai_replay_reuses_audit_without_second_provider_call(
+    api_context: dict[str, Any],
+) -> None:
+    diagnosis_id = _create_diagnosis(api_context)
+    settings = Settings(
+        ai_transport="openai-compatible",
+        ai_provider="phase9-test-provider",
+        ai_base_url="https://provider.invalid/v1",
+        ai_model="phase9-test-model",
+        ai_api_key="phase9-test-key-not-for-production",
+        ai_require_knowledge=False,
+        ai_max_retries=0,
+        ai_calls_per_episode=10,
+        ai_calls_per_device_hour=10,
+    )
+    with api_context["session_factory"]() as db:
+        diagnosis = db.get(DiagnosisResult, diagnosis_id)
+        device = db.query(Device).one()
+        experiment_session = db.query(ExperimentSession).one()
+        primary = diagnosis.matched_rules[0]
+        evidence_item = primary["evidence"][0]
+        fake = FakeAIClient(
+            {
+                "error_type": primary["error_type"],
+                "summary": "工作流 AI 重放只调用一次 Provider。",
+                "evidence": [f"{evidence_item['fact']}: {evidence_item['observed_value']}"],
+                "possible_causes": [],
+                "steps": ["继续执行确定性排查。"],
+                "hint_level": 1,
+                "need_teacher_help": False,
+                "limitations": ["仅为合成幂等测试。"],
+            }
+        )
+        workflow_id = "ai-replay-workflow"
+        workflow = DiagnosisWorkflowRun(
+            id=workflow_id,
+            device_id=device.id,
+            student_user_id=experiment_session.student_user_id,
+            experiment_session_id=experiment_session.id,
+            diagnosis_result_id=diagnosis.id,
+            graph_thread_id=f"diagnosis:{workflow_id}",
+            graph_version="test",
+            status="ai_analysis",
+            node_trace=[],
+            node_metrics=[],
+            retrieval_audit={},
+            error_messages=[],
+            is_test_data=True,
+        )
+        db.add(workflow)
+        db.commit()
+
+        first = explain_diagnosis(
+            db,
+            device,
+            diagnosis,
+            settings,
+            ai_client=fake,
+            embedding_client=DisabledEmbeddingClient(),
+            workflow_run_id=workflow.id,
+        )
+        first_record = db.get(AICallRecord, first.call_record_id)
+        first_episode = first_record.episode
+        first_episode_calls = first_episode.ai_call_count
+        first_audit_count = db.query(AICallRecord).count()
+        first_cost = sum(item.estimated_cost or 0 for item in db.query(AICallRecord))
+
+        second = explain_diagnosis(
+            db,
+            device,
+            diagnosis,
+            settings,
+            ai_client=fake,
+            embedding_client=DisabledEmbeddingClient(),
+            workflow_run_id=workflow.id,
+        )
+
+        assert fake.calls == 1
+        assert second.call_record_id == first.call_record_id
+        assert db.query(AICallRecord).count() == first_audit_count == 1
+        assert first_record.workflow_run_id == workflow.id
+        assert first_episode.ai_call_count == first_episode_calls == 1
+        assert sum(item.estimated_cost or 0 for item in db.query(AICallRecord)) == first_cost

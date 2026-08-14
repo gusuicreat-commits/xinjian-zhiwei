@@ -24,10 +24,13 @@ class HybridRetrievalResult:
 
 
 def _tokens(value: str) -> set[str]:
-    return {
-        token.lower()
-        for token in re.findall(r"[A-Za-z0-9_]{2,}|[\u4e00-\u9fff]{2,}", value)
-    }
+    tokens = set(re.findall(r"[A-Za-z0-9_]{2,}", value.lower()))
+    for group in re.findall(r"[\u4e00-\u9fff]+", value):
+        if len(group) == 1:
+            tokens.add(group)
+        else:
+            tokens.update(group[index : index + 2] for index in range(len(group) - 1))
+    return tokens
 
 
 def _lexical_rows(
@@ -60,17 +63,23 @@ def _lexical_rows(
         vector = func.to_tsvector("simple", KnowledgeChunk.content)
         tsquery = func.plainto_tsquery("simple", query)
         rank = func.ts_rank_cd(vector, tsquery)
-        rows = db.execute(
+        ranked_rows = db.execute(
             base.add_columns(rank.label("lexical_rank"))
             .where(vector.op("@@")(tsquery))
             .order_by(rank.desc())
             .limit(limit)
         ).all()
-        return [
+        rows = [
             (row[0], row[1], row[2], float(row[3] or 0.0))
-            for row in rows
+            for row in ranked_rows
             if _metadata_matches(row[0].metadata_json, metadata_filters)
         ]
+        if rows:
+            return rows
+        # PostgreSQL's ``simple`` parser is exact and can miss natural Chinese
+        # without an external tokenizer.  Fall back to the same deterministic
+        # token-overlap path used by SQLite so no-embedding deployments remain
+        # usable without introducing an ungoverned search service.
     query_tokens = _tokens(query)
     candidates = db.execute(base.limit(max(limit * 20, 100))).all()
     ranked = []

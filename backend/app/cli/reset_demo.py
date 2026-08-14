@@ -5,7 +5,15 @@ import argparse
 from sqlalchemy import delete, select
 
 from app.db.session import SessionLocal
-from app.models import Course, Device, Permission, Role, User
+from app.models import (
+    Course,
+    Device,
+    DiagnosisWorkflowRun,
+    ExperimentSession,
+    Permission,
+    Role,
+    User,
+)
 
 
 def main() -> None:
@@ -40,6 +48,12 @@ def main() -> None:
                 )
             )
         )
+        device_ids = [item.id for item in devices]
+        if device_ids:
+            db.execute(
+                delete(DiagnosisWorkflowRun).where(DiagnosisWorkflowRun.device_id.in_(device_ids))
+            )
+            db.execute(delete(ExperimentSession).where(ExperimentSession.device_id.in_(device_ids)))
         for item in [*devices, *users, *courses]:
             db.delete(item)
         db.execute(delete(Role).where(Role.code.startswith(args.prefix)))

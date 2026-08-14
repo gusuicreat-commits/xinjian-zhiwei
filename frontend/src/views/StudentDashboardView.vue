@@ -82,6 +82,19 @@ async function generateAIExplanation(): Promise<void> {
   }
 }
 
+async function runDiagnosisWorkflow(): Promise<void> {
+  if (!sessionStore.credentials) return
+  try {
+    await dashboardStore.runDiagnosisWorkflow(sessionStore.credentials)
+    const workflow = dashboardStore.workflow
+    if (workflow?.status === 'waiting_teacher') ElMessage.warning('诊断已暂停，等待教师审核')
+    else if (workflow?.status === 'completed') ElMessage.success('辅助诊断工作流已完成')
+    else ElMessage.info(`工作流状态：${workflow?.status || '未知'}`)
+  } catch {
+    ElMessage.error('辅助诊断工作流启动失败，原有诊断结果不受影响')
+  }
+}
+
 function navigateTo(target: string): void {
   activeNavTarget.value = target
   const section = document.getElementById(target)
@@ -220,8 +233,12 @@ onBeforeUnmount(() => {
             :ai-status="dashboardStore.dashboard.ai_status"
             :ai-explanation="dashboardStore.dashboard.ai_explanation"
             :ai-loading="dashboardStore.aiLoading"
+            :workflow="dashboardStore.workflow"
+            :workflow-loading="dashboardStore.workflowLoading"
+            :device-state-explanation="dashboardStore.dashboard.device_state_explanation"
             @feedback="submitFeedback"
             @request-ai="generateAIExplanation"
+            @request-workflow="runDiagnosisWorkflow"
           />
         </section>
       </div>

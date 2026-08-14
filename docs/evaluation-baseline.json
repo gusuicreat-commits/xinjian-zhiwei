@@ -1,11 +1,11 @@
 {
-  "evaluation_version": "2",
+  "evaluation_version": "3",
   "dataset_versions": {
     "diagnosis": "synthetic-diagnosis-golden-v1",
-    "retrieval": "synthetic-retrieval-golden-v1",
+    "retrieval": "synthetic-hybrid-retrieval-golden-v3",
     "forbidden_claims": "forbidden-claims-v1"
   },
-  "generated_on": "2026-07-27",
+  "generated_on": "2026-08-13",
   "is_test_data": true,
   "diagnosis": {
     "total": 30,
@@ -18,11 +18,32 @@
     "threshold": 1.0
   },
   "retrieval": {
-    "total": 10,
-    "passed": 10,
-    "top1_accuracy": 1.0,
-    "top3_accuracy": 1.0,
-    "threshold": 0.9
+    "total": 54,
+    "passed": 50,
+    "top1_accuracy": 0.8703703703703703,
+    "top3_accuracy": 0.9074074074074074,
+    "recall_at_5": 0.9382716049382716,
+    "mrr_at_5": 0.8972222222222223,
+    "hit_rate_at_5": 0.9444444444444444,
+    "threshold": 0.8,
+    "miss_count": 4,
+    "miss_ids": [
+      "q013",
+      "q016",
+      "q031",
+      "q037"
+    ],
+    "gate_passed": true,
+    "retriever": "app.services.hybrid_retrieval.hybrid_retrieve",
+    "embedding_fixture": "deterministic-hash-v1",
+    "database_dialect": "sqlite",
+    "candidate_limits": {
+      "lexical_top_n": 10,
+      "vector_top_n": 10,
+      "fused_top_k": 5
+    },
+    "multi_relevant_query_count": 6,
+    "is_test_data": true
   },
   "forbidden_claims": {
     "patterns_checked": 6,
@@ -41,5 +62,5 @@
     "passed": true
   },
   "passed": true,
-  "claim_boundary": "只验证当前示例规则与合成词法检索器，不代表真实硬件诊断准确率、正式 RAG 质量或专业知识有效性"
+  "claim_boundary": "只验证当前示例规则与明确标注的合成混合检索 fixture，不代表真实硬件诊断准确率、正式 RAG 质量、真实 Embedding 质量或专业知识有效性"
 }

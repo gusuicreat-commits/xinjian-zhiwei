@@ -31,6 +31,7 @@ ESP32 开发板
         │   ├── 规则引擎与故障树
         │   ├── Diagnosis Episode
         │   ├── 本地 RAG
+        │   ├── LangGraph 诊断编排与教师审核
         │   └── 可选 AI 解释
         └── PostgreSQL + pgvector
                     │
@@ -171,6 +172,9 @@ draft → pending → approved
 - 开发模式：开发者 Mac/Windows + Docker Desktop + Docker Compose，用于测试、模拟器和联调。
 - 课堂试运行：实验室固定电脑、小型主机或学院服务器运行 Docker Compose；设备、学生电脑、教师电脑和服务器处于同一局域网。这是第一版课堂与答辩推荐方式，不要求公网 IP、域名或云服务器。
 - 正式部署：可使用校园网服务器、学校私有云、学院服务器或国内云服务器；必须另外完成 HTTPS、域名、防火墙、账号权限、备份恢复、监控告警、数据保留、隐私合规、限流和多班级隔离。
+
+生产必须使用 PostgreSQL LangGraph checkpoint，并在部署迁移步骤单次执行
+`python -m app.cli.setup_diagnosis_checkpoints`。内存 saver 仅用于本地和测试；生产配置会对此强制校验。
 
 更详细的运维边界见 [部署说明](deployment.md)。
 

@@ -2,12 +2,21 @@
 
 import argparse
 import secrets
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
 from app.core.security import hash_device_token, hash_password
 from app.db.session import SessionLocal
-from app.models import Classroom, Course, Device, DeviceBinding, User
+from app.models import (
+    Classroom,
+    Course,
+    Device,
+    DeviceBinding,
+    ExperimentAssignment,
+    ExperimentSession,
+    User,
+)
 from app.models.classroom import Enrollment, TeachingAssignment
 from app.services.rbac import assign_role, ensure_rbac_catalog
 
@@ -65,18 +74,37 @@ def main() -> None:
         assign_role(db, teacher, roles["teacher"])
         db.add(Enrollment(class_id=classroom.id, user_id=student.id, status="active"))
         db.add(TeachingAssignment(class_id=classroom.id, user_id=teacher.id))
+        assignment = ExperimentAssignment(
+            class_id=classroom.id,
+            title="合成演示实验",
+            status="published",
+            is_test_data=True,
+        )
+        db.add(assignment)
+        db.flush()
         db.add(
             DeviceBinding(
                 device_id=device.id,
                 class_id=classroom.id,
                 student_user_id=student.id,
+                experiment_assignment_id=assignment.id,
                 is_active=True,
             )
         )
+        experiment_session = ExperimentSession(
+            experiment_assignment_id=assignment.id,
+            student_user_id=student.id,
+            device_id=device.id,
+            status="active",
+            started_at=datetime.now(timezone.utc),
+            is_test_data=True,
+        )
+        db.add(experiment_session)
         db.commit()
     print(f"prefix={args.prefix}")
     print(f"student_page_device_id={device_key}")
     print(f"student_page_device_token={device_token}")
+    print(f"experiment_session_id={experiment_session.id}")
     print(f"rbac_student_username={args.prefix}student")
     print(f"rbac_student_password={student_password}")
     print(f"teacher_page_username={args.prefix}teacher")

@@ -93,7 +93,12 @@ def diagnose(context: DiagnosisContext) -> DiagnosisOutcome:
 
 
 def save_diagnosis_result(
-    db: Session, device: Device, context: DiagnosisContext, outcome: DiagnosisOutcome
+    db: Session,
+    device: Device,
+    context: DiagnosisContext,
+    outcome: DiagnosisOutcome,
+    *,
+    commit: bool = True,
 ) -> DiagnosisResult:
     sources = [*context.logs, *context.heartbeats, *context.readings]
     record = DiagnosisResult(
@@ -115,6 +120,12 @@ def save_diagnosis_result(
         created_at=utc_now(),
     )
     db.add(record)
-    db.commit()
-    db.refresh(record)
+    if commit:
+        db.commit()
+        db.refresh(record)
+    else:
+        # Graph callers link the result to their workflow in the same transaction.
+        # This closes the crash window where a result was committed but the replay
+        # had no durable reference and therefore created a duplicate result.
+        db.flush()
     return record

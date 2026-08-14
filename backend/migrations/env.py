@@ -21,9 +21,12 @@ from app.models import (  # noqa: F401
     DiagnosisEpisode,
     DiagnosisFeedback,
     DiagnosisResult,
+    DiagnosisWorkflowReview,
+    DiagnosisWorkflowRun,
     DiagnosticArtifact,
     Enrollment,
     ExperimentAssignment,
+    ExperimentSession,
     ExperimentTemplate,
     ExperimentTemplateVersion,
     GuidanceHistory,
@@ -50,6 +53,13 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+LANGGRAPH_CHECKPOINT_TABLES = {
+    "checkpoint_migrations",
+    "checkpoints",
+    "checkpoint_blobs",
+    "checkpoint_writes",
+}
+
 
 def include_object(
     object_: object,
@@ -58,7 +68,15 @@ def include_object(
     reflected: bool,
     compare_to: Optional[object],
 ) -> bool:
-    del object_, reflected, compare_to
+    del compare_to
+    if reflected:
+        table_name = (
+            name if type_ == "table" else getattr(getattr(object_, "table", None), "name", None)
+        )
+        # These infrastructure tables are created and migrated by
+        # PostgresSaver.setup(); Alembic owns business tables only.
+        if table_name in LANGGRAPH_CHECKPOINT_TABLES:
+            return False
     # PostgreSQL-only expression index is intentionally managed by migration 0007.
     return not (type_ == "index" and name == "ix_knowledge_chunks_fts_simple")
 

@@ -1,29 +1,280 @@
 {
-  "dataset": "synthetic-retrieval-golden-v1",
+  "dataset": "synthetic-hybrid-retrieval-golden-v3",
   "is_test_data": true,
-  "basis": "合成词法检索验收语料，不是正式知识库",
+  "basis": "由仓库现有诊断、知识治理和工作流语义派生的合成检索验收语料；仅验证混合检索代码与人工标注的一致性，不是正式知识库、真实硬件资料或专业诊断证据",
   "documents": [
-    {"id":"d1","text":"SENSOR_READ_FAILED 读取失败 检查数据连接与采集返回值"},
-    {"id":"d2","text":"DEVICE_OFFLINE 离线 检查网络连接与心跳上报"},
-    {"id":"d3","text":"VALUE_OUT_OF_RANGE 数值越界 检查模板范围和单位"},
-    {"id":"d4","text":"幂等 requestId 重试不会重复写入"},
-    {"id":"d5","text":"知识审核 approved 才能进入正式检索"},
-    {"id":"d6","text":"AI 禁用时返回确定性规则解释"},
-    {"id":"d7","text":"bootId sequenceNo 用于启动周期和乱序保护"},
-    {"id":"d8","text":"timeQuality server_fallback 表示设备时间不可信"},
-    {"id":"d9","text":"testRunId 只标识合成场景并支持定向清理"},
-    {"id":"d10","text":"恢复场景先产生读取失败再产生正常读数"}
+    {
+      "id": "retrieval-doc-01",
+      "chunk_id": "retrieval-chunk-01",
+      "title": "合成读取失败处理",
+      "text": "SENSOR_READ_FAILED 读取失败。合成现象包括传感器采集返回值为空、数据连接异常或采集程序未取得读数；应先保留日志并检查采集返回值。",
+      "is_test_data": true,
+      "basis": "合成 SENSOR_READ_FAILED 评测块，不指向任何真实传感器"
+    },
+    {
+      "id": "retrieval-doc-02",
+      "chunk_id": "retrieval-chunk-02",
+      "title": "合成设备离线处理",
+      "text": "DEVICE_OFFLINE 设备离线。合成现象是最后心跳超过示例时间窗口，应先核对运行状态、心跳上报时间和通用网络可达性，不得直接断言硬件损坏。",
+      "is_test_data": true,
+      "basis": "合成 DEVICE_OFFLINE 评测块，仅描述仓库示例规则"
+    },
+    {
+      "id": "retrieval-doc-03",
+      "chunk_id": "retrieval-chunk-03",
+      "title": "合成数值越界处理",
+      "text": "VALUE_OUT_OF_RANGE 数值越界。合成读数超出实验模板的最小值或最大值时，应核对指标单位、上下界配置，并区分单次波动与持续越界。",
+      "is_test_data": true,
+      "basis": "合成 VALUE_OUT_OF_RANGE 评测块，阈值不代表真实硬件参数"
+    },
+    {
+      "id": "retrieval-doc-04",
+      "chunk_id": "retrieval-chunk-04",
+      "title": "合成请求幂等规则",
+      "text": "REQUEST_ID_IDEMPOTENCY 请求幂等。同一 requestId 的重试不应重复写入业务结果，服务端应返回可识别的幂等重放结果。",
+      "is_test_data": true,
+      "basis": "合成 requestId 幂等评测块"
+    },
+    {
+      "id": "retrieval-doc-05",
+      "chunk_id": "retrieval-chunk-05",
+      "title": "合成知识审核门禁",
+      "text": "KNOWLEDGE_APPROVAL 知识审核。只有文档与知识块均为 approved 时才能进入检索；draft、pending、rejected 内容不得被正式问答引用。",
+      "is_test_data": true,
+      "basis": "合成知识治理评测块"
+    },
+    {
+      "id": "retrieval-doc-06",
+      "chunk_id": "retrieval-chunk-06",
+      "title": "合成 AI 确定性降级",
+      "text": "AI_DETERMINISTIC_FALLBACK 确定性降级。AI 未配置、超时或预算门禁拒绝调用时，系统保留原始规则结果并返回确定性解释。",
+      "is_test_data": true,
+      "basis": "合成 AI fallback 工程评测块"
+    },
+    {
+      "id": "retrieval-doc-07",
+      "chunk_id": "retrieval-chunk-07",
+      "title": "合成上报顺序保护",
+      "text": "SEQUENCE_ORDERING 乱序保护。bootId 区分启动周期，sequenceNo 标识周期内上报顺序，旧序号数据不应覆盖新状态。",
+      "is_test_data": true,
+      "basis": "合成 bootId/sequenceNo 乱序评测块"
+    },
+    {
+      "id": "retrieval-doc-08",
+      "chunk_id": "retrieval-chunk-08",
+      "title": "合成设备时间质量",
+      "text": "TIME_QUALITY_FALLBACK 时间质量。timeQuality 为 server_fallback 表示设备时钟不可信，业务排序应使用服务端接收时间并保留降级标记。",
+      "is_test_data": true,
+      "basis": "合成 timeQuality 评测块"
+    },
+    {
+      "id": "retrieval-doc-09",
+      "chunk_id": "retrieval-chunk-09",
+      "title": "合成测试运行清理",
+      "text": "TEST_RUN_CLEANUP 测试清理。testRunId 只标识合成验收场景，用于定向查询和清理测试数据，不得与正式运行记录混淆。",
+      "is_test_data": true,
+      "basis": "合成 testRunId 隔离评测块"
+    },
+    {
+      "id": "retrieval-doc-10",
+      "chunk_id": "retrieval-chunk-10",
+      "title": "合成故障恢复聚合",
+      "text": "RECOVERY_EPISODE 恢复场景。同一设备在示例时间窗内先出现读取失败、后产生正常读数时，Episode 应记录故障到恢复的过程而非重复建立事件。",
+      "is_test_data": true,
+      "basis": "合成 Episode 恢复评测块"
+    },
+    {
+      "id": "retrieval-doc-11",
+      "chunk_id": "retrieval-chunk-11",
+      "title": "合成证据评分边界",
+      "text": "EVIDENCE_SCORE_RULE 证据评分。evidence_score 由确定性规则和证据完整度计算，LLM 不得修改评分或自行决定证据级别。",
+      "is_test_data": true,
+      "basis": "合成证据分数治理评测块"
+    },
+    {
+      "id": "retrieval-doc-12",
+      "chunk_id": "retrieval-chunk-12",
+      "title": "合成教师审核门",
+      "text": "TEACHER_REVIEW_GATE 教师审核。低证据评分或需要人工确认时，工作流进入 interrupt；教师可执行 approve、edit 或 reject 后恢复运行。",
+      "is_test_data": true,
+      "basis": "合成 HITL 教师审核评测块"
+    },
+    {
+      "id": "retrieval-doc-13",
+      "chunk_id": "retrieval-chunk-13",
+      "title": "合成检查点恢复",
+      "text": "CHECKPOINT_RESUME 检查点恢复。LangGraph 使用 thread_id 定位持久化 checkpoint，进程重启后应从已保存状态继续，不重复执行已完成的业务写入。",
+      "is_test_data": true,
+      "basis": "合成 LangGraph checkpoint 评测块"
+    },
+    {
+      "id": "retrieval-doc-14",
+      "chunk_id": "retrieval-chunk-14",
+      "title": "合成班级数据隔离",
+      "text": "CLASSROOM_SCOPE 班级隔离。教师只能查看其授课班级的待审工作流，学生只能访问自己被授权的设备与诊断记录。",
+      "is_test_data": true,
+      "basis": "合成 RBAC 与班级范围评测块"
+    },
+    {
+      "id": "retrieval-doc-15",
+      "chunk_id": "retrieval-chunk-15",
+      "title": "合成知识来源追溯",
+      "text": "KNOWLEDGE_SOURCE_TRACE 知识追溯。检索结果应保留 source_key、source_uri、source_version、locator 和 chunk_id，使引用可以定位到被审核的来源版本。",
+      "is_test_data": true,
+      "basis": "合成知识源追溯评测块"
+    },
+    {
+      "id": "retrieval-doc-16",
+      "chunk_id": "retrieval-chunk-16",
+      "title": "合成向量检索过滤",
+      "text": "EMBEDDING_FILTER 向量过滤。检索时应核对 embedding provider、model 和 dimensions，并遵守 source_types、is_test_data 与审核状态过滤条件。",
+      "is_test_data": true,
+      "basis": "合成 embedding 元数据过滤评测块"
+    },
+    {
+      "id": "retrieval-doc-17",
+      "chunk_id": "retrieval-chunk-17",
+      "title": "合成 AI 预算门禁",
+      "text": "AI_BUDGET_GATE AI 预算门禁。调用前检查单 Episode 次数、单设备每小时次数、每日预算和单次成本上限；超限时不请求外部模型。",
+      "is_test_data": true,
+      "basis": "合成 AI 调用预算评测块"
+    },
+    {
+      "id": "retrieval-doc-18",
+      "chunk_id": "retrieval-chunk-18",
+      "title": "合成输入隐私净化",
+      "text": "INPUT_SANITIZATION 输入净化。发送给 AI 之前应去除密钥、令牌、可识别个人信息与无关大段日志，仅保留诊断所需的受控上下文。",
+      "is_test_data": true,
+      "basis": "合成隐私与上下文净化评测块"
+    },
+    {
+      "id": "retrieval-doc-19",
+      "chunk_id": "retrieval-chunk-19",
+      "title": "合成传感器中断与恢复处置",
+      "text": "采集通道曾经返回空数据，随后又出现有效读数。先保留失败日志并检查数据连接，再把前后诊断聚合到同一故障恢复过程。",
+      "is_test_data": true,
+      "basis": "合成读取中断与 Episode 恢复的第二相关知识块"
+    },
+    {
+      "id": "retrieval-doc-20",
+      "chunk_id": "retrieval-chunk-20",
+      "title": "合成人工审核后恢复持久流程",
+      "text": "证据不足时暂停自动发布，由教师审核后依据线程标识恢复。审批、修订或驳回的结果都要留存，重启后不重复写入已完成业务事实。",
+      "is_test_data": true,
+      "basis": "合成教师审核与 checkpoint 恢复的第二相关知识块"
+    },
+    {
+      "id": "retrieval-doc-21",
+      "chunk_id": "retrieval-chunk-21",
+      "title": "合成知识发布与引用审计",
+      "text": "一条诊断资料只有通过组织者和正式审批后才可发布。回答引用时需记住来源键、版本、页面或章节位置及知识块编号，便于审计追溯。",
+      "is_test_data": true,
+      "basis": "合成知识审核与来源追溯的第二相关知识块"
+    },
+    {
+      "id": "retrieval-doc-22",
+      "chunk_id": "retrieval-chunk-22",
+      "title": "合成外部模型调用安全边界",
+      "text": "准备请求外部模型时，先删除密钥、身份信息和无关日志，再检查频率、当日额度与单次成本。任一条件不满足就保留确定性解释而不外发。",
+      "is_test_data": true,
+      "basis": "合成隐私净化、预算门禁和确定性降级的第二相关知识块"
+    },
+    {
+      "id": "retrieval-doc-23",
+      "chunk_id": "retrieval-chunk-23",
+      "title": "合成心跳远程清理干扰项",
+      "text": "测试运行使用独立标识定向清理，清理前核对心跳时间与网络状态。这个合成干扰块同时包含清理、心跳和网络词，但不是设备离线的预期主答案。",
+      "is_test_data": true,
+      "basis": "高重叠词汇的合成负例干扰项"
+    },
+    {
+      "id": "retrieval-doc-24",
+      "chunk_id": "retrieval-chunk-24",
+      "title": "合成范围数据干扰项",
+      "text": "报表可以展示最小值、最大值、班级范围与测试数据过滤结果。这个合成块用于干扰数值越界、班级隔离和向量过滤问题，不包含对应实施规则。",
+      "is_test_data": true,
+      "basis": "跨主题共享词汇的合成负例干扰项"
+    },
+    {
+      "id": "retrieval-doc-25",
+      "chunk_id": "retrieval-chunk-25",
+      "title": "合成审核操作界面干扰项",
+      "text": "管理页面会显示审核、批准、修订、驳回和追溯按钮。这个合成界面说明并不定义知识审核门禁或教师工作流恢复语义。",
+      "is_test_data": true,
+      "basis": "审核共享词汇的合成负例干扰项"
+    }
   ],
   "queries": [
-    {"id":"q1","text":"传感器读取失败 SENSOR_READ_FAILED","expected":"d1"},
-    {"id":"q2","text":"设备离线心跳","expected":"d2"},
-    {"id":"q3","text":"读数超过模板范围","expected":"d3"},
-    {"id":"q4","text":"重试幂等 requestId","expected":"d4"},
-    {"id":"q5","text":"approved 知识审核","expected":"d5"},
-    {"id":"q6","text":"AI 关闭确定性解释","expected":"d6"},
-    {"id":"q7","text":"sequenceNo 乱序","expected":"d7"},
-    {"id":"q8","text":"server_fallback 时间","expected":"d8"},
-    {"id":"q9","text":"testRunId 清理","expected":"d9"},
-    {"id":"q10","text":"失败之后恢复正常","expected":"d10"}
+    {"id":"q001","text":"传感器突然采不到任何值，先检查什么","expected_document_ids":["retrieval-doc-01"],"expected_chunk_ids":["retrieval-chunk-01"],"basis":"由合成文档 01 独立改写"},
+    {"id":"q002","text":"传感器采集返回值为空","expected_document_ids":["retrieval-doc-01"],"expected_chunk_ids":["retrieval-chunk-01"],"basis":"由合成文档 01 派生"},
+    {"id":"q003","text":"采集程序没有取得读数怎么查","expected_document_ids":["retrieval-doc-01"],"expected_chunk_ids":["retrieval-chunk-01"],"basis":"由合成文档 01 派生"},
+
+    {"id":"q004","text":"很久收不到设备心跳，是不是先查在线和网络状态","expected_document_ids":["retrieval-doc-02"],"expected_chunk_ids":["retrieval-chunk-02"],"basis":"由合成文档 02 独立改写"},
+    {"id":"q005","text":"最后心跳超过示例时间窗口","expected_document_ids":["retrieval-doc-02"],"expected_chunk_ids":["retrieval-chunk-02"],"basis":"由合成文档 02 派生"},
+    {"id":"q006","text":"长时间没有心跳上报如何检查","expected_document_ids":["retrieval-doc-02"],"expected_chunk_ids":["retrieval-chunk-02"],"basis":"由合成文档 02 派生"},
+
+    {"id":"q007","text":"仪表数值跑到模板设定的上限外，要核对哪些配置","expected_document_ids":["retrieval-doc-03"],"expected_chunk_ids":["retrieval-chunk-03"],"basis":"由合成文档 03 独立改写"},
+    {"id":"q008","text":"读数超出实验模板最大值","expected_document_ids":["retrieval-doc-03"],"expected_chunk_ids":["retrieval-chunk-03"],"basis":"由合成文档 03 派生"},
+    {"id":"q009","text":"核对指标单位和上下界配置","expected_document_ids":["retrieval-doc-03"],"expected_chunk_ids":["retrieval-chunk-03"],"basis":"由合成文档 03 派生"},
+
+    {"id":"q010","text":"网络重试同一个请求编号时怎样防止重复落库","expected_document_ids":["retrieval-doc-04"],"expected_chunk_ids":["retrieval-chunk-04"],"basis":"由合成文档 04 独立改写"},
+    {"id":"q011","text":"同一 requestId 重试不重复写入","expected_document_ids":["retrieval-doc-04"],"expected_chunk_ids":["retrieval-chunk-04"],"basis":"由合成文档 04 派生"},
+    {"id":"q012","text":"幂等重放结果怎样识别","expected_document_ids":["retrieval-doc-04"],"expected_chunk_ids":["retrieval-chunk-04"],"basis":"由合成文档 04 派生"},
+
+    {"id":"q013","text":"草稿资料可以直接给诊断回答当依据吗","expected_document_ids":["retrieval-doc-05"],"expected_chunk_ids":["retrieval-chunk-05"],"basis":"由合成文档 05 独立改写"},
+    {"id":"q014","text":"什么审核状态才能进入检索","expected_document_ids":["retrieval-doc-05"],"expected_chunk_ids":["retrieval-chunk-05"],"basis":"由合成文档 05 派生"},
+    {"id":"q015","text":"draft pending rejected 内容能否被引用","expected_document_ids":["retrieval-doc-05"],"expected_chunk_ids":["retrieval-chunk-05"],"basis":"由合成文档 05 派生"},
+
+    {"id":"q016","text":"智能模型不可用或超时时，诊断还能返回什么","expected_document_ids":["retrieval-doc-06"],"expected_chunk_ids":["retrieval-chunk-06"],"basis":"由合成文档 06 独立改写"},
+    {"id":"q017","text":"AI 未配置时保留原始规则结果","expected_document_ids":["retrieval-doc-06"],"expected_chunk_ids":["retrieval-chunk-06"],"basis":"由合成文档 06 派生"},
+    {"id":"q018","text":"模型超时后返回确定性解释","expected_document_ids":["retrieval-doc-06"],"expected_chunk_ids":["retrieval-chunk-06"],"basis":"由合成文档 06 派生"},
+
+    {"id":"q019","text":"设备重启后序号归零，怎样避免旧上报覆盖新状态","expected_document_ids":["retrieval-doc-07"],"expected_chunk_ids":["retrieval-chunk-07"],"basis":"由合成文档 07 独立改写"},
+    {"id":"q020","text":"bootId 区分启动周期","expected_document_ids":["retrieval-doc-07"],"expected_chunk_ids":["retrieval-chunk-07"],"basis":"由合成文档 07 派生"},
+    {"id":"q021","text":"旧 sequenceNo 不能覆盖新状态","expected_document_ids":["retrieval-doc-07"],"expected_chunk_ids":["retrieval-chunk-07"],"basis":"由合成文档 07 派生"},
+
+    {"id":"q022","text":"硬件自带时钟不可信时，排序应改用哪个时间","expected_document_ids":["retrieval-doc-08"],"expected_chunk_ids":["retrieval-chunk-08"],"basis":"由合成文档 08 独立改写"},
+    {"id":"q023","text":"timeQuality 设备时钟不可信","expected_document_ids":["retrieval-doc-08"],"expected_chunk_ids":["retrieval-chunk-08"],"basis":"由合成文档 08 派生"},
+    {"id":"q024","text":"使用服务端接收时间并保留降级标记","expected_document_ids":["retrieval-doc-08"],"expected_chunk_ids":["retrieval-chunk-08"],"basis":"由合成文档 08 派生"},
+
+    {"id":"q025","text":"自动验收产生的记录怎么单独定位并清理","expected_document_ids":["retrieval-doc-09"],"expected_chunk_ids":["retrieval-chunk-09"],"basis":"由合成文档 09 独立改写"},
+    {"id":"q026","text":"testRunId 定向查询和清理测试数据","expected_document_ids":["retrieval-doc-09"],"expected_chunk_ids":["retrieval-chunk-09"],"basis":"由合成文档 09 派生"},
+    {"id":"q027","text":"如何避免合成记录与正式数据混淆","expected_document_ids":["retrieval-doc-09"],"expected_chunk_ids":["retrieval-chunk-09"],"basis":"由合成文档 09 派生"},
+
+    {"id":"q028","text":"一会儿没数据一会儿又正常，应记为一段恢复过程还是多个事件","expected_document_ids":["retrieval-doc-10","retrieval-doc-19"],"expected_chunk_ids":["retrieval-chunk-10","retrieval-chunk-19"],"basis":"由合成文档 10 和 19 独立综合改写"},
+    {"id":"q029","text":"先读取失败后产生正常读数","expected_document_ids":["retrieval-doc-10"],"expected_chunk_ids":["retrieval-chunk-10"],"basis":"由合成文档 10 派生"},
+    {"id":"q030","text":"Episode 记录故障到恢复的过程","expected_document_ids":["retrieval-doc-10"],"expected_chunk_ids":["retrieval-chunk-10"],"basis":"由合成文档 10 派生"},
+
+    {"id":"q031","text":"诊断证据强度应该由模型自己打分吗","expected_document_ids":["retrieval-doc-11"],"expected_chunk_ids":["retrieval-chunk-11"],"basis":"由合成文档 11 独立改写"},
+    {"id":"q032","text":"证据评分由确定性规则计算","expected_document_ids":["retrieval-doc-11"],"expected_chunk_ids":["retrieval-chunk-11"],"basis":"由合成文档 11 派生"},
+    {"id":"q033","text":"LLM 能不能修改 evidence score","expected_document_ids":["retrieval-doc-11"],"expected_chunk_ids":["retrieval-chunk-11"],"basis":"由合成文档 11 派生"},
+
+    {"id":"q034","text":"证据太少时先暂停发布，等老师处理后再继续","expected_document_ids":["retrieval-doc-12","retrieval-doc-20"],"expected_chunk_ids":["retrieval-chunk-12","retrieval-chunk-20"],"basis":"由合成文档 12 和 20 独立综合改写"},
+    {"id":"q035","text":"低证据评分进入教师审核","expected_document_ids":["retrieval-doc-12"],"expected_chunk_ids":["retrieval-chunk-12"],"basis":"由合成文档 12 派生"},
+    {"id":"q036","text":"教师 approve edit reject 后恢复工作流","expected_document_ids":["retrieval-doc-12"],"expected_chunk_ids":["retrieval-chunk-12"],"basis":"由合成文档 12 派生"},
+
+    {"id":"q037","text":"服务重启后怎样沿用之前暂停的审核任务而不重复写结果","expected_document_ids":["retrieval-doc-12","retrieval-doc-13","retrieval-doc-20"],"expected_chunk_ids":["retrieval-chunk-12","retrieval-chunk-13","retrieval-chunk-20"],"basis":"由合成教师审核、检查点和暂停恢复文档 12、13、20 独立综合改写"},
+    {"id":"q038","text":"进程重启后从已保存状态继续","expected_document_ids":["retrieval-doc-13"],"expected_chunk_ids":["retrieval-chunk-13"],"basis":"由合成文档 13 派生"},
+    {"id":"q039","text":"checkpoint 恢复时不重复业务写入","expected_document_ids":["retrieval-doc-13"],"expected_chunk_ids":["retrieval-chunk-13"],"basis":"由合成文档 13 派生"},
+
+    {"id":"q040","text":"一位老师能查看其他班级的待处理诊断吗","expected_document_ids":["retrieval-doc-14"],"expected_chunk_ids":["retrieval-chunk-14"],"basis":"由合成文档 14 独立改写"},
+    {"id":"q041","text":"教师只查看授课班级待审工作流","expected_document_ids":["retrieval-doc-14"],"expected_chunk_ids":["retrieval-chunk-14"],"basis":"由合成文档 14 派生"},
+    {"id":"q042","text":"学生访问自己被授权的设备","expected_document_ids":["retrieval-doc-14"],"expected_chunk_ids":["retrieval-chunk-14"],"basis":"由合成文档 14 派生"},
+
+    {"id":"q043","text":"诊断引用的资料怎么追回它当时通过审批的版本和位置","expected_document_ids":["retrieval-doc-15","retrieval-doc-21"],"expected_chunk_ids":["retrieval-chunk-15","retrieval-chunk-21"],"basis":"由合成文档 15 和 21 独立综合改写"},
+    {"id":"q044","text":"检索引用保留 source_uri source_version","expected_document_ids":["retrieval-doc-15"],"expected_chunk_ids":["retrieval-chunk-15"],"basis":"由合成文档 15 派生"},
+    {"id":"q045","text":"如何定位到被审核的知识来源版本","expected_document_ids":["retrieval-doc-15"],"expected_chunk_ids":["retrieval-chunk-15"],"basis":"由合成文档 15 派生"},
+
+    {"id":"q046","text":"检索向量的生成方、模型和维度对不上时应不应混用","expected_document_ids":["retrieval-doc-16"],"expected_chunk_ids":["retrieval-chunk-16"],"basis":"由合成文档 16 独立改写"},
+    {"id":"q047","text":"向量检索核对 embedding 维度","expected_document_ids":["retrieval-doc-16"],"expected_chunk_ids":["retrieval-chunk-16"],"basis":"由合成文档 16 派生"},
+    {"id":"q048","text":"source_types is_test_data 审核状态过滤","expected_document_ids":["retrieval-doc-16"],"expected_chunk_ids":["retrieval-chunk-16"],"basis":"由合成文档 16 派生"},
+
+    {"id":"q049","text":"调外部模型前要不要先检查当日额度和调用频次","expected_document_ids":["retrieval-doc-17","retrieval-doc-22"],"expected_chunk_ids":["retrieval-chunk-17","retrieval-chunk-22"],"basis":"由合成文档 17 和 22 独立综合改写"},
+    {"id":"q050","text":"单 Episode AI 调用次数限制","expected_document_ids":["retrieval-doc-17"],"expected_chunk_ids":["retrieval-chunk-17"],"basis":"由合成文档 17 派生"},
+    {"id":"q051","text":"超过单次成本上限不请求外部模型","expected_document_ids":["retrieval-doc-17"],"expected_chunk_ids":["retrieval-chunk-17"],"basis":"由合成文档 17 派生"},
+
+    {"id":"q052","text":"向外部模型提交诊断前，哪些秘密和无关记录必须删掉","expected_document_ids":["retrieval-doc-18","retrieval-doc-22"],"expected_chunk_ids":["retrieval-chunk-18","retrieval-chunk-22"],"basis":"由合成文档 18 和 22 独立综合改写"},
+    {"id":"q053","text":"发送给 AI 前去除密钥令牌","expected_document_ids":["retrieval-doc-18"],"expected_chunk_ids":["retrieval-chunk-18"],"basis":"由合成文档 18 派生"},
+    {"id":"q054","text":"仅保留诊断所需的受控上下文","expected_document_ids":["retrieval-doc-18"],"expected_chunk_ids":["retrieval-chunk-18"],"basis":"由合成文档 18 派生"}
   ]
 }

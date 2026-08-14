@@ -43,6 +43,9 @@ function dashboard(overrides: Record<string, unknown> = {}) {
 }
 
 async function mockStudentApi(page: Page, payload: ReturnType<typeof dashboard>): Promise<void> {
+  await page.route('**/api/v1/diagnosis-workflows/devices/*/latest', async (route) => {
+    await route.fulfill({ json: null })
+  })
   await page.route('**/api/v1/student/**', async (route) => {
     const url = route.request().url()
     if (url.endsWith('/session')) {
@@ -51,6 +54,9 @@ async function mockStudentApi(page: Page, payload: ReturnType<typeof dashboard>)
           device_id: device.device_id,
           display_name: device.display_name,
           auth_mode: 'device_credential_placeholder',
+          student_user_id: 'browser-student',
+          experiment_session_id: 'browser-experiment-session',
+          experiment_assignment_id: 'browser-experiment-assignment',
           notice: '测试会话',
         },
       })
@@ -82,6 +88,12 @@ async function mockStudentApi(page: Page, payload: ReturnType<typeof dashboard>)
       status: 201,
       json: feedback,
     })
+  })
+}
+
+async function mockStudentWorkflow(page: Page, workflow: Record<string, unknown>): Promise<void> {
+  await page.route('**/api/v1/diagnosis-workflows/devices/*/latest', async (route) => {
+    await route.fulfill({ json: workflow })
   })
 }
 
@@ -204,4 +216,92 @@ test('shows abnormal evidence and submits teacher-help feedback', async ({ page 
   await expect(page.getByText('已记录：请求教师协助')).toBeVisible()
   await expect(page.getByText('求助已提交，等待教师认领')).toBeVisible()
   expect(errors).toEqual([])
+})
+
+test('shows workflow provenance, missing evidence and teacher review history', async ({ page }) => {
+  const payload = dashboard({
+    diagnosis: {
+      id: 'workflow-diagnosis',
+      evaluated_at: '2026-07-20T09:00:00Z',
+      is_test_data: true,
+      evidence: [],
+      matches: [
+        {
+          rule_id: 'rule-workflow',
+          error_type: 'sensor_read_failure',
+          priority: 10,
+          summary: '读取失败',
+          evidence: [{ fact: 'event_count', observed_value: 2, details: [] }],
+        },
+      ],
+    },
+  })
+  await mockStudentApi(page, payload)
+  await mockStudentWorkflow(page, {
+    id: 'workflow-browser',
+    diagnosis_result_id: 'workflow-diagnosis',
+    device_id: device.device_id,
+    graph_thread_id: 'diagnosis:workflow-browser',
+    graph_version: 'langgraph-v1',
+    status: 'completed',
+    current_node: 'persist_result',
+    evidence_score: 0.6,
+    guidance_level: 3,
+    needs_rag: true,
+    needs_teacher: true,
+    rule_engine_version: 'rules-v3',
+    fault_tree_version: 'tree-v2',
+    embedding_version: 'embedding-v1',
+    model_id: 'model-v1',
+    node_trace: ['collect_context', 'run_rules', 'retrieve_knowledge', 'persist_result'],
+    final_result: {
+      summary: '建议检查连接',
+      limitations: ['缺少供电电压读数'],
+      rule_hits: [
+        {
+          rule_id: 'rule-workflow',
+          error_type: 'sensor_read_failure',
+          summary: '读取失败',
+          evidence: [{ fact: 'event_count', observed_value: 2 }],
+        },
+      ],
+      candidate_causes: [
+        { cause_id: 'connection', name: '连接异常', score: 0.75, evidence_refs: ['log:1'] },
+      ],
+      knowledge_references: [
+        {
+          chunk_id: 'chunk-1',
+          source_id: 'manual-sensor',
+          title: '传感器手册',
+          score: 0.83,
+          metadata: { source_version: '2026.1', review_status: 'approved' },
+        },
+      ],
+    },
+    error_messages: [],
+    review_request: null,
+    reviews: [
+      {
+        id: 'review-1',
+        reviewer_user_id: 'teacher-1',
+        action: 'approve',
+        comment: '证据可用',
+        edited_result: null,
+        created_at: '2026-07-20T09:10:00Z',
+      },
+    ],
+    is_test_data: true,
+    created_at: '2026-07-20T09:00:00Z',
+    updated_at: '2026-07-20T09:10:00Z',
+    completed_at: '2026-07-20T09:10:00Z',
+  })
+
+  await login(page)
+  await expect(page.getByText('manual-sensor / chunk-1')).toBeVisible()
+  await expect(page.getByText('RRF 0.8300')).toBeVisible()
+  await expect(page.getByText('缺少供电电压读数')).toBeVisible()
+  await expect(page.getByText('审核详情仅教师可见')).toBeVisible()
+  await expect(page.getByText('证据可用')).toHaveCount(0)
+  await expect(page.getByText('teacher-1')).toHaveCount(0)
+  await expect(page.getByText('collect_context')).toBeVisible()
 })

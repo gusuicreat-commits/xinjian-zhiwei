@@ -105,6 +105,13 @@ class Settings(BaseSettings):
     rag_vector_top_n: int = 10
     rag_fused_top_k: int = 5
     rag_rrf_k: int = 60
+    diagnosis_workflow_enabled: bool = True
+    diagnosis_graph_version: str = "langgraph-v1"
+    diagnosis_checkpoint_backend: Literal["memory", "postgres"] = "memory"
+    diagnosis_checkpoint_dsn: Optional[str] = None
+    diagnosis_checkpoint_setup: bool = False
+    diagnosis_rag_trigger_score: float = 0.75
+    diagnosis_teacher_review_score: float = 0.55
 
     @field_validator("log_level")
     @classmethod
@@ -213,6 +220,13 @@ class Settings(BaseSettings):
             raise ValueError("ai_low_confidence_threshold must be between 0 and 1")
         return value
 
+    @field_validator("diagnosis_rag_trigger_score", "diagnosis_teacher_review_score")
+    @classmethod
+    def validate_workflow_threshold(cls, value: float) -> float:
+        if value < 0 or value > 1:
+            raise ValueError("diagnosis workflow thresholds must be between 0 and 1")
+        return value
+
     @field_validator(
         "ai_daily_budget",
         "ai_max_cost_per_call",
@@ -255,6 +269,7 @@ class Settings(BaseSettings):
         "ai_cloud_model",
         "ai_cloud_api_key",
         "ai_output_language",
+        "diagnosis_checkpoint_dsn",
         mode="before",
     )
     @classmethod
@@ -345,6 +360,32 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]
+
+    @model_validator(mode="after")
+    def validate_checkpoint_backend(self) -> "Settings":
+        if self.diagnosis_checkpoint_backend == "postgres" and not self.diagnosis_checkpoint_dsn:
+            raise ValueError(
+                "DIAGNOSIS_CHECKPOINT_DSN is required when the checkpoint backend is postgres"
+            )
+        if (
+            self.diagnosis_checkpoint_backend == "postgres"
+            and self.diagnosis_checkpoint_dsn
+            and not self.diagnosis_checkpoint_dsn.startswith(
+                ("postgresql://", "postgres://")
+            )
+        ):
+            raise ValueError(
+                "DIAGNOSIS_CHECKPOINT_DSN must be a Psycopg postgresql:// DSN"
+            )
+        if (
+            self.diagnosis_workflow_enabled
+            and self.app_env.lower() in {"production", "prod"}
+            and self.diagnosis_checkpoint_backend != "postgres"
+        ):
+            raise ValueError(
+                "Production diagnosis workflows require the postgres checkpoint backend"
+            )
+        return self
 
 
 @lru_cache

@@ -23,6 +23,8 @@ def test_student_session_and_empty_dashboard_use_real_device_auth(
     assert payload["guidance"] == []
     assert payload["ai_status"]["provider_configured"] is False
     assert payload["ai_explanation"] is None
+    assert payload["device_state_explanation"]["source"] == "rule"
+    assert payload["device_state_explanation"]["status_title"] == "设备尚未上报状态"
 
 
 def test_student_dashboard_returns_normal_ingested_data(api_context: dict[str, Any]) -> None:
@@ -59,6 +61,7 @@ def test_student_dashboard_returns_normal_ingested_data(api_context: dict[str, A
     assert payload["device"]["status"] == "online"
     assert payload["readings"][0]["metric_key"] == "metric_a"
     assert payload["diagnosis"] is None
+    assert payload["device_state_explanation"]["status_title"] == "设备当前在线"
 
 
 def test_student_dashboard_exposes_diagnosis_guidance_and_feedback(
@@ -106,6 +109,11 @@ def test_student_dashboard_exposes_diagnosis_guidance_and_feedback(
     assert len(payload["diagnosis"]["matches"]) == 2
     assert len(payload["guidance"][0]["ranked_causes"]) == 3
     assert payload["feedback"]["action"] == "request_teacher_help"
+    explanation = payload["device_state_explanation"]
+    assert explanation["source"] == "rule"
+    assert explanation["status_title"] == "传感器读取异常"
+    assert explanation["technical_details"]["error_code"] == "SENSOR_READ_FAILED"
+    assert explanation["technical_details"]["logs"][0]["event_code"] == "SENSOR_READ_FAILED"
     with api_context["session_factory"]() as db:
         assert db.query(DiagnosisFeedback).count() == 1
 

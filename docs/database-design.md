@@ -4,7 +4,7 @@
 
 - 数据库：PostgreSQL 16 + pgvector。
 - 迁移工具：Alembic。
-- 目标版本：`20260730_0015`。
+- 目标版本：`20260813_0019`。
 - 后端启动时先执行 `alembic upgrade head`，成功后才启动 API。
 
 ## 表结构
@@ -72,11 +72,23 @@ P2 的可空 `test_run_id` 只标记合成场景运行并建立索引，用于�
 
 ### `ai_call_records`
 
-追加保存诊断与 Episode 关联、触发原因、缓存状态、最后路由、完整 `route_path`、Provider/模型、Prompt 版本与哈希、状态、耗时、结构化输出、知识引用、Token、成本占位、校验和降级原因。输入快照只保存匿名标识、哈希、计数与隐私控制摘要；失败和跳过记录同样保留。
+追加保存诊断、Episode 与可选工作流关联、触发原因、缓存状态、最后路由、完整
+`route_path`、Provider/模型、Prompt 版本与哈希、状态、耗时、结构化输出、知识引用、
+Token、成本占位、校验和降级原因。输入快照只保存匿名标识、哈希、计数与隐私控制
+摘要；失败和跳过记录同样保留。`workflow_run_id` 唯一，使同一图工作流重放复用原审计，
+不重复累计预算、成本与 Episode AI 调用数。
 
 ### `ai_explanation_cache`
 
 以规则、故障树、知识、Prompt、Schema 和规范化核心输入生成的稳定指纹保存已校验解释，记录来源 Provider/模型、过期时间和命中次数。
+
+### `diagnosis_workflow_runs` 与 `diagnosis_workflow_reviews`
+
+前者保存 LangGraph 业务流水、设备/诊断关联、`diagnosis:<workflow_id>`、图/规则/
+故障树/Embedding/模型版本、节点路径/耗时、RAG 审计、恢复次数、证据分、Level、
+审核请求和最终投影；后者追加保存唯一一次审核人与 `approve/edit/reject` 决定。
+LangGraph checkpoint 表由官方
+PostgreSQL saver 的 `.setup()` 独立管理，不在 Alembic 中重复定义。
 
 ### P4–P7 课堂与治理表
 
@@ -126,6 +138,10 @@ P2 的可空 `test_run_id` 只标记合成场景运行并建立索引，用于�
 - `20260730_0015` 删除 `teaching_assistant` 与 `technical_reviewer` 角色；已有助教
   账号迁移为教师，技术审核角色不自动获得正式批准权限。历史
   `technical_reviewed` 文档/块回退为 `pending`，审核历史继续保留。
+- `20260813_0016` 增加诊断工作流与教师审核业务表；checkpoint 表继续由 LangGraph saver 自管。
+- `20260813_0017` 增加有界节点指标、RAG 审计和恢复次数，不保存 Prompt、密钥或完整日志。
+- `20260813_0018` 为每个工作流的正式审核增加唯一约束，使终结节点重放不产生重复审核。
+- `20260813_0019` 为 AI 调用增加可空的工作流唯一外键，使图节点重放复用既有审计记录。
 
 用户、班级和实验模板通用框架已经建立，但正式用户、班级、任务与模板内容仍待人工
 录入和审核。知识库与 AI 审计表已经建立；仅有测试记录和禁用真实 Provider 只代表

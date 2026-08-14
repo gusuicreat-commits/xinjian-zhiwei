@@ -22,6 +22,11 @@ class AICallRecord(UuidPrimaryKeyMixin, Base):
     episode_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("diagnosis_episodes.id", ondelete="SET NULL")
     )
+    workflow_run_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("diagnosis_workflow_runs.id", ondelete="SET NULL"),
+        unique=True,
+    )
     provider: Mapped[Optional[str]] = mapped_column(String(100))
     model: Mapped[Optional[str]] = mapped_column(String(200))
     transport: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -54,3 +59,4 @@ class AICallRecord(UuidPrimaryKeyMixin, Base):
 
     diagnosis_result = relationship("DiagnosisResult", back_populates="ai_call_records")
     episode = relationship("DiagnosisEpisode", back_populates="ai_call_records")
+    workflow_run = relationship("DiagnosisWorkflowRun")

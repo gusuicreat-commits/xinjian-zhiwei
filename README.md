@@ -26,11 +26,14 @@
 
 - 统一 `DiagnosisContext` 从日志、心跳、读数和可选实验模板构造确定性输入。
 - YAML 示例规则和占位故障树生成可追溯证据、候选原因和 Level 1–4 提示。
-- 合成基线包含 30 个诊断、10 个检索和 6 个禁止性陈述测试。
+- 合成基线包含 30 个诊断、54 个检索和 6 个禁止性陈述测试；检索直接调用生产同源
+  `hybrid_retrieve`，门禁为 Recall@5 不低于 80%。
 - AI 通过统一客户端、严格 Schema、缓存、预算、审计和确定性降级隔离 Provider。
 - Phase 9.5 默认对话路由选择 DeepSeek 兼容配置，但 `AI_ENABLED=false`，仓库没有真实
   Key，本轮没有真实或收费调用。
 - Embedding Provider/模型/维度尚未确认；未配置时不会伪造向量。
+- LangGraph 将上下文、规则、故障树、RAG、受治理 AI 和教师审核组成可恢复状态图；LangChain 只作为结构化 Runnable 和只读工具适配层。
+- 学生端可显式启动辅助诊断；Level 4、低证据分或知识不足时暂停，由有班级范围的教师批准、修订或驳回。
 
 ### 课堂、模板、知识和教师处置
 
@@ -50,7 +53,8 @@
 
 ### 前端与交付
 
-- 学生端显示任务占位、设备状态、日志、趋势、诊断证据、提示和反馈。
+- 学生端显示任务占位、设备状态、日志、趋势、诊断证据、提示和反馈；异常卡片新增
+  确定性优先的设备状态解释，并可折叠查看原始错误码、日志、读数、规则与故障树证据。
 - 教师端显示设备聚合、异常排行、趋势、介入列表和知识状态。
 - 路由懒加载、图表独立分块、日志分页、有限重试、错误分类、最后数据保留、键盘焦点
   与图表文本/表格兜底已完成。
@@ -106,7 +110,8 @@ docker compose ps
 - PostgreSQL：只在 Compose 内部网络暴露，不映射宿主机端口。
 
 后端启动前自动执行 `alembic upgrade head`。当前唯一迁移 Head 为
-`20260730_0015`。
+`20260813_0019`。生产 LangGraph 使用 PostgreSQL checkpoint，并在部署步骤单独运行
+`python -m app.cli.setup_diagnosis_checkpoints`；开发/测试默认使用内存 saver。
 
 ### 登录凭据与三个诊断地址
 
@@ -150,6 +155,9 @@ Git；请在终端显示后立即保存到本地密码管理器。`rbac_student_
 ```bash
 scripts/verify.sh
 ```
+
+LangGraph/LangChain 依赖要求后端 Python 3.10+。如默认 `backend/.venv` 不符合，
+重建该虚拟环境，或使用 `BACKEND_PYTHON=/path/to/python scripts/verify.sh`。
 
 Docker 与迁移验收：
 
@@ -231,6 +239,7 @@ docker compose exec backend python -m app.cli.reset_demo \
 - [故障树与提示](docs/fault-tree-guidance.md)
 - [知识库框架](docs/knowledge-base.md)
 - [AI 诊断设计](docs/ai-diagnosis-design.md)
+- [LangGraph + LangChain 辅助诊断工作流](docs/langgraph-diagnosis-workflow.md)
 - [运行架构](docs/runtime-architecture.md)
 - [部署说明](docs/deployment.md)
 - [演示手册](docs/demo-runbook.md)

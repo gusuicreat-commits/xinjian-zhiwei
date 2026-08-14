@@ -6,6 +6,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.ai.diagnosis_graph import build_diagnosis_graph
 from app.api.v1.router import api_router
 from app.api.v1.routes.health import router as health_router
 from app.core.config import get_settings
@@ -17,12 +18,33 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info(
         "application_started",
-        extra={"environment": settings.app_env, "version": settings.app_version},
+        extra={
+            "environment": settings.app_env,
+            "version": settings.app_version,
+            "diagnosis_graph_version": settings.diagnosis_graph_version,
+            "diagnosis_checkpoint_backend": settings.diagnosis_checkpoint_backend,
+        },
     )
-    yield
+    app.state.diagnosis_graph = None
+    if settings.diagnosis_workflow_enabled:
+        if settings.diagnosis_checkpoint_backend == "postgres":
+            from langgraph.checkpoint.postgres import PostgresSaver
+
+            with PostgresSaver.from_conn_string(settings.diagnosis_checkpoint_dsn or "") as saver:
+                if settings.diagnosis_checkpoint_setup:
+                    saver.setup()
+                app.state.diagnosis_graph = build_diagnosis_graph(saver)
+                yield
+        else:
+            from langgraph.checkpoint.memory import InMemorySaver
+
+            app.state.diagnosis_graph = build_diagnosis_graph(InMemorySaver())
+            yield
+    else:
+        yield
     logger.info("application_stopped")
 
 

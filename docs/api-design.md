@@ -98,6 +98,25 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 结构化策略触发原因通过 `trigger_reason` 返回并写入审计。已知高置信单规则、只读页面刷新、教师统计和普通知识检索不会触发 Provider；低置信、未知异常、多规则、Episode 升级或显式自然语言追问才可能进入缓存和 Provider 路由。知识引用包含来源、版本、定位、审核状态、融合分数和全文/向量/RRF 分项分数。
 
+### `/diagnosis-workflows/*`
+
+- `POST /diagnosis-workflows/devices/{device_id}`：使用设备凭据和必填
+  `X-Experiment-Session-ID` 启动 LangGraph 工作流。响应的 `id` 与
+  `diagnosis_id` 相同，`graph_thread_id` 必为 `diagnosis:{diagnosis_id}`。
+- `GET /diagnosis-workflows/devices/{device_id}/latest`：仅获取该
+  student/experiment_session/device 三元组的最新流程。
+- `GET /diagnosis-workflows/{diagnosis_id}`：设备凭据和实验会话归属同时一致才可读取。
+- `GET /diagnosis-workflows/review-queue/pending`：教师 Bearer + `intervention.manage`；教师按班级范围过滤，管理员可查全部。
+- `GET /diagnosis-workflows/review-queue/recent`：同权限查看最近 50 条已审核流程及追加式审核历史。
+- `GET /diagnosis-workflows/metrics/summary`：同范围聚合流程状态、RAG、恢复、节点耗时、AI Token/成本和学生解决率。
+- `POST /diagnosis-workflows/{workflow_id}/review`：提交 `approve/edit/reject`。`edit` 可修订解释文案，不能修改规则证据、证据分和 Level。
+
+响应状态包括 `created/collecting/deterministic_analysis/retrieving/ai_analysis/
+waiting_teacher/completed/rejected/failed`。工作流不替换原有确定性诊断 API；功能关闭或
+checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 `node_metrics`、
+`retrieval_audit`、规则/日志引用、故障树候选、知识引用和 `reviews` 用于可观察、可追溯
+展示；不返回知识正文、Prompt、认证信息或密钥。
+
 ### POST `/student/session`
 
 使用设备 ID 与设备令牌完成临时学生端会话验证。响应明确返回 `auth_mode=device_credential_placeholder`；该接口不创建用户，也不签发服务端学生令牌。

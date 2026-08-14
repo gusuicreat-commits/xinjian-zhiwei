@@ -7,6 +7,10 @@ Phase 9.5 固定生产对话 Provider 为 DeepSeek 官方 API，模型为
 前置条件。`AI_ENABLED=false` 且仓库没有真实 API Key，所以默认不会发起外部
 请求；学生端仍显示完整确定性解释。
 
+2026-08-13 起，这条受治理的解释服务由 LangChain `RunnableLambda` 包装并置于
+LangGraph 控制图中。现有 `AIClient`、Prompt、脱敏、缓存、预算、校验和审计语义保持
+不变；新图只增加条件路由、checkpoint 和教师 interrupt，不让 LLM 成为判定节点。
+
 ## 不可覆盖的主链路
 
 ```text

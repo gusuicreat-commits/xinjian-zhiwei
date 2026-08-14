@@ -1,10 +1,10 @@
 # 芯鉴知微实现状态
 
-最后更新：2026-07-30
+最后更新：2026-08-13
 
 源码与运行版本：`1.0.0`
 
-数据库迁移：`20260730_0015 (head)`
+数据库迁移：`20260813_0019 (head)`
 
 ## 总体结论
 
@@ -21,7 +21,7 @@
 | --- | --- | --- |
 | P1 设备协议 | V1 批量原子上报、持久化幂等、序列冲突、乱序保护、设备时间质量、限流和旧接口兼容 | 没有正式固件或真实设备上报 |
 | P2 虚拟实验室 | 10 个版本化 YAML 场景，校验、运行、重放、报告和按运行清理 | 多设备凭据必须人工配置；只产生测试数据 |
-| P3 合成评测 | 30 个诊断、10 个检索、6 个禁止性陈述用例，含原因 Top-1/Top-3、必需步骤、Episode、时延和 AI 调用计数 | 只证明示例规则符合合成预期 |
+| P3 合成评测 | 30 个诊断、54 个检索、6 个禁止性陈述用例；含原因 Top-1/Top-3、必需步骤、Episode、Recall@5、MRR@5、Hit Rate@5、时延和 AI 调用计数 | 合成检索使用确定性哈希测试向量，只证明代码与标注 fixture 一致 |
 | P4 课堂与 RBAC | 五类角色、分离权限、课程、班级、任务、设备绑定、会话、资源范围和审计模型/API | 正式用户和班级记录为 0 |
 | P5 实验模板 | 版本化模板、规则/故障树工件绑定、审核发布状态机、正式硬件事实门禁、替代状态和发布后不可变 | 正式模板记录为 0 |
 | P6 知识工作区 | TXT/MD/CSV/DOCX/PDF 导入、草稿编辑、切分/合并/删除、元数据和六状态双角色审核 | 扫描 PDF 无文本时明确失败；没有导入正式资料 |
@@ -30,24 +30,28 @@
 | P9 交付工程 | 统一 1.0.0、Python 锁定依赖、CI、本地 verify、安全扫描、变更日志和发布清单 | 未 Tag、未 push、未发布 |
 | P10 前端韧性 | 路由懒加载、图表分块、日志分页、有限重试、错误分类、保留最后数据、键盘可访问性和图表文本兜底 | 不是正式课堂数据展示 |
 | P11 演示与就绪 | 可定向 seed/reset 的合成演示 CLI、演示手册、readiness API 和页面 | 本轮未创建 demo 数据 |
+| LangGraph 辅助诊断 | 上下文/规则/故障树/RAG/AI 图编排、PostgreSQL checkpoint、教师 interrupt 审核、证据包、审核历史、节点/RAG/AI/反馈指标和学生/教师 UI | 30 个 golden case 与旧规则逐字段等价；本机 PostgreSQL 已验证 setup、关闭旧连接后新连接恢复；真实多 worker 压测仍需试运行环境 |
 
 ## 运行验收
+
+下表是本轮源码、容器与 PostgreSQL 的实际回归证据。所有诊断与检索指标仍属于合成
+验收，不等同于真实硬件、正式知识、真实模型或生产课堂效果。
 
 | 检查 | 结果 |
 | --- | --- |
 | 后端 Ruff | 通过 |
-| 后端 pytest | `87 passed` |
+| 后端 pytest | `150 passed, 2 skipped`；默认套件未注入专用 DSN，故 PostgreSQL checkpoint 与 PostgreSQL RAG 集成项跳过；两项均已另行对 Compose PostgreSQL 执行通过，RAG 使用一次性空库并在验收后删除 |
 | 模拟器 pytest | `16 passed` |
-| 合成评测 | 诊断 `30/30`、检索 `10/10`、禁止性陈述 `0` 命中 |
+| 合成评测 | 诊断 `30/30`；检索 54 例中 50 例完全召回，Top-1 `87.04%`、Top-3 `90.74%`、Recall@5 `93.83%`、MRR@5 `89.72%`、Hit Rate@5 `94.44%`、4 条 miss；禁止性陈述 `0` 命中 |
 | 前端 ESLint / 类型检查 | 通过 |
-| 前端单元测试 | `9 passed` |
-| Playwright 学生/教师端 | `4 passed` |
+| 前端单元测试 | `26 passed`（5 个测试文件） |
+| Playwright 学生/教师端 | `5 passed` |
 | 前端生产构建 | 通过；ECharts 已独立分块 |
 | 版本一致性 | backend/frontend/simulator/根版本均为 `1.0.0` |
 | 安全扫描 | 跟踪路径与高置信密钥扫描通过 |
-| PostgreSQL | `20260730_0015 (head)`，`alembic check` 无待生成操作 |
+| PostgreSQL | Compose 库已升级为 `20260813_0019 (head)`，`alembic check` 无待生成操作；checkpoint `.setup()`、关闭旧连接后的新连接恢复、审核终结节点与 AI 审计重放幂等通过；一次性空库的 PostgreSQL FTS + pgvector + RRF 评测通过且测试库已删除 |
 | Docker | PostgreSQL、backend、frontend 三服务 healthy |
-| 健康探针 | `/health/live`、`/health/ready`、`/health/dependencies` 均通过 |
+| 健康探针 | `/health/live`、`/health/ready`、`/health/dependencies` 均通过；前端 8080 可访问 |
 | 备份恢复 | 110 KiB 临时备份在独立临时数据库恢复成功；原数据卷未删除 |
 | npm 生产依赖 | `npm audit --omit=dev` 为 0 个漏洞 |
 
