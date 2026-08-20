@@ -71,9 +71,7 @@ def _seed_identity(api_context: dict[str, object]) -> dict[str, str]:
         assign_role(db, teacher, roles["teacher"])
         db.add(Enrollment(class_id=classroom.id, user_id=student.id, status="active"))
         db.add(TeachingAssignment(class_id=classroom.id, user_id=teacher.id))
-        visible_device = db.scalar(
-            select(Device).where(Device.device_key == "phase2-test-device")
-        )
+        visible_device = db.scalar(select(Device).where(Device.device_key == "phase2-test-device"))
         db.add(
             DeviceBinding(
                 device_id=visible_device.id,
@@ -163,9 +161,7 @@ def test_all_five_roles_have_separated_permissions(
         }
         assert "knowledge.review.approve" not in ROLE_PERMISSIONS["teacher"]
         assert ROLE_PERMISSIONS["knowledge_organizer"] == {"knowledge.organize"}
-        assert ROLE_PERMISSIONS["formal_approver"] == {
-            "knowledge.review.approve"
-        }
+        assert ROLE_PERMISSIONS["formal_approver"] == {"knowledge.review.approve"}
         assert db.scalar(select(func.count(Permission.id))) >= 1
         assert db.scalar(select(func.count(Role.id))) == 5
 
@@ -197,12 +193,8 @@ def test_student_and_teacher_device_dashboards_are_resource_scoped(
     )
 
     assert unauthenticated.status_code == 401
-    assert [item["device_id"] for item in student_devices.json()] == [
-        seeded["visible_device"]
-    ]
-    assert [item["device_id"] for item in teacher_devices.json()] == [
-        seeded["visible_device"]
-    ]
+    assert [item["device_id"] for item in student_devices.json()] == [seeded["visible_device"]]
+    assert [item["device_id"] for item in teacher_devices.json()] == [seeded["visible_device"]]
     assert visible.status_code == 200
     assert student_hidden.status_code == 404
     assert teacher_hidden.status_code == 404

@@ -12,7 +12,7 @@ const element = ref<HTMLElement | null>(null)
 let chart: ECharts | null = null
 use([PieChart, LegendComponent, TooltipComponent, CanvasRenderer])
 const labels = { online: '在线', offline: '离线', never_seen: '未上报', abnormal: '异常' }
-const colors = { online: '#32d6a2', offline: '#348cf4', never_seen: '#7189ad', abnormal: '#ff5b62' }
+const colors = { online: '#12a26b', offline: '#006cd2', never_seen: '#9aa5ab', abnormal: '#d94a45' }
 
 function render(): void {
   if (!element.value) return
@@ -20,7 +20,7 @@ function render(): void {
   chart.setOption(
     {
       tooltip: { trigger: 'item' },
-      legend: { orient: 'vertical', right: 8, top: 'center', textStyle: { color: '#b9c9e8' } },
+      legend: { orient: 'vertical', right: 8, top: 'center', textStyle: { color: '#5e6970' } },
       series: [
         {
           type: 'pie',
@@ -31,7 +31,7 @@ function render(): void {
             show: true,
             position: 'center',
             formatter: `${props.data.reduce((sum, item) => sum + item.count, 0)}\n设备状态`,
-            color: '#eef5ff',
+            color: '#0a0a0a',
             fontSize: 16,
             lineHeight: 24,
           },

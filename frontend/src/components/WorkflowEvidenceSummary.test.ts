@@ -90,14 +90,16 @@ describe('WorkflowEvidenceSummary', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('rule-final')
+    expect(wrapper.text()).toContain('最终规则')
     expect(wrapper.text()).toContain('最终候选')
     expect(wrapper.findAll('.workflow-proof-columns section')[2]?.text()).toContain('已批准手册')
     expect(wrapper.findAll('.workflow-proof-columns section')[2]?.text()).not.toContain(
       '待审核手册',
     )
-    expect(wrapper.find('.workflow-unverified-knowledge').text()).toContain('待审核手册')
-    expect(wrapper.text()).toContain('RRF 0.0313')
-    expect(wrapper.text()).toContain('RRF 0.0200')
+    expect(wrapper.find('.workflow-unverified-knowledge').text()).toContain('有 1 份资料未通过审核')
+    expect(wrapper.text()).not.toContain('rule-final')
+    expect(wrapper.text()).not.toContain('approved-source')
+    expect(wrapper.text()).not.toContain('待审核手册')
+    expect(wrapper.text()).not.toContain('RRF')
   })
 })

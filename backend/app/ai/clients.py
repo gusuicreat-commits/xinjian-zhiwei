@@ -81,9 +81,7 @@ class OpenAICompatibleClient:
         self._max_output_tokens = max_output_tokens
         self._thinking_enabled = thinking_enabled
 
-    def build_request_payload(
-        self, *, system_prompt: str, user_prompt: str
-    ) -> dict[str, Any]:
+    def build_request_payload(self, *, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         payload = {
             "model": self.model,
             "messages": [
@@ -96,9 +94,7 @@ class OpenAICompatibleClient:
         if self._max_output_tokens is not None:
             payload["max_tokens"] = self._max_output_tokens
         if self._thinking_enabled is not None:
-            payload["thinking"] = {
-                "type": "enabled" if self._thinking_enabled else "disabled"
-            }
+            payload["thinking"] = {"type": "enabled" if self._thinking_enabled else "disabled"}
         return payload
 
     def complete_json(self, *, system_prompt: str, user_prompt: str) -> AICompletion:
@@ -192,9 +188,7 @@ def build_ai_client(settings: Settings) -> AIClient:
             max_retries=settings.ai_max_retries,
             max_output_tokens=settings.ai_output_token_limit,
             thinking_enabled=(
-                settings.ai_thinking_enabled
-                if settings.ai_provider == "deepseek"
-                else None
+                settings.ai_thinking_enabled if settings.ai_provider == "deepseek" else None
             ),
         )
     if settings.local_ai_configured:

@@ -13,6 +13,7 @@ from app.diagnosis.workflow_schemas import (
     DiagnosisWorkflowReviewRequest,
     DiagnosisWorkflowStartRequest,
 )
+from app.experiments.loader import ExperimentDefinitionLoadError
 from app.models.ai_call_record import AICallRecord
 from app.models.classroom import ExperimentAssignment, ExperimentSession, TeachingAssignment, User
 from app.models.device import Device
@@ -104,6 +105,8 @@ def start_diagnosis_workflow(
         ) from exc
     except WorkflowConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ExperimentDefinitionLoadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=503,

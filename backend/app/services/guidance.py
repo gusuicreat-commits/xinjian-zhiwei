@@ -56,7 +56,7 @@ def generate_guidance(
         return list(existing)
 
     context, diagnosis = _restore_diagnosis(diagnosis_result)
-    tree_set, tree_hash = load_fault_trees()
+    tree_set, tree_hash = load_fault_trees(context=context if context.experiment_id else None)
     records = []
     evaluated_at = _aware(diagnosis_result.evaluated_at)
     for tree in sorted(tree_set.trees, key=lambda item: item.id):
@@ -103,6 +103,8 @@ def generate_guidance(
             fault_tree_status=tree.status,
             fault_tree_version=tree_set.version,
             fault_tree_hash=tree_hash,
+            fault_tree_source_id=tree.source_id,
+            fault_tree_scope=tree.scope.model_dump(mode="json"),
             first_detected_at=first_detected_at,
             failure_count=evaluation.failure_count,
             anomaly_duration_seconds=evaluation.anomaly_duration_seconds,
@@ -133,6 +135,9 @@ def history_to_evaluation(record: GuidanceHistory) -> FaultTreeEvaluation:
             "teacher_intervention_required": record.teacher_intervention_required,
             "ranked_causes": record.ranked_causes,
             "hints": record.hints,
+            "source_id": record.fault_tree_source_id or "legacy",
+            "source_version": record.fault_tree_version,
+            "scope": record.fault_tree_scope or {},
         }
     )
 

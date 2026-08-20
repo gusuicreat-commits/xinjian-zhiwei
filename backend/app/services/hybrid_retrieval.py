@@ -179,9 +179,7 @@ def hybrid_retrieve(
             if existing:
                 combined_scores = dict(existing[0].retrieval_scores)
                 combined_scores["vector"] = result.similarity
-                reference = existing[0].model_copy(
-                    update={"retrieval_scores": combined_scores}
-                )
+                reference = existing[0].model_copy(update={"retrieval_scores": combined_scores})
             items[result.chunk_id] = (reference, score + (existing[1] if existing else 0.0))
     ranked = sorted(items.values(), key=lambda item: (-item[1], item[0].chunk_id))
     references = [

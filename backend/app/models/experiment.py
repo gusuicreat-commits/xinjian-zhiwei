@@ -20,9 +20,7 @@ class ExperimentTemplate(UuidPrimaryKeyMixin, TimestampMixin, Base):
 
 class ExperimentTemplateVersion(UuidPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "experiment_template_versions"
-    __table_args__ = (
-        UniqueConstraint("template_id", "version", name="uq_template_versions_pair"),
-    )
+    __table_args__ = (UniqueConstraint("template_id", "version", name="uq_template_versions_pair"),)
 
     template_id: Mapped[str] = mapped_column(
         String(36),

@@ -1,4 +1,6 @@
 version: "1"
+source_id: legacy.core_trees
+scope: {kind: common}
 trees:
   - id: sensor-read-failure-example-v1
     title: DHT11 读取失败（待课程确认的示例模板）

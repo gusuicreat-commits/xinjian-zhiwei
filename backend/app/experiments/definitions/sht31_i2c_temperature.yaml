@@ -1,0 +1,56 @@
+schema_version: "1"
+experiment:
+  id: sht31_i2c_temperature
+  name: I2C 温湿度采集迁移性测试夹具
+  version: "1.0"
+hardware:
+  family: esp32
+  board_model: esp32-devkit
+  components:
+    - id: sht31
+      kind: temperature_humidity_sensor
+      model: sht31
+interfaces:
+  - id: sensor_bus
+    type: i2c
+    component_ids: [sht31]
+    pins: {sda: 21, scl: 22}
+    parameters: {address: 68, frequency_hz: 100000}
+required_parameters:
+  sensor_address: 68
+expected_behaviors:
+  - id: sensor_bus_communicates
+    description: SHT31 所在 I2C 接口应能完成通信
+    kind: interface_communicates
+    component_id: sht31
+    interface_id: sensor_bus
+diagnostics:
+  rule_sources: [common.core, interfaces.communication]
+  fault_tree_sources: [interfaces.communication]
+normalization:
+  adapter: mapping
+  mappings:
+    - id: i2c-timeout
+      match: {bus: i2c, error: timeout}
+      output: event
+      component_id: sht31
+      interface_id: sensor_bus
+      event_type: communication_failure
+      timestamp_field: timestamp
+      default_status: error
+    - id: i2c-reading
+      match: {bus: i2c, sensor: sht31}
+      output: observation
+      component_id: sht31
+      interface_id: sensor_bus
+      metric_field: metric
+      value_field: value
+      timestamp_field: timestamp
+      default_status: normal
+knowledge_scope:
+  hardware_families: [esp32]
+  board_models: [esp32-devkit]
+  components: [sht31, temperature_humidity_sensor]
+  interfaces: [i2c]
+  document_types: [experiment_guide, component_datasheet, interface_guide]
+  knowledge_version: "1"

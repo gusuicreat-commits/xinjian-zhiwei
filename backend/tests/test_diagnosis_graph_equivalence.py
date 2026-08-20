@@ -110,12 +110,8 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
             for item in direct_facts
         ]
         for graph_hit, direct_hit in zip(graph_facts, direct_facts):
-            assert [
-                (item["fact"], item["observed_value"])
-                for item in graph_hit["evidence"]
-            ] == [
-                (item["fact"], item["observed_value"])
-                for item in direct_hit["evidence"]
+            assert [(item["fact"], item["observed_value"]) for item in graph_hit["evidence"]] == [
+                (item["fact"], item["observed_value"]) for item in direct_hit["evidence"]
             ]
             expected_refs = [
                 f"{kind}:{detail[key]}"
@@ -125,9 +121,7 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
                 if detail.get(key)
             ]
             assert [
-                ref
-                for evidence in graph_hit["evidence"]
-                for ref in evidence["evidence_refs"]
+                ref for evidence in graph_hit["evidence"] for ref in evidence["evidence_refs"]
             ] == expected_refs
         assert [item["error_type"] for item in direct_facts] == case["expected"]
         assert workflow.rule_engine_version == direct.ruleset_version

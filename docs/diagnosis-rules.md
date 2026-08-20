@@ -10,7 +10,12 @@ Phase 4 只实现可重复、可审计的确定性诊断，不实现 Phase 5 故
 
 ## 数据流
 
-`build_diagnosis_context` 按固定顺序读取设备日志、心跳和传感器读数，并合并可选 `ExperimentTemplateContext`。规则加载器读取 `backend/app/diagnosis/rules/*.yaml`，Pydantic 拒绝额外字段、非法事实、非法运算符和重复规则 ID。匹配器按 `priority` 降序、规则 ID 升序执行，输出命中规则及每个条件的原始记录证据。
+`build_diagnosis_context` 按固定顺序读取设备日志、心跳和传感器读数，并合并可选
+`ExperimentTemplateContext`。指定 Experiment Definition 时，兼容 Normalizer 还会构造统一
+Observation/Event、Expected Behavior 与作用域选择。规则加载器递归读取
+`backend/app/diagnosis/rules/`，按 common/interface/component/experiment Scope 选择来源；
+旧调用只加载根目录兼容规则。Pydantic 拒绝额外字段、非法事实、非法运算符和重复规则 ID。
+匹配器按 `priority` 降序、规则 ID 升序执行，输出命中规则、来源/版本/Scope 和原始证据。
 
 规则集和上下文均规范化为排序 JSON 后计算 SHA-256。相同规则与相同上下文产生完全相同的输入指纹和匹配内容。
 
@@ -18,7 +23,9 @@ Phase 4 只实现可重复、可审计的确定性诊断，不实现 Phase 5 故
 
 YAML 只声明规则元数据、事实、运算符、阈值和参数；主匹配流程不按错误类型编写条件分支。目前开放事实为 `log_event_count`、`seconds_since_last_seen` 和 `out_of_range_count`，运算符为 `eq/gte/gt/lte/lt`。
 
-具体 ESP32 型号、传感器型号、指标字段和生产阈值尚未确定。指标范围通过通用 `metric_ranges` 注入，示例值不得解释为生产配置。规则文件变更必须经过评审和测试；规则集哈希随每条结果保存。
+具体 ESP32 型号、传感器型号、指标字段和生产阈值尚未确定。指标范围通过通用
+`metric_ranges` 或 Expected Behavior 注入，示例值不得解释为生产配置。规则文件变更必须
+经过评审和测试；规则集哈希与来源追踪随每条结果保存。重复规则 ID 失败关闭，不做隐式覆盖。
 
 ## 已知边界
 

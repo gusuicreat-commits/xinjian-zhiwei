@@ -283,19 +283,13 @@ class Settings(BaseSettings):
         if self.ai_provider != "deepseek":
             return self
         if self.ai_base_url != "https://api.deepseek.com":
-            raise ValueError(
-                "DeepSeek production base URL must be https://api.deepseek.com"
-            )
+            raise ValueError("DeepSeek production base URL must be https://api.deepseek.com")
         if self.ai_model != "deepseek-v4-flash":
-            raise ValueError(
-                "Phase 9.5 production model must be deepseek-v4-flash"
-            )
+            raise ValueError("Phase 9.5 production model must be deepseek-v4-flash")
         if self.ai_thinking_enabled:
             raise ValueError("Phase 9.5 DeepSeek profile requires non-thinking mode")
         if self.ai_transport != "openai-compatible":
-            raise ValueError(
-                "DeepSeek production profile requires openai-compatible transport"
-            )
+            raise ValueError("DeepSeek production profile requires openai-compatible transport")
         return self
 
     @property
@@ -320,9 +314,7 @@ class Settings(BaseSettings):
         if not self.ai_enabled:
             return False
         return bool(
-            self.production_ai_configured
-            or self.local_ai_configured
-            or self.cloud_ai_configured
+            self.production_ai_configured or self.local_ai_configured or self.cloud_ai_configured
         )
 
     @property
@@ -370,13 +362,9 @@ class Settings(BaseSettings):
         if (
             self.diagnosis_checkpoint_backend == "postgres"
             and self.diagnosis_checkpoint_dsn
-            and not self.diagnosis_checkpoint_dsn.startswith(
-                ("postgresql://", "postgres://")
-            )
+            and not self.diagnosis_checkpoint_dsn.startswith(("postgresql://", "postgres://"))
         ):
-            raise ValueError(
-                "DIAGNOSIS_CHECKPOINT_DSN must be a Psycopg postgresql:// DSN"
-            )
+            raise ValueError("DIAGNOSIS_CHECKPOINT_DSN must be a Psycopg postgresql:// DSN")
         if (
             self.diagnosis_workflow_enabled
             and self.app_env.lower() in {"production", "prod"}

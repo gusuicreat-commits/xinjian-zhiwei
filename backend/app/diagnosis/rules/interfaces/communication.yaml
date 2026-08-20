@@ -1,0 +1,16 @@
+version: "1"
+source_id: interfaces.communication
+scope:
+  kind: interface
+  keys: [i2c, network]
+rules:
+  - id: interface-communication-failure-v1
+    error_type: INTERFACE_COMMUNICATION_FAILURE
+    priority: 95
+    enabled: true
+    summary: 标准化事件表明当前实验接口通信失败
+    conditions:
+      - fact: event_type_count
+        operator: gte
+        value: 1
+        params: {event_type: communication_failure}

@@ -151,9 +151,7 @@ def test_student_request_teacher_queue_scope_and_unconfirmed_flow(
         assign_role(db, student, roles["student"])
         assign_role(db, assigned_teacher, roles["teacher"])
         assign_role(db, outside_teacher, roles["teacher"])
-        db.add(
-            TeachingAssignment(class_id=classroom.id, user_id=assigned_teacher.id)
-        )
+        db.add(TeachingAssignment(class_id=classroom.id, user_id=assigned_teacher.id))
         device = db.query(Device).filter_by(device_key="phase2-test-device").one()
         db.add(
             DeviceBinding(
@@ -334,9 +332,7 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
         json={"action": "request_teacher_help", "note": "请教师协助"},
     )
     assert feedback.status_code == 201
-    student_dashboard = client.get(
-        "/api/v1/student/dashboard", headers=api_context["headers"]
-    )
+    student_dashboard = client.get("/api/v1/student/dashboard", headers=api_context["headers"])
     assert student_dashboard.status_code == 200
     intervention = student_dashboard.json()["intervention"]
     assert intervention["status"] == "open"
@@ -350,17 +346,11 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
         },
     )
     assert teacher_login.status_code == 200
-    teacher_headers = {
-        "Authorization": f"Bearer {teacher_login.json()['access_token']}"
-    }
-    teacher_dashboard = client.get(
-        "/api/v1/teacher/dashboard", headers=teacher_headers
-    )
+    teacher_headers = {"Authorization": f"Bearer {teacher_login.json()['access_token']}"}
+    teacher_dashboard = client.get("/api/v1/teacher/dashboard", headers=teacher_headers)
     assert teacher_dashboard.status_code == 200
     queue_item = next(
-        item
-        for item in teacher_dashboard.json()["interventions"]
-        if item["case_id"] == case_id
+        item for item in teacher_dashboard.json()["interventions"] if item["case_id"] == case_id
     )
     assert queue_item["source"] == "student_request"
     assert queue_item["status"] == "open"
@@ -376,8 +366,9 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
     )
     assert claimed.status_code == 200
     assert (
-        client.get("/api/v1/student/dashboard", headers=api_context["headers"])
-        .json()["intervention"]["status"]
+        client.get("/api/v1/student/dashboard", headers=api_context["headers"]).json()[
+            "intervention"
+        ]["status"]
         == "claimed"
     )
 
@@ -392,9 +383,7 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
         },
     )
     assert resolved.status_code == 200
-    final_dashboard = client.get(
-        "/api/v1/student/dashboard", headers=api_context["headers"]
-    ).json()
+    final_dashboard = client.get("/api/v1/student/dashboard", headers=api_context["headers"]).json()
     assert final_dashboard["intervention"]["status"] == "resolved"
     assert (
         final_dashboard["intervention"]["resolution_summary"]

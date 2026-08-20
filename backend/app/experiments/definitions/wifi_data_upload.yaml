@@ -1,0 +1,54 @@
+schema_version: "1"
+experiment:
+  id: wifi_data_upload
+  name: Wi-Fi 网络数据上传迁移性测试夹具
+  version: "1.0"
+hardware:
+  family: esp32
+  board_model: esp32-devkit
+  components:
+    - id: wifi_radio
+      kind: network_adapter
+      model: esp32-wifi
+interfaces:
+  - id: wifi_link
+    type: network
+    component_ids: [wifi_radio]
+    parameters: {transport: wifi, protocol: http}
+required_parameters:
+  endpoint: configured-at-runtime
+expected_behaviors:
+  - id: wifi_link_communicates
+    description: Wi-Fi 网络接口应建立并维持通信
+    kind: interface_communicates
+    component_id: wifi_radio
+    interface_id: wifi_link
+diagnostics:
+  rule_sources: [common.core, interfaces.communication]
+  fault_tree_sources: [interfaces.communication]
+normalization:
+  adapter: mapping
+  mappings:
+    - id: wifi-disconnected
+      match: {wifi_connected: false}
+      output: event
+      component_id: wifi_radio
+      interface_id: wifi_link
+      event_type: communication_failure
+      timestamp_field: timestamp
+      default_status: error
+    - id: wifi-connected
+      match: {wifi_connected: true}
+      output: event
+      component_id: wifi_radio
+      interface_id: wifi_link
+      event_type: communication_success
+      timestamp_field: timestamp
+      default_status: normal
+knowledge_scope:
+  hardware_families: [esp32]
+  board_models: [esp32-devkit]
+  components: [network_adapter, esp32-wifi]
+  interfaces: [network]
+  document_types: [experiment_guide, network_guide]
+  knowledge_version: "1"

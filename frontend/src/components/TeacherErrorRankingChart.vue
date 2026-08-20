@@ -19,22 +19,22 @@ function render(): void {
       xAxis: {
         type: 'value',
         minInterval: 1,
-        axisLabel: { color: '#8297bc' },
-        splitLine: { lineStyle: { color: '#173760' } },
+        axisLabel: { color: '#7b858b' },
+        splitLine: { lineStyle: { color: '#e3e7ea' } },
       },
       yAxis: {
         type: 'category',
         inverse: true,
         data: props.data.map((x) => x.error_code),
-        axisLabel: { color: '#d4def2', width: 116, overflow: 'truncate' },
+        axisLabel: { color: '#343a3e', width: 116, overflow: 'truncate' },
       },
       series: [
         {
           type: 'bar',
           data: props.data.map((x) => x.count),
           barWidth: 18,
-          itemStyle: { color: '#347ff0', borderRadius: [0, 4, 4, 0] },
-          label: { show: true, position: 'right', color: '#eaf2ff' },
+          itemStyle: { color: '#006cd2', borderRadius: 0 },
+          label: { show: true, position: 'right', color: '#0a0a0a' },
         },
       ],
     },

@@ -17,6 +17,7 @@ from app.diagnosis.workflow_schemas import (
     DiagnosisWorkflowReviewResponse,
     DiagnosisWorkflowStartRequest,
 )
+from app.experiments.loader import load_experiment_definition
 from app.models.base import new_uuid
 from app.models.classroom import (
     ExperimentAssignment,
@@ -350,6 +351,10 @@ def start_workflow(
     payload: DiagnosisWorkflowStartRequest,
     experiment_session: ExperimentSession | None = None,
 ) -> DiagnosisWorkflowRun:
+    if payload.experiment_id:
+        # Fail before creating a workflow business record. The graph will reload
+        # the same immutable version when it builds its context.
+        load_experiment_definition(payload.experiment_id, payload.experiment_version)
     experiment_session = experiment_session or find_active_experiment_session(db, device)
     if experiment_session is None:
         raise WorkflowConflict("device has no active student experiment session")
@@ -383,6 +388,8 @@ def start_workflow(
             if payload.experiment_template
             else None
         ),
+        "experiment_id": payload.experiment_id,
+        "experiment_version": payload.experiment_version,
         # A workflow question is untrusted free text.  Keep only the redacted form
         # in checkpoint state; the original business input remains in the access-
         # controlled workflow row when it is needed for audit/support.

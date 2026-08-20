@@ -25,9 +25,7 @@ def test_synthetic_evaluation_meets_committed_thresholds() -> None:
     assert report["diagnosis"]["unsupported_high_confidence_count"] == 0
     assert report["diagnosis"]["average_response_ms"] > 0
     assert report["retrieval"]["total"] >= 50
-    assert report["retrieval"]["retriever"] == (
-        "app.services.hybrid_retrieval.hybrid_retrieve"
-    )
+    assert report["retrieval"]["retriever"] == ("app.services.hybrid_retrieval.hybrid_retrieve")
     assert report["retrieval"]["recall_at_5"] >= 0.8
     assert report["retrieval"]["candidate_limits"] == {
         "lexical_top_n": 10,
@@ -40,9 +38,7 @@ def test_synthetic_evaluation_meets_committed_thresholds() -> None:
     assert 0 <= report["retrieval"]["hit_rate_at_5"] <= 1
     assert report["retrieval"]["hit_rate_at_5"] != report["retrieval"]["recall_at_5"]
     assert report["retrieval"]["miss_count"] > 0
-    assert report["retrieval"]["miss_count"] == len(
-        report["retrieval"]["misses"]
-    )
+    assert report["retrieval"]["miss_count"] == len(report["retrieval"]["misses"])
     assert all(
         {
             "expected_document_ids",
@@ -54,8 +50,7 @@ def test_synthetic_evaluation_meets_committed_thresholds() -> None:
         for miss in report["retrieval"]["misses"]
     )
     assert all(
-        case["lexical_used"] and case["vector_used"]
-        for case in report["retrieval"]["cases"]
+        case["lexical_used"] and case["vector_used"] for case in report["retrieval"]["cases"]
     )
     assert report["retrieval"]["gate_passed"] is True
     assert report["forbidden_claims"]["patterns_checked"] >= 5

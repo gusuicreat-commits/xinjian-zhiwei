@@ -272,10 +272,7 @@ def test_dashboard_refresh_and_teacher_statistics_do_not_trigger_ai(
     )
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     assert (
-        api_context["client"].get(
-            "/api/v1/teacher/dashboard", headers=headers
-        ).status_code
-        == 200
+        api_context["client"].get("/api/v1/teacher/dashboard", headers=headers).status_code == 200
     )
     with api_context["session_factory"]() as db:
         assert db.query(AICallRecord).count() == 0

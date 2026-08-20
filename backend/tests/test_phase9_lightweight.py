@@ -124,9 +124,7 @@ def test_policy_and_fingerprint_are_deterministic() -> None:
     )
     assert (
         "MULTIPLE_RULES"
-        in decide_ai_policy(
-            high.model_copy(update={"rule_ids": ["r1", "r2"]}), Settings()
-        ).reason
+        in decide_ai_policy(high.model_copy(update={"rule_ids": ["r1", "r2"]}), Settings()).reason
     )
     assert decide_ai_policy(high, Settings(), user_question="为什么").reason == "USER_QUESTION"
     assert (

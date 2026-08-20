@@ -1,0 +1,16 @@
+version: "1"
+source_id: experiments.gpio_led
+scope:
+  kind: experiment
+  keys: [gpio_led_output]
+rules:
+  - id: gpio-led-expected-state-v1
+    error_type: GPIO_EXPECTATION_FAILED
+    priority: 85
+    enabled: true
+    summary: GPIO 输出状态与实验期望行为不一致
+    conditions:
+      - fact: expected_behavior_violation_count
+        operator: gte
+        value: 1
+        params: {behavior_id: led_output_high}

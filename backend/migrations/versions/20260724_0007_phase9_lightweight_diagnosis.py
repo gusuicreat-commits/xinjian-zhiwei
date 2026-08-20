@@ -76,9 +76,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("fingerprint"),
     )
-    op.create_index(
-        "ix_ai_explanation_cache_expires", "ai_explanation_cache", ["expires_at"]
-    )
+    op.create_index("ix_ai_explanation_cache_expires", "ai_explanation_cache", ["expires_at"])
 
     for name, column in (
         ("episode_id", sa.Column("episode_id", sa.String(36))),

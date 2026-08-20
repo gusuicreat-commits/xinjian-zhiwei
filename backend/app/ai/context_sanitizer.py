@@ -169,15 +169,12 @@ def _select_logs(
     logs = list(context.get("logs") or [])
     evidence_ids = _evidence_log_ids(rule_matches)
     error_codes = {
-        str(match.get("error_type"))
-        for match in rule_matches
-        if match.get("error_type")
+        str(match.get("error_type")) for match in rule_matches if match.get("error_type")
     }
     selected = [
         item
         for item in logs
-        if str(item.get("id")) in evidence_ids
-        or str(item.get("event_code")) in error_codes
+        if str(item.get("id")) in evidence_ids or str(item.get("event_code")) in error_codes
     ]
     if not selected:
         selected = [
@@ -212,9 +209,7 @@ def _aggregate_readings(context: dict[str, Any]) -> list[dict[str, Any]]:
     result = []
     for (sensor_type, metric_key, unit), items in sorted(groups.items()):
         numeric = [
-            float(item["value"])
-            for item in items
-            if isinstance(item.get("value"), (int, float))
+            float(item["value"]) for item in items if isinstance(item.get("value"), (int, float))
         ]
         result.append(
             {
@@ -444,15 +439,9 @@ def audit_snapshot(payload: AIDiagnosisInput) -> dict[str, Any]:
             "fault_tree_guidance": len(payload.fault_tree_guidance),
             "knowledge": len(payload.knowledge),
         },
-        "rule_ids": [
-            item.get("rule_id")
-            for item in payload.rule_matches
-            if item.get("rule_id")
-        ],
+        "rule_ids": [item.get("rule_id") for item in payload.rule_matches if item.get("rule_id")],
         "error_types": [
-            item.get("error_type")
-            for item in payload.rule_matches
-            if item.get("error_type")
+            item.get("error_type") for item in payload.rule_matches if item.get("error_type")
         ],
         "knowledge_chunk_ids": [item.chunk_id for item in payload.knowledge],
         "privacy": {

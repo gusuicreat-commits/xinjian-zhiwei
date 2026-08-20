@@ -4,6 +4,7 @@ import {
   Document,
   HomeFilled,
   List,
+  Monitor,
   Refresh,
   SwitchButton,
   TrendCharts,
@@ -28,6 +29,7 @@ const dashboardStore = useStudentDashboardStore()
 const activeNavTarget = ref('overview')
 let refreshTimer: number | undefined
 let navigationFrame: number | undefined
+let navigationLockUntil = 0
 
 const hasTestData = computed(() => {
   const data = dashboardStore.dashboard
@@ -48,12 +50,37 @@ const deviceLabel = computed(
     '设备会话',
 )
 
-const navItems = [
-  { label: '实验概览', target: 'overview', icon: HomeFilled },
-  { label: '实时日志', target: 'logs', icon: Document },
-  { label: '传感数据', target: 'readings', icon: TrendCharts },
-  { label: '诊断与反馈', target: 'diagnosis', icon: Warning },
-]
+const navItems = computed(() => {
+  const data = dashboardStore.dashboard
+  const deviceStatus = data
+    ? {
+        online: '设备在线',
+        offline: '设备离线',
+        never_seen: '等待设备上报',
+      }[data.device.status]
+    : '状态加载中'
+  const diagnosisStatus = !data
+    ? '状态加载中'
+    : data.intervention && !['resolved', 'closed'].includes(data.intervention.status)
+      ? '教师协助中'
+      : data.feedback?.action === 'resolved'
+        ? '问题已解决'
+        : data.diagnosis
+          ? '已生成诊断'
+          : '等待异常信号'
+
+  return [
+    { label: '实验概览', meta: deviceStatus, target: 'overview', icon: HomeFilled },
+    { label: '实时日志', meta: `${data?.logs.length ?? 0} 条记录`, target: 'logs', icon: Document },
+    {
+      label: '传感数据',
+      meta: `${data?.readings.length ?? 0} 组数据`,
+      target: 'readings',
+      icon: TrendCharts,
+    },
+    { label: '诊断与反馈', meta: diagnosisStatus, target: 'diagnosis', icon: Warning },
+  ]
+})
 
 async function refresh(): Promise<void> {
   if (!sessionStore.credentials) return
@@ -97,6 +124,7 @@ async function runDiagnosisWorkflow(): Promise<void> {
 
 function navigateTo(target: string): void {
   activeNavTarget.value = target
+  navigationLockUntil = window.performance.now() + 1_200
   const section = document.getElementById(target)
   const scrollTarget = section?.firstElementChild ?? section
   scrollTarget?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -105,12 +133,12 @@ function navigateTo(target: string): void {
 function syncActiveNavigation(): void {
   const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
   if (maxScroll > 80 && window.scrollY >= maxScroll - 8) {
-    activeNavTarget.value = navItems[navItems.length - 1]?.target ?? 'diagnosis'
+    activeNavTarget.value = navItems.value[navItems.value.length - 1]?.target ?? 'diagnosis'
     return
   }
   const activationLine = window.innerWidth <= 780 ? 150 : 160
-  let nextTarget = navItems[0]?.target ?? 'overview'
-  for (const item of navItems) {
+  let nextTarget = navItems.value[0]?.target ?? 'overview'
+  for (const item of navItems.value) {
     const section = document.getElementById(item.target)
     const measuredElement = section?.firstElementChild ?? section
     if (measuredElement && measuredElement.getBoundingClientRect().top <= activationLine) {
@@ -121,6 +149,7 @@ function syncActiveNavigation(): void {
 }
 
 function handleWindowScroll(): void {
+  if (window.performance.now() < navigationLockUntil) return
   if (navigationFrame !== undefined) return
   navigationFrame = window.requestAnimationFrame(() => {
     navigationFrame = undefined
@@ -151,7 +180,7 @@ onBeforeUnmount(() => {
     <a class="skip-link" href="#main-student-content">跳到主要内容</a>
     <header class="app-topbar">
       <div class="brand-lockup">
-        <img src="/assets/xinjian-brand-mark.png" alt="芯鉴知微" />
+        <Monitor aria-hidden="true" />
         <strong>芯鉴知微</strong>
         <span>学生端</span>
       </div>
@@ -168,21 +197,11 @@ onBeforeUnmount(() => {
     </header>
 
     <section id="main-student-content" class="app-content" tabindex="-1">
-      <nav class="student-section-nav" aria-label="学生端页面分区">
-        <button
-          v-for="item in navItems"
-          :key="item.target"
-          type="button"
-          :class="{ active: activeNavTarget === item.target }"
-          :aria-current="activeNavTarget === item.target ? 'location' : undefined"
-          @click="navigateTo(item.target)"
-        >
-          <component :is="item.icon" /><span>{{ item.label }}</span>
-        </button>
-      </nav>
       <div class="content-toolbar">
         <div>
-          <p>学生实验工作台</p>
+          <p class="workspace-kicker">STUDENT EXPERIMENT CONSOLE</p>
+          <h1>学生实验工作台</h1>
+          <small>查看设备状态，理解异常原因，并完成排查反馈。</small>
           <span v-if="dashboardStore.dashboard"
             >最近更新
             {{ new Date(dashboardStore.dashboard.generated_at).toLocaleTimeString('zh-CN') }}</span
@@ -192,6 +211,22 @@ onBeforeUnmount(() => {
           ><Refresh /> 刷新数据</el-button
         >
       </div>
+      <nav class="student-section-nav" aria-label="页面快速定位与实时状态">
+        <button
+          v-for="item in navItems"
+          :key="item.target"
+          type="button"
+          :class="{ active: activeNavTarget === item.target }"
+          :aria-current="activeNavTarget === item.target ? 'location' : undefined"
+          @click="navigateTo(item.target)"
+        >
+          <component :is="item.icon" />
+          <span class="student-nav-copy">
+            <b>{{ item.label }}</b>
+            <small>{{ item.meta }}</small>
+          </span>
+        </button>
+      </nav>
 
       <el-skeleton
         v-if="dashboardStore.state === 'loading'"

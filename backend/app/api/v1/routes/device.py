@@ -57,9 +57,8 @@ def create_device_batch(
         ).encode("utf-8")
     )
     if (
-        (declared_size is not None and declared_size > settings.device_ingest_max_body_bytes)
-        or estimated_size > settings.device_ingest_max_body_bytes
-    ):
+        declared_size is not None and declared_size > settings.device_ingest_max_body_bytes
+    ) or estimated_size > settings.device_ingest_max_body_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail={

@@ -10,6 +10,9 @@ const device = {
 }
 
 function dashboard(overrides: Record<string, unknown> = {}) {
+  const diagnosis = overrides.diagnosis as
+    { matches?: Array<{ summary?: string; error_type?: string }> } | null | undefined
+  const primaryMatch = diagnosis?.matches?.[0]
   return {
     generated_at: '2026-07-20T09:00:00Z',
     task: { configured: false, title: null, template_id: null, notice: '尚未配置真实实验任务。' },
@@ -37,6 +40,26 @@ function dashboard(overrides: Record<string, unknown> = {}) {
       production_route: 'cache → deepseek → deterministic_fallback',
     },
     ai_explanation: null,
+    device_state_explanation: {
+      status_title: primaryMatch?.summary || '设备状态正常',
+      status_summary: primaryMatch?.summary || '当前未匹配故障规则',
+      meaning: primaryMatch ? '设备记录中出现了需要排查的异常。' : '当前没有观测到已知故障。',
+      next_step: primaryMatch ? '请按排查建议继续检查。' : '可继续当前实验。',
+      source: 'rule',
+      technical_details: {
+        device: {
+          status: device.status,
+          last_seen_at: device.last_seen_at,
+          firmware_version: device.firmware_version,
+        },
+        error_code: primaryMatch?.error_type || null,
+        error_codes: primaryMatch?.error_type ? [primaryMatch.error_type] : [],
+        logs: [],
+        sensor_readings: [],
+        rule_hits: [],
+        fault_tree_evidence: [],
+      },
+    },
     episode: null,
     ...overrides,
   }
@@ -120,7 +143,7 @@ test('handles login, no-data state and session refresh', async ({ page }) => {
   await login(page)
   await expect(page.getByText('设备尚未上传日志')).toBeVisible()
   await expect(page.getByText('设备尚未上传传感器读数')).toBeVisible()
-  await expect(page.getByText('尚无诊断记录')).toBeVisible()
+  await expect(page.getByText('当前未匹配故障规则')).toBeVisible()
   await page.reload()
   await expect(page.getByText('学生实验工作台')).toBeVisible()
   expect(errors).toEqual([])
@@ -141,7 +164,7 @@ test('shows a normal deterministic diagnosis with its limitation', async ({ page
   )
   await login(page)
   await expect(page.getByText('当前未匹配故障规则')).toBeVisible()
-  await expect(page.getByText(/不代表已完成真实硬件健康认证/)).toBeVisible()
+  await expect(page.getByText(/不代表真实设备诊断结果/)).toBeVisible()
 })
 
 test('shows abnormal evidence and submits teacher-help feedback', async ({ page }) => {
@@ -297,11 +320,14 @@ test('shows workflow provenance, missing evidence and teacher review history', a
   })
 
   await login(page)
-  await expect(page.getByText('manual-sensor / chunk-1')).toBeVisible()
-  await expect(page.getByText('RRF 0.8300')).toBeVisible()
+  await expect(page.getByText('辅助诊断进度')).toBeVisible()
+  await expect(page.getByText('当前判断')).toBeVisible()
+  await expect(page.getByText('设备运行记录、可能原因分析、1 份已审核操作资料')).toBeVisible()
+  await expect(page.getByText('manual-sensor / chunk-1')).toHaveCount(0)
+  await expect(page.getByText('RRF 0.8300')).toHaveCount(0)
   await expect(page.getByText('缺少供电电压读数')).toBeVisible()
   await expect(page.getByText('审核详情仅教师可见')).toBeVisible()
   await expect(page.getByText('证据可用')).toHaveCount(0)
   await expect(page.getByText('teacher-1')).toHaveCount(0)
-  await expect(page.getByText('collect_context')).toBeVisible()
+  await expect(page.getByText('collect_context')).toHaveCount(0)
 })

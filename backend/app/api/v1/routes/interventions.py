@@ -193,9 +193,7 @@ def open_intervention(
     except IntegrityError:
         db.rollback()
         case = db.scalar(
-            select(InterventionCase).where(
-                InterventionCase.diagnosis_result_id == diagnosis_id
-            )
+            select(InterventionCase).where(InterventionCase.diagnosis_result_id == diagnosis_id)
         )
     if case is None:
         raise HTTPException(status_code=409, detail="intervention creation conflict")

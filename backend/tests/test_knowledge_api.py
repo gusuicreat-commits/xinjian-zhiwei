@@ -42,16 +42,12 @@ def _review_headers(api_context: dict[str, Any]) -> dict[str, dict[str, str]]:
             json={"username": username, "password": password},
         )
         assert response.status_code == 200
-        headers[reviewer_role] = {
-            "Authorization": f"Bearer {response.json()['access_token']}"
-        }
+        headers[reviewer_role] = {"Authorization": f"Bearer {response.json()['access_token']}"}
     api_context["knowledge_review_headers"] = headers
     return headers
 
 
-def approve_test_document(
-    api_context: dict[str, Any], document_id: str, prefix: str
-) -> None:
+def approve_test_document(api_context: dict[str, Any], document_id: str, prefix: str) -> None:
     client = api_context["client"]
     headers = _review_headers(api_context)
     steps = (

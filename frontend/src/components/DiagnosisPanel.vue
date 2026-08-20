@@ -87,9 +87,6 @@ const workflowKnowledge = computed(() => {
 const approvedWorkflowKnowledge = computed(() =>
   workflowKnowledge.value.filter((item) => item.metadata?.review_status === 'approved'),
 )
-const unverifiedWorkflowKnowledge = computed(() =>
-  workflowKnowledge.value.filter((item) => item.metadata?.review_status !== 'approved'),
-)
 const workflowExplanation = computed(() => {
   const finalResult = props.workflow?.final_result
   const aiResult = props.workflow?.review_request?.ai_result
@@ -110,6 +107,38 @@ const workflowStatus = computed(() =>
     ? workflowStatusLabels[props.workflow.status]
     : ({ label: '可按需运行', type: 'info' } as const),
 )
+const workflowStatusMessage = computed(() => {
+  if (!props.workflow) return '需要时可启动辅助诊断，系统会整理设备记录并给出下一步建议。'
+  const messages: Record<DiagnosisWorkflow['status'], string> = {
+    created: '辅助诊断已创建，正在准备设备记录。',
+    collecting: '正在整理本次实验的设备记录。',
+    deterministic_analysis: '正在根据设备记录分析异常原因。',
+    retrieving: '正在对照已审核的操作资料。',
+    ai_analysis: '正在把诊断结果整理成易懂的说明。',
+    waiting_teacher: '结果已提交教师确认，确认前不会作为最终建议发布。',
+    completed: '辅助诊断已完成，可按建议继续排查或实验。',
+    rejected: '教师认为当前信息不足，请补充设备记录后再试。',
+    failed: '辅助诊断暂时未完成，上方的规则诊断结果仍然可用。',
+  }
+  return messages[props.workflow.status]
+})
+const workflowBasis = computed(() => {
+  const items: string[] = []
+  if (workflowRuleHits.value.length) items.push('设备运行记录')
+  if (workflowCandidates.value.length) items.push('可能原因分析')
+  if (approvedWorkflowKnowledge.value.length) {
+    items.push(`${approvedWorkflowKnowledge.value.length} 份已审核操作资料`)
+  }
+  return items
+})
+const workflowActionLabel = computed(() => {
+  if (props.workflow?.status === 'waiting_teacher') return '等待教师确认'
+  if (props.workflow?.status === 'completed') return '更新辅助诊断'
+  if (props.workflow?.status === 'rejected' || props.workflow?.status === 'failed') {
+    return '重新进行辅助诊断'
+  }
+  return props.workflow ? '继续辅助诊断' : '启动辅助诊断'
+})
 const interventionStatus = computed(() => {
   if (!props.intervention) return null
   const statusCopy = {
@@ -146,28 +175,12 @@ function scorePercent(score: number): number {
   return Math.min(100, Math.round(score <= 1 ? score * 100 : score))
 }
 
-function formatRrfScore(score: number): string {
-  return Number.isFinite(score) ? score.toFixed(4) : '—'
-}
-
 function reviewActionLabel(action: 'approve' | 'edit' | 'reject'): string {
   return { approve: '批准', edit: '修订并批准', reject: '驳回' }[action]
 }
 
 function formatReviewTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
-}
-
-function evidenceDetailRefs(evidence: {
-  evidence_refs?: string[]
-  details?: Record<string, unknown>[]
-}): string[] {
-  const detailRefs = (evidence.details ?? []).flatMap((detail) =>
-    ['log_id', 'reading_id']
-      .filter((key) => typeof detail[key] === 'string')
-      .map((key) => `${key === 'log_id' ? 'log' : 'reading'}:${String(detail[key])}`),
-  )
-  return [...new Set([...(evidence.evidence_refs ?? []), ...detailRefs])]
 }
 </script>
 
@@ -323,93 +336,22 @@ function evidenceDetailRefs(evidence: {
 
     <article v-if="diagnosis" class="panel-card ai-explanation-panel">
       <div class="panel-heading compact-heading">
-        <h2><List /> LangGraph 辅助诊断</h2>
+        <h2><List /> 辅助诊断进度</h2>
         <el-tag :type="workflowStatus.type" size="small" round>
           {{ workflowStatus.label }}
         </el-tag>
       </div>
-      <p v-if="workflow">
-        证据分 {{ workflow.evidence_score ?? '—' }} · Level {{ workflow.guidance_level ?? '—' }} ·
-        规则 {{ workflow.rule_engine_version || '—' }} · 故障树
-        {{ workflow.fault_tree_version || '—' }}
-      </p>
-      <p v-if="workflowExplanation?.summary" class="workflow-explanation-summary">
-        <strong>辅助解释：</strong>{{ workflowExplanation.summary }}
-      </p>
-      <div v-if="workflow?.node_trace.length" class="workflow-trace" aria-label="工作流节点轨迹">
-        <span v-for="(node, index) in workflow.node_trace" :key="`${node}-${index}`">
-          {{ node }}
-        </span>
-      </div>
-      <p v-else>规则、故障树、知识检索与 AI 解释由可恢复状态图统一编排。</p>
-      <div
-        v-if="workflow && (workflowRuleHits.length || workflowCandidates.length)"
-        class="workflow-evidence-grid"
-      >
-        <section>
-          <strong>确定性规则引用</strong>
-          <ul v-if="workflowRuleHits.length">
-            <li v-for="hit in workflowRuleHits" :key="hit.rule_id">
-              <code>{{ hit.rule_id }}</code>
-              <span>{{ hit.summary }}</span>
-              <small v-if="hit.evidence.length">
-                {{
-                  hit.evidence
-                    .map((item) => {
-                      const refs = evidenceDetailRefs(item)
-                      return `${item.fact}=${item.observed_value ?? '已命中'}${refs.length ? ` [${refs.join('、')}]` : ''}`
-                    })
-                    .join('；')
-                }}
-              </small>
-            </li>
-          </ul>
-          <p v-else class="empty-inline">未记录规则命中。</p>
-        </section>
-        <section>
-          <strong>故障树候选与证据引用</strong>
-          <ul v-if="workflowCandidates.length">
-            <li v-for="candidate in workflowCandidates" :key="candidate.cause_id">
-              <span>{{ candidate.name }}</span>
-              <b>{{ scorePercent(candidate.score) }}%</b>
-              <small>{{ candidate.evidence_refs.join('、') || '无稳定证据引用' }}</small>
-            </li>
-          </ul>
-          <p v-else class="empty-inline">未记录故障树候选。</p>
-        </section>
-      </div>
-      <section v-if="workflow?.needs_rag || workflowKnowledge.length" class="workflow-knowledge">
-        <strong>已审核知识来源</strong>
-        <ul v-if="approvedWorkflowKnowledge.length">
-          <li v-for="reference in approvedWorkflowKnowledge" :key="reference.chunk_id">
-            <div>
-              <b>{{ reference.title }}</b>
-              <code>{{ reference.source_id }} / {{ reference.chunk_id }}</code>
-            </div>
-            <span>RRF {{ formatRrfScore(reference.score) }}</span>
-            <small> 版本 {{ reference.metadata?.source_version || '—' }} · 已审核 </small>
-          </li>
-        </ul>
-        <p v-else-if="workflow?.needs_rag" class="workflow-warning">
-          本次需要知识检索，但没有可采用的已审核来源。
-        </p>
-        <p v-else class="empty-inline">本次证据分支未采用知识检索。</p>
+      <p class="workflow-user-status">{{ workflowStatusMessage }}</p>
+      <section v-if="workflowExplanation?.summary" class="workflow-user-summary">
+        <strong>当前判断</strong>
+        <p>{{ workflowExplanation.summary }}</p>
       </section>
-      <section v-if="unverifiedWorkflowKnowledge.length" class="workflow-unverified-knowledge">
-        <strong>未验证来源（不可作为诊断依据）</strong>
-        <ul>
-          <li v-for="reference in unverifiedWorkflowKnowledge" :key="reference.chunk_id">
-            <div>
-              <b>{{ reference.title }}</b>
-              <code>{{ reference.source_id }} / {{ reference.chunk_id }}</code>
-            </div>
-            <span>RRF {{ formatRrfScore(reference.score) }}</span>
-            <small>审核状态未批准，已与诊断证据隔离。</small>
-          </li>
-        </ul>
+      <section v-if="workflowBasis.length" class="workflow-user-basis">
+        <strong>本次参考</strong>
+        <p>{{ workflowBasis.join('、') }}</p>
       </section>
       <section v-if="workflowLimitations.length" class="workflow-limitations">
-        <strong>当前限制 / 缺失证据</strong>
+        <strong>还需要确认</strong>
         <ul>
           <li v-for="item in workflowLimitations" :key="item">{{ item }}</li>
         </ul>
@@ -430,9 +372,9 @@ function evidenceDetailRefs(evidence: {
         :disabled="workflow?.status === 'waiting_teacher'"
         @click="emit('requestWorkflow')"
       >
-        {{ workflow?.status === 'waiting_teacher' ? '等待教师审核' : '启动辅助诊断工作流' }}
+        {{ workflowActionLabel }}
       </el-button>
-      <p class="ai-safety-note">工作流不会让模型修改规则证据、证据分值或提示等级。</p>
+      <p class="ai-safety-note">诊断以设备记录和规则结果为准，AI 只负责整理说明。</p>
     </article>
 
     <article v-if="primaryMatch" class="panel-card evidence-panel">

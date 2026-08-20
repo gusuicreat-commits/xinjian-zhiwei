@@ -34,7 +34,8 @@ where = ["."]
 include = ["app*"]
 
 [tool.setuptools.package-data]
-"app.diagnosis" = ["rules/*.yaml", "fault_trees/*.yaml"]
+"app.diagnosis" = ["rules/**/*.yaml", "fault_trees/**/*.yaml"]
+"app.experiments" = ["definitions/**/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

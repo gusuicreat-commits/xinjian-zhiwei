@@ -52,6 +52,8 @@ class DiagnosisState(TypedDict, total=False):
     diagnosis_result_id: str
     device_id: str
     experiment_template: dict[str, Any] | None
+    experiment_id: str | None
+    experiment_version: str | None
     question: str | None
     lookback_seconds: int
     evaluated_at: str
@@ -81,7 +83,15 @@ class DiagnosisState(TypedDict, total=False):
 class DiagnosisWorkflowStartRequest(StrictModel):
     lookback_seconds: int = Field(default=3600, ge=1, le=604800)
     experiment_template: ExperimentTemplateContext | None = None
+    experiment_id: str | None = Field(default=None, min_length=1, max_length=100)
+    experiment_version: str | None = Field(default=None, min_length=1, max_length=50)
     question: str | None = Field(default=None, min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_experiment_reference(self) -> DiagnosisWorkflowStartRequest:
+        if self.experiment_version is not None and self.experiment_id is None:
+            raise ValueError("experiment_version requires experiment_id")
+        return self
 
 
 class TeacherEditedDiagnosis(StrictModel):

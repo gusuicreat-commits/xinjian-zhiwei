@@ -10,6 +10,10 @@ Phase 5 只消费 Phase 4 已保存的结构化诊断与证据，不实现 Phase
 
 三者均标记为 `status: placeholder`。这里的名称用于满足课程方案的示例范围，不表示开发板、传感器、引脚、接线或生产字段已经确定；实际课程确认后应审核并替换 YAML，而不是在 Python 中增加硬件特例。
 
+迁移架构保留这三棵根目录树作为旧入口，并支持 common/interface/component/experiment
+作用域目录。指定 Experiment Definition 后，只加载其 `fault_tree_sources`，同时校验 Scope；
+来源、版本和 Scope 写入 Guidance 审计，不改变评分和 Level 1–4 引擎。
+
 ## 评分约束
 
 故障树定义触发证据、候选原因、原因证据权重和四级提示文本。匹配器只提供通用事实解析器和比较运算符：

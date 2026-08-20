@@ -260,25 +260,29 @@ describe('DiagnosisPanel', () => {
     expect(wrapper.text()).toContain('教师已标记为解决')
   })
 
-  it('renders stable rule, fault-tree, knowledge and review evidence from the workflow', () => {
+  it('shows only student-facing workflow progress and guidance', () => {
     const wrapper = mountPanel({ diagnosis, guidance: [guidance], workflow })
+    const workflowPanel = wrapper.findAll('.ai-explanation-panel')[1]
 
-    expect(wrapper.text()).toContain('rules-v3')
-    expect(wrapper.text()).toContain('collect_context')
-    expect(wrapper.text()).toContain('example-rule')
-    expect(wrapper.text()).toContain('log:log-1')
-    expect(wrapper.text()).toContain('传感器手册')
-    expect(wrapper.text()).toContain('manual-sensor / chunk-1')
-    expect(wrapper.text()).toContain('RRF 0.8300')
-    expect(wrapper.text()).toContain('缺少供电电压读数')
-    expect(wrapper.text()).toContain('修订并批准')
-    expect(wrapper.text()).toContain('审核详情仅教师可见')
+    expect(workflowPanel.text()).toContain('辅助诊断进度')
+    expect(workflowPanel.text()).toContain('结果已提交教师确认')
+    expect(workflowPanel.text()).toContain('当前判断')
+    expect(workflowPanel.text()).toContain('建议检查连接')
+    expect(workflowPanel.text()).toContain('设备运行记录、可能原因分析、1 份已审核操作资料')
+    expect(workflowPanel.text()).toContain('缺少供电电压读数')
+    expect(workflowPanel.text()).toContain('修订并批准')
+    expect(workflowPanel.text()).toContain('审核详情仅教师可见')
+    expect(workflowPanel.text()).not.toContain('LangGraph')
+    expect(workflowPanel.text()).not.toContain('rules-v3')
+    expect(workflowPanel.text()).not.toContain('collect_context')
+    expect(workflowPanel.text()).not.toContain('manual-sensor')
+    expect(workflowPanel.text()).not.toContain('RRF')
     expect(wrapper.text()).not.toContain('teacher-1')
     expect(wrapper.text()).not.toContain('已补充排查顺序')
     expect(wrapper.text()).not.toContain('先检查连接')
   })
 
-  it('isolates unapproved retrieval results from reviewed knowledge', () => {
+  it('does not expose unapproved retrieval details to students', () => {
     const wrapper = mountPanel({
       diagnosis,
       guidance: [guidance],
@@ -299,14 +303,11 @@ describe('DiagnosisPanel', () => {
       },
     })
 
-    const reviewedSection = wrapper.find('.workflow-knowledge')
-    const unverifiedSection = wrapper.find('.workflow-unverified-knowledge')
-    expect(reviewedSection.text()).toContain('没有可采用的已审核来源')
-    expect(reviewedSection.text()).not.toContain('待审核手册')
-    expect(unverifiedSection.text()).toContain('未验证来源（不可作为诊断依据）')
-    expect(unverifiedSection.text()).toContain('待审核手册')
-    expect(unverifiedSection.text()).toContain('RRF 0.0313')
-    expect(unverifiedSection.text()).not.toContain('3%')
+    const workflowPanel = wrapper.findAll('.ai-explanation-panel')[1]
+    expect(workflowPanel.text()).not.toContain('待审核手册')
+    expect(workflowPanel.text()).not.toContain('draft-manual')
+    expect(workflowPanel.text()).not.toContain('RRF')
+    expect(workflowPanel.text()).not.toContain('已审核操作资料')
   })
 
   it('accepts a student-safe workflow with private review payloads omitted', () => {

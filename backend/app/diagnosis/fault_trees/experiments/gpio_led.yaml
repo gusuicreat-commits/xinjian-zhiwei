@@ -1,0 +1,53 @@
+version: "1"
+source_id: experiments.gpio_led
+scope:
+  kind: experiment
+  keys: [gpio_led_output]
+trees:
+  - id: gpio-led-output-v1
+    title: GPIO LED 输出未达到期望状态
+    status: placeholder
+    enabled: true
+    continuity_window_seconds: 3600
+    trigger:
+      - &gpio_root
+        fact: diagnosis_error_count
+        operator: gte
+        value: 1
+        weight: 1
+        description: 实验规则已确认 GPIO 期望行为未满足
+        params: {error_type: GPIO_EXPECTATION_FAILED}
+    escalation:
+      - {level: 1, min_failure_count: 1, min_duration_seconds: 0}
+      - {level: 2, min_failure_count: 3, min_duration_seconds: 300}
+      - {level: 3, min_failure_count: 6, min_duration_seconds: 900}
+      - {level: 4, min_failure_count: 10, min_duration_seconds: 1800}
+    causes:
+      - id: gpio-output-configuration
+        title: GPIO 模式、引脚或有效电平配置不一致
+        evidence:
+          - <<: *gpio_root
+            weight: 20
+            description: GPIO 状态差异支持检查输出配置方向
+          - fact: expected_behavior_violation_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 观察值与配置中的 LED 期望状态不一致
+            params: {behavior_id: led_output_high}
+        hints:
+          1: 先检查 GPIO 输出配置方向。
+          2: 对照实验定义核对引脚、输出模式和有效电平。
+          3: 分别记录初始化后与状态切换后的实际引脚值。
+          4: 保留接线、配置和观测记录，请教师协助确认。
+      - id: gpio-output-circuit
+        title: LED 输出回路连接或器件方向异常
+        evidence:
+          - <<: *gpio_root
+            weight: 20
+            description: GPIO 状态差异支持检查输出回路方向
+        hints:
+          1: 检查 LED 输出回路连接方向。
+          2: 对照接线说明核对器件方向和公共参考连接。
+          3: 断电后逐段检查回路，再恢复测试并记录结果。
+          4: 停止反复通电，保留现场并请求教师介入。

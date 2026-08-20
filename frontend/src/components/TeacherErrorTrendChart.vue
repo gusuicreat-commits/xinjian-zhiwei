@@ -19,14 +19,14 @@ function render(): void {
       xAxis: {
         type: 'category',
         data: props.data.map((x) => x.day.slice(5)),
-        axisLabel: { color: '#8297bc' },
-        axisLine: { lineStyle: { color: '#24476e' } },
+        axisLabel: { color: '#7b858b' },
+        axisLine: { lineStyle: { color: '#cfd5d9' } },
       },
       yAxis: {
         type: 'value',
         minInterval: 1,
-        axisLabel: { color: '#8297bc' },
-        splitLine: { lineStyle: { color: '#173760' } },
+        axisLabel: { color: '#7b858b' },
+        splitLine: { lineStyle: { color: '#e3e7ea' } },
       },
       series: [
         {
@@ -34,9 +34,9 @@ function render(): void {
           smooth: true,
           symbolSize: 8,
           data: props.data.map((x) => x.count),
-          lineStyle: { color: '#ff5b62', width: 2 },
-          itemStyle: { color: '#ff5b62', borderColor: '#fff', borderWidth: 2 },
-          areaStyle: { color: 'rgba(255,91,98,.08)' },
+          lineStyle: { color: '#006cd2', width: 2 },
+          itemStyle: { color: '#006cd2', borderColor: '#fff', borderWidth: 2 },
+          areaStyle: { color: 'rgba(0,108,210,.08)' },
         },
       ],
     },

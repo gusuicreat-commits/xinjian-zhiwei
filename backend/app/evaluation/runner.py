@@ -126,9 +126,7 @@ def _evaluate_episode_aggregation() -> dict[str, Any]:
             db.add(device)
             db.flush()
             for index in range(2):
-                evaluated_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(
-                    seconds=index
-                )
+                evaluated_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=index)
                 diagnosis = DiagnosisResult(
                     device_id=device.id,
                     evaluated_at=evaluated_at,
@@ -181,10 +179,7 @@ KNOWLEDGE_EVALUATION_TABLES = (
 def _embedding_tokens(text: str) -> set[str]:
     tokens = set(re.findall(r"[a-z0-9_]{2,}", text.lower()))
     for group in re.findall(r"[\u4e00-\u9fff]+", text):
-        tokens.update(
-            group[index : index + 2]
-            for index in range(max(1, len(group) - 1))
-        )
+        tokens.update(group[index : index + 2] for index in range(max(1, len(group) - 1)))
     return tokens
 
 
@@ -229,18 +224,14 @@ def _validate_retrieval_dataset(retrieval: dict[str, Any]) -> None:
         raise ValueError("Retrieval document and chunk identifiers must be unique")
     for document in documents:
         if not document.get("is_test_data") or not document.get("basis"):
-            raise ValueError(
-                f"Retrieval document {document['id']} must declare test-data basis"
-            )
+            raise ValueError(f"Retrieval document {document['id']} must declare test-data basis")
 
     query_ids = {item["id"] for item in queries}
     if len(query_ids) != len(queries):
         raise ValueError("Retrieval query identifiers must be unique")
     for query in queries:
         if not query.get("basis"):
-            raise ValueError(
-                f"Retrieval query {query['id']} must declare annotation basis"
-            )
+            raise ValueError(f"Retrieval query {query['id']} must declare annotation basis")
         expected_documents = query.get("expected_document_ids")
         expected_chunks = query.get("expected_chunk_ids")
         if not expected_documents or not expected_chunks:
@@ -248,14 +239,10 @@ def _validate_retrieval_dataset(retrieval: dict[str, Any]) -> None:
                 f"Retrieval query {query['id']} must name expected documents and chunks"
             )
         if len(expected_documents) != len(expected_chunks):
-            raise ValueError(
-                f"Retrieval query {query['id']} has mismatched expected targets"
-            )
+            raise ValueError(f"Retrieval query {query['id']} has mismatched expected targets")
         for document_id, chunk_id in zip(expected_documents, expected_chunks):
             if document_id not in document_ids or chunk_to_document.get(chunk_id) != document_id:
-                raise ValueError(
-                    f"Retrieval query {query['id']} references an unknown target"
-                )
+                raise ValueError(f"Retrieval query {query['id']} references an unknown target")
 
 
 @contextmanager
@@ -312,11 +299,7 @@ def _score_retrieval_case(
     matched_chunks = [item for item in actual_chunks if item in expected_chunks]
     missing_chunks = sorted(expected_chunks.difference(actual_chunks))
     first_rank = next(
-        (
-            rank
-            for rank, chunk_id in enumerate(actual_chunks, 1)
-            if chunk_id in expected_chunks
-        ),
+        (rank for rank, chunk_id in enumerate(actual_chunks, 1) if chunk_id in expected_chunks),
         None,
     )
     recall_at_5 = len(matched_chunks) / len(expected_chunks)
@@ -408,18 +391,14 @@ def _evaluate_retrieval(
                 )
                 db.add(source)
                 for item in documents:
-                    content_hash = hashlib.sha256(
-                        item["text"].encode("utf-8")
-                    ).hexdigest()
+                    content_hash = hashlib.sha256(item["text"].encode("utf-8")).hexdigest()
                     document = KnowledgeDocument(
                         id=item["id"],
                         source_id=source.id,
                         title=item["title"],
                         media_type="text/plain",
                         language="zh-CN",
-                        storage_uri=(
-                            f"test-fixture://evaluation/retrieval/{item['id']}"
-                        ),
+                        storage_uri=(f"test-fixture://evaluation/retrieval/{item['id']}"),
                         content_hash=content_hash,
                         parser_name="synthetic-evaluation",
                         parser_version="2",
@@ -543,14 +522,8 @@ def run_evaluation() -> dict[str, Any]:
 
     retrieval_report = _evaluate_retrieval(retrieval)
 
-    generated_text = " ".join(
-        match
-        for result in diagnosis_results
-        for match in result["actual"]
-    )
-    forbidden_hits = [
-        pattern for pattern in forbidden["patterns"] if pattern in generated_text
-    ]
+    generated_text = " ".join(match for result in diagnosis_results for match in result["actual"])
+    forbidden_hits = [pattern for pattern in forbidden["patterns"] if pattern in generated_text]
     diagnosis_passed = sum(item["passed"] for item in diagnosis_results)
     episode = _evaluate_episode_aggregation()
     average_latency_ms = sum(latencies) / len(latencies)

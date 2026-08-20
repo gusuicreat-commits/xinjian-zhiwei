@@ -1,0 +1,53 @@
+version: "1"
+source_id: interfaces.communication
+scope:
+  kind: interface
+  keys: [i2c, network]
+trees:
+  - id: interface-communication-failure-v1
+    title: 通信接口失败通用故障树
+    status: placeholder
+    enabled: true
+    continuity_window_seconds: 3600
+    trigger:
+      - &communication_root
+        fact: diagnosis_error_count
+        operator: gte
+        value: 1
+        weight: 1
+        description: 接口级通用规则已确认通信失败
+        params: {error_type: INTERFACE_COMMUNICATION_FAILURE}
+    escalation: &default_escalation
+      - {level: 1, min_failure_count: 1, min_duration_seconds: 0}
+      - {level: 2, min_failure_count: 3, min_duration_seconds: 300}
+      - {level: 3, min_failure_count: 6, min_duration_seconds: 900}
+      - {level: 4, min_failure_count: 10, min_duration_seconds: 1800}
+    causes:
+      - id: interface-physical-path
+        title: 接口物理连接或供电条件不满足
+        evidence:
+          - <<: *communication_root
+            weight: 20
+            description: 通信失败支持检查物理连接与供电方向
+          - fact: event_type_count
+            operator: gte
+            value: 1
+            weight: 55
+            description: 标准化事件保留了本次通信失败原始记录
+            params: {event_type: communication_failure}
+        hints:
+          1: 先检查接口连接与供电方向。
+          2: 对照实验定义核对接口连接、供电和必要参数。
+          3: 断电后逐段检查连接，再恢复并记录一次完整通信过程。
+          4: 保留连接状态和原始通信记录，请教师协助确认硬件链路。
+      - id: interface-configuration
+        title: 接口参数、初始化或软件配置不一致
+        evidence:
+          - <<: *communication_root
+            weight: 20
+            description: 通信失败支持检查接口配置方向
+        hints:
+          1: 检查接口初始化与参数配置方向。
+          2: 对照实验定义核对接口类型、地址或网络参数。
+          3: 分离验证初始化、连接和数据传输步骤，并记录各步结果。
+          4: 提交参数快照和失败记录，请教师协助定位配置或驱动问题。

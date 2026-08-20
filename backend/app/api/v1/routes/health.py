@@ -63,8 +63,7 @@ def dependencies(db: DatabaseSession) -> DependencyHealthResponse:
     ready.dependencies["embedding"] = {
         "status": (
             "ok"
-            if settings.knowledge_embedding_provider
-            and settings.knowledge_embedding_model
+            if settings.knowledge_embedding_provider and settings.knowledge_embedding_model
             else "disabled"
         ),
         "required": False,
@@ -76,9 +75,7 @@ def dependencies(db: DatabaseSession) -> DependencyHealthResponse:
 def ops_status(_: ReviewAccess, db: DatabaseSession) -> OpsStatusResponse:
     settings = get_settings()
     formal = db.scalar(
-        select(func.count(KnowledgeDocument.id)).where(
-            KnowledgeDocument.is_test_data.is_(False)
-        )
+        select(func.count(KnowledgeDocument.id)).where(KnowledgeDocument.is_test_data.is_(False))
     )
     test = db.scalar(
         select(func.count(KnowledgeDocument.id)).where(KnowledgeDocument.is_test_data.is_(True))

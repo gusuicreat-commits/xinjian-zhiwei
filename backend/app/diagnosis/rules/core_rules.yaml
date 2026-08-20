@@ -1,4 +1,6 @@
 version: "1"
+source_id: common.core
+scope: {kind: common}
 rules:
   - id: sensor-read-failed-v1
     error_type: SENSOR_READ_FAILED

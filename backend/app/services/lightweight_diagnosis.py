@@ -74,19 +74,12 @@ def build_diagnosis_core(
         for cause in item.ranked_causes
         if cause.get("title")
     ]
-    steps = [
-        str(hint.get("text"))
-        for item in guidance
-        for hint in item.hints
-        if hint.get("text")
-    ]
+    steps = [str(hint.get("text")) for item in guidance for hint in item.hints if hint.get("text")]
     hint_level = max((item.hint_level for item in guidance), default=1)
     placeholder = any(item.fault_tree_status == "placeholder" for item in guidance)
     fallback = DETERMINISTIC_FALLBACKS.get(primary or "", {})
     if not possible_causes:
-        possible_causes = fallback.get(
-            "causes", ["现有证据不足，需要继续采集数据并核对实验配置"]
-        )
+        possible_causes = fallback.get("causes", ["现有证据不足，需要继续采集数据并核对实验配置"])
     if not steps:
         steps = fallback.get(
             "steps",
@@ -103,9 +96,7 @@ def build_diagnosis_core(
         confidence = 0.5
     if len(matches) == 1 and guidance and not placeholder:
         confidence = 0.8
-    limitations = [
-        "当前规则与阈值仍包含开发阶段示例或待确认参数，不能作为真实硬件专业结论。"
-    ]
+    limitations = ["当前规则与阈值仍包含开发阶段示例或待确认参数，不能作为真实硬件专业结论。"]
     if not matches:
         limitations.append("没有匹配规则，不能据此确定故障类型。")
     if not knowledge_chunk_ids:
@@ -167,9 +158,7 @@ def decide_ai_policy(
         return AIPolicyDecision(
             should_call=False, reason="DETERMINISTIC_RESULT_SUFFICIENT", confidence=core.confidence
         )
-    return AIPolicyDecision(
-        should_call=True, reason="+".join(reasons), confidence=core.confidence
-    )
+    return AIPolicyDecision(should_call=True, reason="+".join(reasons), confidence=core.confidence)
 
 
 def explanation_fingerprint(
@@ -219,37 +208,41 @@ def budget_allowed(
     if episode and episode.ai_call_count >= settings.ai_calls_per_episode:
         return False, "EPISODE_CALL_LIMIT"
     since = datetime.now(timezone.utc) - timedelta(hours=1)
-    hourly = db.scalar(
-        select(func.count(AICallRecord.id))
-        .join(DiagnosisResult, DiagnosisResult.id == AICallRecord.diagnosis_result_id)
-        .where(
-            DiagnosisResult.device_id == device_id,
-            AICallRecord.status.in_(("succeeded", "failed")),
-            or_(
-                AICallRecord.cache_status.is_(None),
-                AICallRecord.cache_status != "hit",
-            ),
-            AICallRecord.created_at >= since,
+    hourly = (
+        db.scalar(
+            select(func.count(AICallRecord.id))
+            .join(DiagnosisResult, DiagnosisResult.id == AICallRecord.diagnosis_result_id)
+            .where(
+                DiagnosisResult.device_id == device_id,
+                AICallRecord.status.in_(("succeeded", "failed")),
+                or_(
+                    AICallRecord.cache_status.is_(None),
+                    AICallRecord.cache_status != "hit",
+                ),
+                AICallRecord.created_at >= since,
+            )
         )
-    ) or 0
+        or 0
+    )
     if hourly >= settings.ai_calls_per_device_hour:
         return False, "DEVICE_HOURLY_CALL_LIMIT"
     if settings.ai_daily_budget is not None:
         day = datetime.now(timezone.utc) - timedelta(days=1)
-        spent = db.scalar(
-            select(func.coalesce(func.sum(AICallRecord.estimated_cost), 0.0)).where(
-                AICallRecord.created_at >= day,
-                AICallRecord.attempt_count > 0,
+        spent = (
+            db.scalar(
+                select(func.coalesce(func.sum(AICallRecord.estimated_cost), 0.0)).where(
+                    AICallRecord.created_at >= day,
+                    AICallRecord.attempt_count > 0,
+                )
             )
-        ) or 0.0
+            or 0.0
+        )
         if float(spent) >= settings.ai_daily_budget:
             return False, "DAILY_BUDGET_LIMIT"
     return True, None
 
 
-def estimate_ai_cost(
-    input_tokens: int, output_tokens: int, settings: Settings
-) -> float | None:
+def estimate_ai_cost(input_tokens: int, output_tokens: int, settings: Settings) -> float | None:
     if (
         settings.ai_input_cost_per_1k_tokens is None
         or settings.ai_output_cost_per_1k_tokens is None

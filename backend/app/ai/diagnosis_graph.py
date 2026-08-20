@@ -156,6 +156,8 @@ def collect_context(
             if state.get("experiment_template")
             else None
         ),
+        experiment_id=state.get("experiment_id"),
+        experiment_version=state.get("experiment_version"),
     )
     # Checkpoints retain a bounded context snapshot, not full historical tables.
     return {
@@ -200,6 +202,8 @@ def run_rules(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) ->
                 if state.get("experiment_template")
                 else None
             ),
+            experiment_id=state.get("experiment_id"),
+            experiment_version=state.get("experiment_version"),
         )
         outcome = diagnose(context)
         record = save_diagnosis_result(

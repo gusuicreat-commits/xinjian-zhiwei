@@ -31,9 +31,7 @@ ROLE_PERMISSIONS = {
 
 
 def ensure_rbac_catalog(db: Session) -> dict[str, Role]:
-    permission_codes = sorted(
-        {code for values in ROLE_PERMISSIONS.values() for code in values}
-    )
+    permission_codes = sorted({code for values in ROLE_PERMISSIONS.values() for code in values})
     permissions: dict[str, Permission] = {}
     for code in permission_codes:
         permission = db.scalar(select(Permission).where(Permission.code == code))
@@ -76,6 +74,4 @@ def assign_role(db: Session, user: User, role: Role) -> None:
         )
     ).first()
     if relation is None:
-        db.execute(
-            insert(user_roles).values(user_id=user.id, role_id=role.id)
-        )
+        db.execute(insert(user_roles).values(user_id=user.id, role_id=role.id))

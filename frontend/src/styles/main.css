@@ -758,6 +758,13 @@ button {
   color: #e7f2ff;
   line-height: 1.55;
 }
+.workflow-summary-line > div {
+  display: grid;
+  gap: 3px;
+}
+.workflow-summary-line > div small {
+  color: #7894b7;
+}
 .workflow-summary-line span {
   flex: 0 0 auto;
   padding: 3px 6px;
@@ -1885,6 +1892,11 @@ button {
 .ai-explanation-panel > .workflow-unverified-knowledge,
 .ai-explanation-panel > .workflow-limitations,
 .ai-explanation-panel > .workflow-reviews,
+.ai-explanation-panel > .workflow-user-summary,
+.ai-explanation-panel > .workflow-user-basis,
+.ai-explanation-panel > .ai-explanation-content,
+.ai-explanation-panel > .ai-disabled-state,
+.ai-explanation-panel > .ai-safety-note,
 .ai-explanation-panel > p,
 .ai-explanation-panel > .el-button {
   margin-right: 15px;
@@ -1895,7 +1907,9 @@ button {
 .ai-explanation-panel > .workflow-reviews,
 .ai-explanation-panel > .workflow-limitations,
 .ai-explanation-panel > .workflow-knowledge,
-.ai-explanation-panel > .workflow-unverified-knowledge {
+.ai-explanation-panel > .workflow-unverified-knowledge,
+.ai-explanation-panel > .workflow-user-summary,
+.ai-explanation-panel > .workflow-user-basis {
   margin-bottom: 14px;
 }
 .workflow-evidence-grid {
@@ -1966,6 +1980,29 @@ button {
 }
 .workflow-explanation-summary strong {
   color: #244e75;
+}
+.workflow-user-status {
+  color: #516579;
+  line-height: 1.65;
+}
+.workflow-user-summary,
+.workflow-user-basis {
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid #d9e5ef;
+  border-radius: 8px;
+  color: #516579;
+  background: #f8fbfe;
+}
+.workflow-user-summary strong,
+.workflow-user-basis strong {
+  color: #244e75;
+}
+.workflow-user-summary p,
+.workflow-user-basis p {
+  margin: 0;
+  line-height: 1.65;
 }
 .empty-inline {
   margin: 7px 0 0;

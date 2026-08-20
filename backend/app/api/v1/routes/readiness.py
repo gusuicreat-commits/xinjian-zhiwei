@@ -27,19 +27,9 @@ def readiness_status(db: DatabaseSession) -> ReadinessResponse:
         )
         or 0
     )
-    users = int(
-        db.scalar(
-            select(func.count(User.id)).where(User.is_test_data.is_(False))
-        )
-        or 0
-    )
+    users = int(db.scalar(select(func.count(User.id)).where(User.is_test_data.is_(False))) or 0)
     classes = int(
-        db.scalar(
-            select(func.count(Classroom.id)).where(
-                Classroom.is_test_data.is_(False)
-            )
-        )
-        or 0
+        db.scalar(select(func.count(Classroom.id)).where(Classroom.is_test_data.is_(False))) or 0
     )
     ai_configured = bool(settings.ai_enabled and settings.ai_api_key)
     software_ready = True
@@ -47,12 +37,7 @@ def readiness_status(db: DatabaseSession) -> ReadinessResponse:
     hardware_ready = False
     knowledge_ready = formal_approved > 0
     organization_ready = users > 0 and classes > 0
-    production_ready = (
-        software_ready
-        and hardware_ready
-        and knowledge_ready
-        and organization_ready
-    )
+    production_ready = software_ready and hardware_ready and knowledge_ready and organization_ready
     items = [
         ReadinessItem(
             key="database",

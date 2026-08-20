@@ -5,6 +5,7 @@ from datetime import timezone
 from operator import eq, ge, gt, le, lt
 from typing import Any, Callable, Optional
 
+from app.diagnosis.expected_behavior import compare_expected_behaviors
 from app.diagnosis.schemas import (
     DiagnosisContext,
     DiagnosisMatch,
@@ -80,10 +81,62 @@ def _out_of_range_count(context: DiagnosisContext, params: dict[str, Any]) -> Fa
     return FactResult(float(len(details)), details)
 
 
+def _event_type_count(context: DiagnosisContext, params: dict[str, Any]) -> FactResult:
+    event_type = params.get("event_type")
+    component_id = params.get("component_id")
+    interface_id = params.get("interface_id")
+    interface_type = params.get("interface_type")
+    allowed_interfaces = (
+        {item.id for item in context.interfaces if item.type == interface_type}
+        if interface_type
+        else set()
+    )
+    matching = [
+        item
+        for item in context.events
+        if (event_type is None or item.type == event_type)
+        and (component_id is None or item.component_id == component_id)
+        and (interface_id is None or item.interface_id == interface_id)
+        and (not interface_type or item.interface_id in allowed_interfaces)
+    ]
+    return FactResult(
+        float(len(matching)),
+        [
+            {
+                "event_id": item.id,
+                "event_type": item.type,
+                "component_id": item.component_id,
+                "interface_id": item.interface_id,
+                "source": item.source,
+                "source_ref": item.source_ref,
+                "occurred_at": item.occurred_at.isoformat(),
+            }
+            for item in matching
+        ],
+    )
+
+
+def _expected_behavior_violation_count(
+    context: DiagnosisContext, params: dict[str, Any]
+) -> FactResult:
+    behavior_id = params.get("behavior_id")
+    matching = [
+        item
+        for item in compare_expected_behaviors(context)
+        if item.status == "violated" and (behavior_id is None or item.behavior_id == behavior_id)
+    ]
+    return FactResult(
+        float(len(matching)),
+        [item.model_dump(mode="json") for item in matching],
+    )
+
+
 FACTS: dict[str, Callable[[DiagnosisContext, dict[str, Any]], FactResult]] = {
     "log_event_count": _log_event_count,
     "seconds_since_last_seen": _seconds_since_last_seen,
     "out_of_range_count": _out_of_range_count,
+    "event_type_count": _event_type_count,
+    "expected_behavior_violation_count": _expected_behavior_violation_count,
 }
 OPERATORS = {"eq": eq, "gte": ge, "gt": gt, "lte": le, "lt": lt}
 
@@ -117,6 +170,9 @@ def evaluate_rules(
                     priority=rule.priority,
                     summary=rule.summary,
                     evidence=[item for item in evidence if item is not None],
+                    source_id=rule.source_id,
+                    source_version=rule.source_version,
+                    scope=rule.scope,
                 )
             )
     canonical_context = json.dumps(

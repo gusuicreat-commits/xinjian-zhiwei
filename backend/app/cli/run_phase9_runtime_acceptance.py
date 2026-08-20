@@ -190,9 +190,7 @@ def main() -> None:
             .order_by(AICallRecord.created_at)
         ).all()
         cache = db.scalar(
-            select(AIExplanationCache).where(
-                AIExplanationCache.fingerprint.is_not(None)
-            )
+            select(AIExplanationCache).where(AIExplanationCache.fingerprint.is_not(None))
         )
         print(
             json.dumps(

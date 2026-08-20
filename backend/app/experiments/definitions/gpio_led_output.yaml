@@ -1,0 +1,50 @@
+schema_version: "1"
+experiment:
+  id: gpio_led_output
+  name: GPIO LED 数字输出迁移性测试夹具
+  version: "1.0"
+hardware:
+  family: esp32
+  board_model: esp32-devkit
+  components:
+    - id: status_led
+      kind: digital_output
+      model: led
+interfaces:
+  - id: led_gpio
+    type: gpio
+    component_ids: [status_led]
+    pins: {output: 2}
+    parameters: {mode: output, active_level: 1}
+required_parameters:
+  output_pin: 2
+expected_behaviors:
+  - id: led_output_high
+    description: 执行点亮操作后 GPIO 应输出高电平
+    kind: state_equals
+    component_id: status_led
+    interface_id: led_gpio
+    metric: level
+    expected: 1
+diagnostics:
+  rule_sources: [common.core, experiments.gpio_led]
+  fault_tree_sources: [experiments.gpio_led]
+normalization:
+  adapter: mapping
+  mappings:
+    - id: gpio-level-sample
+      match: {pin: 2}
+      output: observation
+      component_id: status_led
+      interface_id: led_gpio
+      metric: level
+      value_field: level
+      timestamp_field: timestamp
+      default_status: normal
+knowledge_scope:
+  hardware_families: [esp32]
+  board_models: [esp32-devkit]
+  components: [digital_output, led]
+  interfaces: [gpio]
+  document_types: [experiment_guide, wiring_guide]
+  knowledge_version: "1"

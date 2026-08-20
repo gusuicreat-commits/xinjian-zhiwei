@@ -33,9 +33,7 @@ def ensure_intervention_case(
     source: str,
 ) -> InterventionCase:
     existing = db.scalar(
-        select(InterventionCase).where(
-            InterventionCase.diagnosis_result_id == diagnosis.id
-        )
+        select(InterventionCase).where(InterventionCase.diagnosis_result_id == diagnosis.id)
     )
     if existing is not None:
         return existing

@@ -20,8 +20,7 @@ def upgrade() -> None:
     # duplicate declarations created by the first P4/P5 migration drafts.
     op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key")
     op.execute(
-        "ALTER TABLE experiment_templates "
-        "DROP CONSTRAINT IF EXISTS experiment_templates_code_key"
+        "ALTER TABLE experiment_templates DROP CONSTRAINT IF EXISTS experiment_templates_code_key"
     )
 
 

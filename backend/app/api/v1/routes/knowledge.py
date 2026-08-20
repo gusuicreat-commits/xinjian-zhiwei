@@ -226,9 +226,7 @@ def review_knowledge_document(
                 "message": f"Role {required_role} is required",
             },
         )
-    authenticated_payload = payload.model_copy(
-        update={"reviewer_ref": actor.id}
-    )
+    authenticated_payload = payload.model_copy(update={"reviewer_ref": actor.id})
     try:
         return review_document(db, document_id, authenticated_payload)
     except KnowledgeServiceError as exc:

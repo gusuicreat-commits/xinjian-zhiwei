@@ -95,6 +95,7 @@ async def request_security_and_logging(request: Request, call_next):
     )
     return response
 
+
 # Conventional probe paths remain available at the service root for container
 # orchestrators. The versioned aliases are retained for backwards compatibility.
 app.include_router(health_router)

@@ -17,17 +17,21 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    duplicate = op.get_bind().execute(
-        sa.text(
-            """
+    duplicate = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                """
             SELECT workflow_run_id, COUNT(*) AS review_count
             FROM diagnosis_workflow_reviews
             GROUP BY workflow_run_id
             HAVING COUNT(*) > 1
             LIMIT 1
             """
+            )
         )
-    ).first()
+        .first()
+    )
     if duplicate is not None:
         raise RuntimeError(
             "cannot add one-review-per-workflow constraint: "

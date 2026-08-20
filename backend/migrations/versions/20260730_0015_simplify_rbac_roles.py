@@ -104,9 +104,7 @@ def downgrade() -> None:
         sa.column("permission_id", sa.String()),
     )
 
-    existing_roles = set(
-        connection.execute(sa.text("SELECT code FROM roles")).scalars()
-    )
+    existing_roles = set(connection.execute(sa.text("SELECT code FROM roles")).scalars())
     role_ids: dict[str, str] = {}
     for code, name in (
         ("teaching_assistant", "Teaching Assistant"),
@@ -134,9 +132,7 @@ def downgrade() -> None:
             ).scalar_one()
 
     permission_id = connection.execute(
-        sa.text(
-            "SELECT id FROM permissions WHERE code = 'knowledge.review.technical'"
-        )
+        sa.text("SELECT id FROM permissions WHERE code = 'knowledge.review.technical'")
     ).scalar_one_or_none()
     if permission_id is None:
         permission_id = str(uuid.uuid4())

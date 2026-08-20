@@ -217,11 +217,7 @@ def scoped_device_dashboard(
     db: DatabaseSession,
 ) -> StudentDashboardResponse:
     device = next(
-        (
-            item
-            for item in _accessible_devices(db, user)
-            if item.device_key == device_id
-        ),
+        (item for item in _accessible_devices(db, user) if item.device_key == device_id),
         None,
     )
     if device is None:

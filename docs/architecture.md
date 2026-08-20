@@ -1,4 +1,4 @@
-# 芯鉴知微系统架构（P1 设备协议 V1）
+# 芯鉴知微系统架构
 
 ## 1. 架构目标
 
@@ -75,17 +75,22 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 
 ### 诊断流水线
 
-1. 从日志、心跳、读数和实验模板构造 `DiagnosisContext`，并把同设备、同实验、同主要错误在时间窗口内聚合为 `DiagnosisEpisode`。
-2. YAML 规则与故障树生成不可被 AI 覆盖的 `DiagnosisCore`。
-3. 在 Phase 8 同一知识表上执行结构化过滤、PostgreSQL FTS 关键词检索和可选 pgvector 检索，再以 RRF 融合。
-4. 设备状态解释层把已确认的设备状态、错误码、规则、故障树与 Level 投影为稳定的
+1. 加载稳定 ID/版本的 Experiment Definition；旧调用未指定定义时进入兼容模式。
+2. Normalizer 把实验原始格式或旧日志、心跳、读数投影为统一 Observation/Event，Unknown
+   数据连同原始载荷显式保留。
+3. 从设备、组件、接口、Expected Behavior 和标准事实构造 `DiagnosisContext`，并把同设备、
+   同实验、同主要错误在时间窗口内聚合为 `DiagnosisEpisode`。
+4. 按 common/interface/component/experiment Scope 加载 YAML 规则与故障树，生成不可被 AI
+   覆盖的 `DiagnosisCore`。
+5. 在 Phase 8 同一知识表上执行结构化过滤、PostgreSQL FTS 关键词检索和可选 pgvector 检索，再以 RRF 融合。
+6. 设备状态解释层把已确认的设备状态、错误码、规则、故障树与 Level 投影为稳定的
    `status_title/status_summary/meaning/next_step/source/technical_details`；原始日志、读数、
    规则和故障树证据仍保留在技术详情中。
-5. 明确错误码、正常状态和单一简单异常只使用确定性翻译。`AIExplanationPolicy` 只对
+7. 明确错误码、正常状态和单一简单异常只使用确定性翻译。`AIExplanationPolicy` 只对
    低置信、冲突、未知、多异常、明确追问或升级场景放行；高置信已知异常默认零调用。
-6. 放行后先查 PostgreSQL 指纹缓存；生产默认只调用 DeepSeek
+8. 放行后先查 PostgreSQL 指纹缓存；生产默认只调用 DeepSeek
    `deepseek-v4-flash` 非思考模式，不做多模型分层。
-7. AI 输出经 Pydantic、证据白名单和知识引用校验，只能改写学生文案；任何失败、限流、
+9. AI 输出经 Pydantic、证据白名单和知识引用校验，只能改写学生文案；任何失败、限流、
    预算耗尽或 Provider 未配置都返回完整确定性说明。
 
 ### 前端
@@ -133,9 +138,12 @@ Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配�
 5. DeepSeek Provider、`deepseek-v4-flash` 和非思考模式已经确定；真实 API Key、正式预算、Embedding、ESP32 型号、接线、账号和知识来源仍待确认。
 6. 上传限流与保留 dry-run 已实现；设备令牌轮换、生产保留策略和责任人仍待确认。
 7. 背景 Word 的旧技术草案与固定方案有差异，已在 `PROJECT_CONTEXT.md` 中明确裁决，后续不得同时保留两套实现。
-8. 当前源码和 Docker 版本为 `1.0.0`，迁移 Head 为 `20260813_0019`；AI 总开关默认
+8. 当前源码和 Docker 版本为 `1.0.0`，迁移 Head 为 `20260818_0021`；AI 总开关默认
    关闭，无 Key 时保持 Disabled。
 
 物理拓扑、USB/Wi-Fi 职责、局域网/公网边界和三种部署模式见
 [运行架构](runtime-architecture.md) 与 [部署说明](deployment.md)。P1–P11 的通用框架
 完成不代表真实硬件、正式知识或生产部署已经就绪。
+
+跨实验诊断内核、Experiment Definition、Normalizer、Expected Behavior、规则/故障树 Scope、
+Knowledge Scope 及新增实验流程见[可迁移实验诊断框架](experiment-diagnostic-framework.md)。

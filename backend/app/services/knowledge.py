@@ -509,9 +509,7 @@ def review_document(
         raise KnowledgeServiceError(
             404, "KNOWLEDGE_DOCUMENT_NOT_FOUND", "Knowledge document not found"
         )
-    required_role = REVIEW_TRANSITIONS.get(
-        (document.review_status, payload.decision)
-    )
+    required_role = REVIEW_TRANSITIONS.get((document.review_status, payload.decision))
     if required_role is None:
         raise KnowledgeServiceError(
             409,
@@ -750,11 +748,7 @@ def get_knowledge_status(db: Session, settings: Settings) -> KnowledgeStatusResp
         db.scalar(
             select(func.count())
             .select_from(KnowledgeDocument)
-            .where(
-                KnowledgeDocument.review_status.in_(
-                    ("draft", "pending")
-                )
-            )
+            .where(KnowledgeDocument.review_status.in_(("draft", "pending")))
         )
         or 0
     )

@@ -94,9 +94,7 @@ CASES = (
 def seed() -> dict[str, int | str]:
     settings = get_settings()
     with SessionLocal() as db:
-        source = db.scalar(
-            select(KnowledgeSource).where(KnowledgeSource.source_key == SOURCE_KEY)
-        )
+        source = db.scalar(select(KnowledgeSource).where(KnowledgeSource.source_key == SOURCE_KEY))
         if source is None:
             source_response = create_source(
                 db,
@@ -154,9 +152,7 @@ def seed() -> dict[str, int | str]:
                     ),
                 }
                 while document.review_status != "approved":
-                    decision, reviewer_role, reviewer_ref = review_steps[
-                        document.review_status
-                    ]
+                    decision, reviewer_role, reviewer_ref = review_steps[document.review_status]
                     review_document(
                         db,
                         document.id,

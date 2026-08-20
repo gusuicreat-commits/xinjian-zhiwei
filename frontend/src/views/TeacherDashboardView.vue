@@ -352,6 +352,27 @@ onBeforeUnmount(() => {
         <template #extra><el-button type="primary" @click="refresh">重新加载</el-button></template>
       </el-result>
       <template v-else-if="dashboard">
+        <header class="teacher-hero">
+          <div>
+            <p>TEACHER OPERATIONS</p>
+            <h1>班级实验总览</h1>
+            <span>聚合设备状态、异常证据与待处理教学介入。</span>
+          </div>
+          <dl>
+            <div>
+              <dt>数据来源</dt>
+              <dd>实时接口</dd>
+            </div>
+            <div>
+              <dt>刷新频率</dt>
+              <dd>30 秒</dd>
+            </div>
+            <div>
+              <dt>当前状态</dt>
+              <dd>持续监测</dd>
+            </div>
+          </dl>
+        </header>
         <div class="teacher-notice" :class="{ warning: hasTestData }">
           <Warning /><span>{{ dashboard.data_notice }}</span
           ><button type="button" @click="refresh"><Refresh />刷新</button>
@@ -628,14 +649,17 @@ onBeforeUnmount(() => {
                     <button type="button" @click="toggleWorkflow(item.id)">
                       <b>{{ item.device_id }}</b>
                       <small>
-                        证据分 {{ item.evidence_score ?? '—' }} · Level
-                        {{ item.guidance_level ?? '—' }} ·
-                        {{ item.review_request?.candidates?.length ?? 0 }} 个候选 ·
-                        {{ item.review_request?.retrieved_chunks?.length ?? 0 }} 个知识引用
+                        需要教师确认 ·
+                        {{ item.review_request?.candidates?.length ?? 0 }} 个可能原因 ·
+                        {{
+                          item.review_request?.retrieved_chunks?.filter(
+                            (reference) => reference.metadata?.review_status === 'approved',
+                          ).length ?? 0
+                        }}
+                        份已审核资料
                       </small>
                       <small class="intervention-source">
-                        {{ item.graph_version }} ·
-                        {{ expandedWorkflowId === item.id ? '收起证据' : '展开证据' }}
+                        {{ expandedWorkflowId === item.id ? '收起诊断依据' : '查看诊断依据' }}
                       </small>
                     </button>
                     <div class="intervention-action-copy">

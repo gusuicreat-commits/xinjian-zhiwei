@@ -44,9 +44,7 @@ def build_teacher_dashboard(
     diagnosis_query = select(DiagnosisResult).order_by(
         DiagnosisResult.created_at.desc(), DiagnosisResult.id.desc()
     )
-    log_query = select(DeviceLog).order_by(
-        DeviceLog.occurred_at.desc(), DeviceLog.id.desc()
-    )
+    log_query = select(DeviceLog).order_by(DeviceLog.occurred_at.desc(), DeviceLog.id.desc())
     intervention_query = (
         select(GuidanceHistory)
         .where(GuidanceHistory.teacher_intervention_required.is_(True))
@@ -57,9 +55,7 @@ def build_teacher_dashboard(
     )
     if allowed_device_ids is not None:
         device_query = device_query.where(Device.id.in_(allowed_device_ids))
-        diagnosis_query = diagnosis_query.where(
-            DiagnosisResult.device_id.in_(allowed_device_ids)
-        )
+        diagnosis_query = diagnosis_query.where(DiagnosisResult.device_id.in_(allowed_device_ids))
         log_query = log_query.where(DeviceLog.device_id.in_(allowed_device_ids))
         intervention_query = intervention_query.where(
             GuidanceHistory.device_id.in_(allowed_device_ids)
@@ -69,9 +65,7 @@ def build_teacher_dashboard(
             DiagnosisResult.id == InterventionCase.diagnosis_result_id,
         ).where(DiagnosisResult.device_id.in_(allowed_device_ids))
     devices = db.scalars(device_query).all()
-    diagnoses = db.scalars(
-        diagnosis_query
-    ).all()
+    diagnoses = db.scalars(diagnosis_query).all()
     latest_diagnoses: dict[str, DiagnosisResult] = {}
     for diagnosis in diagnoses:
         latest_diagnoses.setdefault(diagnosis.device_id, diagnosis)
@@ -186,13 +180,10 @@ def build_teacher_dashboard(
                 diagnosis_result_id=diagnosis.id,
                 tree_title=guidance.fault_tree_title if guidance else fallback_title,
                 failure_count=guidance.failure_count if guidance else 1,
-                anomaly_duration_seconds=(
-                    guidance.anomaly_duration_seconds if guidance else 0
-                ),
+                anomaly_duration_seconds=(guidance.anomaly_duration_seconds if guidance else 0),
                 created_at=case.created_at,
                 is_test_data=case.is_test_data,
-                student_identity_configured=diagnosis.device_id
-                in student_bound_device_ids,
+                student_identity_configured=diagnosis.device_id in student_bound_device_ids,
             )
         )
     for record in guidance_interventions:
@@ -209,8 +200,7 @@ def build_teacher_dashboard(
                 anomaly_duration_seconds=record.anomaly_duration_seconds,
                 created_at=record.created_at,
                 is_test_data=record.is_test_data,
-                student_identity_configured=record.device_id
-                in student_bound_device_ids,
+                student_identity_configured=record.device_id in student_bound_device_ids,
             )
         )
     intervention_items.sort(key=lambda item: item.created_at, reverse=True)

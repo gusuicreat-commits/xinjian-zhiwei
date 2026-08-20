@@ -35,19 +35,19 @@ function renderChart(): void {
   chart.setOption(
     {
       tooltip: { trigger: 'axis' },
-      color: ['#2f86e9', '#1caf70', '#c47b42', '#8b5cf6'],
-      legend: { type: 'scroll', top: 0, textStyle: { color: '#6c5a4d', fontSize: 11 } },
+      color: ['#006cd2', '#12a26b', '#d57b22', '#687078'],
+      legend: { type: 'scroll', top: 0, textStyle: { color: '#5e6970', fontSize: 11 } },
       grid: { left: 44, right: 18, top: 48, bottom: 36 },
       xAxis: {
         type: 'time',
-        axisLine: { lineStyle: { color: '#dfd4ca' } },
-        axisLabel: { color: '#8a7769' },
+        axisLine: { lineStyle: { color: '#cfd5d9' } },
+        axisLabel: { color: '#7b858b' },
       },
       yAxis: {
         type: 'value',
         scale: true,
-        splitLine: { lineStyle: { color: '#eee7e0' } },
-        axisLabel: { color: '#8a7769' },
+        splitLine: { lineStyle: { color: '#e6eaed' } },
+        axisLabel: { color: '#7b858b' },
       },
       series: series.value,
     },
@@ -88,8 +88,17 @@ onBeforeUnmount(() => {
     <details v-if="readings.length" class="chart-data-fallback">
       <summary>查看图表文本数据</summary>
       <table>
-        <caption>传感器读数（最多显示最近 50 条）</caption>
-        <thead><tr><th>时间</th><th>指标</th><th>数值</th><th>单位</th></tr></thead>
+        <caption>
+          传感器读数（最多显示最近 50 条）
+        </caption>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>指标</th>
+            <th>数值</th>
+            <th>单位</th>
+          </tr>
+        </thead>
         <tbody>
           <tr v-for="reading in readings.slice(-50)" :key="reading.id">
             <td>{{ new Date(reading.observed_at).toLocaleString('zh-CN') }}</td>

@@ -337,9 +337,7 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
         )
         assert failed.status == "failed"
         assert failed.mode == "rules_only"
-        assert failed.route_path == (
-            "cache_miss → deepseek_failed → deterministic_fallback"
-        )
+        assert failed.route_path == ("cache_miss → deepseek_failed → deterministic_fallback")
         record = db.get(AICallRecord, failed.call_record_id)
         assert record is not None
         assert record.error_message == "AI_PROVIDER_TIMEOUT"
@@ -357,9 +355,7 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
         )
         assert invalid.status == "failed"
         assert invalid.mode == "rules_only"
-        assert invalid.route_path == (
-            "cache_miss → deepseek_failed → deterministic_fallback"
-        )
+        assert invalid.route_path == ("cache_miss → deepseek_failed → deterministic_fallback")
         invalid_record = db.get(AICallRecord, invalid.call_record_id)
         assert invalid_record is not None
         assert invalid_record.error_message == "AI_RESPONSE_INVALID_JSON"
@@ -398,9 +394,7 @@ def test_formal_knowledge_governance_and_rag_status_filter(
             settings,
         )
         assert document.review_status == "draft"
-        assert document.chunks[0].metadata["applicable_hardware"] == [
-            "fixture-board-v1"
-        ]
+        assert document.chunks[0].metadata["applicable_hardware"] == ["fixture-board-v1"]
         with pytest.raises(KnowledgeServiceError) as direct_approval:
             review_document(
                 db,

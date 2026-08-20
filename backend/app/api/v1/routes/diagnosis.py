@@ -14,6 +14,7 @@ from app.diagnosis.fault_tree_schemas import (
     InterventionItem,
 )
 from app.diagnosis.schemas import DiagnosisMatch, DiagnosisRunRequest, DiagnosisRunResponse
+from app.experiments.loader import ExperimentDefinitionLoadError
 from app.models.device import Device
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
@@ -64,12 +65,19 @@ def run_device_diagnosis(
 ) -> DiagnosisRunResponse:
     if device_id != device.device_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="device id mismatch")
-    context = build_diagnosis_context(
-        db,
-        device,
-        lookback_seconds=payload.lookback_seconds,
-        experiment_template=payload.experiment_template,
-    )
+    try:
+        context = build_diagnosis_context(
+            db,
+            device,
+            lookback_seconds=payload.lookback_seconds,
+            experiment_template=payload.experiment_template,
+            experiment_id=payload.experiment_id,
+            experiment_version=payload.experiment_version,
+        )
+    except ExperimentDefinitionLoadError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
     outcome = diagnose(context)
     record = save_diagnosis_result(db, device, context, outcome)
     guidance = generate_guidance(db, device, record)
@@ -111,6 +119,9 @@ def run_device_diagnosis(
             if episode
             else None
         ),
+        experiment_id=record.experiment_id,
+        experiment_version=record.experiment_version,
+        knowledge_scope=record.knowledge_scope,
     )
 
 

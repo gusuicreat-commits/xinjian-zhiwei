@@ -3,11 +3,16 @@ from typing import Any, Literal, Union
 
 from pydantic import Field, field_validator, model_validator
 
-from app.diagnosis.schemas import StrictModel
+from app.diagnosis.schemas import ArtifactScope, StrictModel
 
 
 class EvidenceCriterion(StrictModel):
-    fact: Literal["diagnosis_error_count", "log_event_count"]
+    fact: Literal[
+        "diagnosis_error_count",
+        "log_event_count",
+        "event_type_count",
+        "expected_behavior_violation_count",
+    ]
     operator: Literal["eq", "gte", "gt", "lte", "lt"]
     value: Union[int, float]
     weight: int = Field(ge=1, le=100)
@@ -44,6 +49,10 @@ class FaultTreeDefinition(StrictModel):
     trigger: list[EvidenceCriterion] = Field(min_length=1)
     causes: list[CauseDefinition] = Field(min_length=2)
     escalation: list[EscalationLevel] = Field(min_length=4, max_length=4)
+    source_id: str = "legacy"
+    source_path: str | None = None
+    source_version: str = "1"
+    scope: ArtifactScope = Field(default_factory=ArtifactScope)
 
     @model_validator(mode="after")
     def validate_unique_ids_and_levels(self) -> "FaultTreeDefinition":
@@ -58,6 +67,7 @@ class FaultTreeDefinition(StrictModel):
 class FaultTreeSet(StrictModel):
     version: str = Field(min_length=1)
     trees: list[FaultTreeDefinition]
+    source_versions: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("trees")
     @classmethod
@@ -102,6 +112,9 @@ class FaultTreeEvaluation(StrictModel):
     teacher_intervention_required: bool
     ranked_causes: list[RankedCause]
     hints: list[GuidanceHint]
+    source_id: str = "legacy"
+    source_version: str = "1"
+    scope: ArtifactScope = Field(default_factory=ArtifactScope)
 
 
 class GuidanceRecordResponse(FaultTreeEvaluation):

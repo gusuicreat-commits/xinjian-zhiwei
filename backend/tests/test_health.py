@@ -39,9 +39,9 @@ def test_openapi_exposes_health_endpoint() -> None:
     assert "/api/v1/device/{device_id}/status" in response.json()["paths"]
     assert "/api/v1/diagnosis/devices/{device_id}/run" in response.json()["paths"]
     assert "/api/v1/diagnosis/results/{diagnosis_result_id}/guidance" in response.json()["paths"]
-    assert "/api/v1/diagnosis/results/{diagnosis_result_id}/ai-explanation" in response.json()[
-        "paths"
-    ]
+    assert (
+        "/api/v1/diagnosis/results/{diagnosis_result_id}/ai-explanation" in response.json()["paths"]
+    )
     assert "/api/v1/diagnosis/ai/status" in response.json()["paths"]
     assert "/api/v1/diagnosis/devices/{device_id}/guidance" in response.json()["paths"]
     assert "/api/v1/diagnosis/interventions" in response.json()["paths"]

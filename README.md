@@ -25,6 +25,8 @@
 ### 诊断、评测与 AI
 
 - 统一 `DiagnosisContext` 从日志、心跳、读数和可选实验模板构造确定性输入。
+- 版本化 Experiment Definition、统一 Observation/Event Normalizer、Expected Behavior 和
+  common/interface/component/experiment 作用域规则与故障树已接入；新增实验默认是配置任务。
 - YAML 示例规则和占位故障树生成可追溯证据、候选原因和 Level 1–4 提示。
 - 合成基线包含 30 个诊断、54 个检索和 6 个禁止性陈述测试；检索直接调用生产同源
   `hybrid_retrieve`，门禁为 Recall@5 不低于 80%。
@@ -110,7 +112,7 @@ docker compose ps
 - PostgreSQL：只在 Compose 内部网络暴露，不映射宿主机端口。
 
 后端启动前自动执行 `alembic upgrade head`。当前唯一迁移 Head 为
-`20260813_0019`。生产 LangGraph 使用 PostgreSQL checkpoint，并在部署步骤单独运行
+`20260818_0021`。生产 LangGraph 使用 PostgreSQL checkpoint，并在部署步骤单独运行
 `python -m app.cli.setup_diagnosis_checkpoints`；开发/测试默认使用内存 saver。
 
 ### 登录凭据与三个诊断地址
@@ -233,6 +235,7 @@ docker compose exec backend python -m app.cli.reset_demo \
 - [虚拟实验室](docs/simulator-design.md)
 - [合成评测](docs/evaluation.md)
 - [系统架构](docs/architecture.md)
+- [可迁移实验诊断框架与新增实验指南](docs/experiment-diagnostic-framework.md)
 - [API 设计](docs/api-design.md)
 - [数据库设计](docs/database-design.md)
 - [规则诊断](docs/diagnosis-rules.md)
