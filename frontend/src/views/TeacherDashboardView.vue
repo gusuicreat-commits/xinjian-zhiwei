@@ -38,6 +38,7 @@ const selectedDeviceId = ref('')
 const expandedWorkflowId = ref<string | null>(null)
 let refreshTimer: number | undefined
 let navigationFrame: number | undefined
+let navigationLockUntil = 0
 
 const dashboard = computed(() => dashboardStore.dashboard)
 const filteredAnomalies = computed(() => {
@@ -109,6 +110,7 @@ async function refresh(): Promise<void> {
 }
 function navigateTo(target: string): void {
   activeNavTarget.value = target
+  navigationLockUntil = window.performance.now() + 1_200
   document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 function syncActiveNavigation(): void {
@@ -129,6 +131,7 @@ function syncActiveNavigation(): void {
   activeNavTarget.value = nextTarget
 }
 function handleWindowScroll(): void {
+  if (window.performance.now() < navigationLockUntil) return
   if (navigationFrame !== undefined) return
   navigationFrame = window.requestAnimationFrame(() => {
     navigationFrame = undefined
@@ -138,6 +141,7 @@ function handleWindowScroll(): void {
 function selectDevice(deviceId: string): void {
   selectedDeviceId.value = deviceId
   activeNavTarget.value = 'anomaly-workbench'
+  navigationLockUntil = window.performance.now() + 1_200
   document
     .getElementById('device-log-detail')
     ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -355,7 +359,7 @@ onBeforeUnmount(() => {
         <header class="teacher-hero">
           <div>
             <p>TEACHER OPERATIONS</p>
-            <h1>班级实验总览</h1>
+            <h1>班级实验<span class="workspace-title-accent">总览</span></h1>
             <span>聚合设备状态、异常证据与待处理教学介入。</span>
           </div>
           <dl>

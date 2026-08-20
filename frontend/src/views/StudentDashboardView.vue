@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
       <div class="content-toolbar">
         <div>
           <p class="workspace-kicker">STUDENT EXPERIMENT CONSOLE</p>
-          <h1>学生实验工作台</h1>
+          <h1>学生实验<span class="workspace-title-accent">工作台</span></h1>
           <small>查看设备状态，理解异常原因，并完成排查反馈。</small>
           <span v-if="dashboardStore.dashboard"
             >最近更新

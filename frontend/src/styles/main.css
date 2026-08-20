@@ -1652,7 +1652,7 @@ button {
   font-size: 16px;
   font-weight: 750;
 }
-.content-toolbar span {
+.content-toolbar > div > span {
   color: var(--muted);
   font-size: 11px;
 }
