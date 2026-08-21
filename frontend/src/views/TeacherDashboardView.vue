@@ -33,6 +33,7 @@ const sessionStore = useTeacherSessionStore()
 const dashboardStore = useTeacherDashboardStore()
 const sidebarCollapsed = ref(false)
 const activeNavTarget = ref('teacher-overview')
+const showRefreshFlash = ref(false)
 const searchQuery = ref('')
 const selectedDeviceId = ref('')
 const expandedWorkflowId = ref<string | null>(null)
@@ -102,11 +103,24 @@ const navItems = [
   },
 ]
 
-async function refresh(): Promise<void> {
+async function refresh(showTransition = false): Promise<void> {
   if (!sessionStore.accessToken) return
-  await dashboardStore.load(sessionStore.accessToken)
-  await nextTick()
-  syncActiveNavigation()
+  if (showTransition && showRefreshFlash.value) return
+
+  const startedAt = window.performance.now()
+  if (showTransition) showRefreshFlash.value = true
+
+  try {
+    await dashboardStore.load(sessionStore.accessToken)
+    await nextTick()
+    syncActiveNavigation()
+  } finally {
+    if (showTransition) {
+      const remainingTime = Math.max(0, 460 - (window.performance.now() - startedAt))
+      await new Promise((resolve) => window.setTimeout(resolve, remainingTime))
+      showRefreshFlash.value = false
+    }
+  }
 }
 function navigateTo(target: string): void {
   activeNavTarget.value = target
@@ -283,6 +297,14 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="teacher-app" :class="{ 'sidebar-is-collapsed': sidebarCollapsed }">
+    <Transition name="workspace-refresh">
+      <div
+        v-if="showRefreshFlash"
+        class="workspace-refresh-flash"
+        role="status"
+        aria-label="正在刷新教师端数据"
+      />
+    </Transition>
     <header class="teacher-topbar">
       <div class="teacher-brand">
         <Cpu />
@@ -353,7 +375,9 @@ onBeforeUnmount(() => {
         title="教师端数据加载失败"
         :sub-title="dashboardStore.errorMessage"
       >
-        <template #extra><el-button type="primary" @click="refresh">重新加载</el-button></template>
+        <template #extra
+          ><el-button type="primary" @click="refresh(true)">重新加载</el-button></template
+        >
       </el-result>
       <template v-else-if="dashboard">
         <header class="teacher-hero">
@@ -379,7 +403,9 @@ onBeforeUnmount(() => {
         </header>
         <div class="teacher-notice" :class="{ warning: hasTestData }">
           <Warning /><span>{{ dashboard.data_notice }}</span
-          ><button type="button" @click="refresh"><Refresh />刷新</button>
+          ><button type="button" :disabled="showRefreshFlash" @click="refresh(true)">
+            <Refresh />刷新
+          </button>
         </div>
         <section class="teacher-kpis" aria-label="设备统计概览">
           <article class="teacher-kpi kpi-blue">

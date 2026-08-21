@@ -485,6 +485,37 @@ body {
   background: #f6f8f9;
 }
 
+.workspace-refresh-flash {
+  position: fixed;
+  z-index: 60;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #fff;
+  pointer-events: none;
+}
+
+.student-app .workspace-refresh-flash {
+  top: 84px;
+}
+
+.teacher-app .workspace-refresh-flash {
+  top: 156px;
+}
+
+.workspace-refresh-enter-active {
+  transition: opacity 110ms ease-out;
+}
+
+.workspace-refresh-leave-active {
+  transition: opacity 180ms ease-in;
+}
+
+.workspace-refresh-enter-from,
+.workspace-refresh-leave-to {
+  opacity: 0;
+}
+
 .app-topbar {
   height: 84px;
   padding: 0 var(--md-pad);
@@ -1816,6 +1847,11 @@ body {
     padding-top: 68px;
   }
 
+  .teacher-app .workspace-refresh-flash {
+    top: 68px;
+    bottom: 64px;
+  }
+
   .teacher-topbar {
     position: fixed;
     grid-template-columns: 1fr 38px 38px;
@@ -1910,6 +1946,10 @@ body {
 @media (max-width: 780px) {
   .student-app {
     padding-top: 68px;
+  }
+
+  .student-app .workspace-refresh-flash {
+    top: 68px;
   }
 
   .app-topbar {

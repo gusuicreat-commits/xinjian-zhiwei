@@ -1,58 +1,90 @@
-# Phase 7 教师端 Design QA
+# Design QA — Swiss Studio UI Iteration
 
 ## Comparison target
 
-- source visual truth path: `docs/design-qa/phase7-teacher-ui/reference.png`
-- implementation URL: `http://127.0.0.1:5173/teacher`
-- implementation screenshot path: `docs/design-qa/phase7-teacher-ui/dashboard-viewport.png`
-- navigation audit screenshots: `docs/design-qa/phase7-teacher-ui/menu-audit-before.png` and `docs/design-qa/phase7-teacher-ui/menu-audit-after.png`
-- mobile screenshot path: `docs/design-qa/phase7-teacher-ui/dashboard-mobile.png`
-- viewport: desktop 1680×940；mobile 390×844
-- state: 当时通过临时审阅令牌进入教师端；当前教师端已改为正式 Bearer 测试账号。该次 SQLite 验收含 1 台明确标记的测试设备、测试日志与规则诊断，没有真实硬件数据
+- Source visual truth: `/var/folders/sq/lrmkk9hn4wvc78jdxswv9q4w0000gn/T/codex-clipboard-cfabea09-d088-43e7-98c8-ae5451c155bf.png`
+- Source pixels: `2560 × 7146`, PNG, 1× density.
+- Implementation routes: `/login`, `/student`, `/teacher/login`, `/teacher`.
+- Implementation viewport: `1117 × 767` CSS pixels, 1× density.
+- Implementation screenshots:
+  - `design-qa-assets/student-login-desktop-final.jpg`
+  - `design-qa-assets/student-desktop.jpg`
+  - `design-qa-assets/teacher-login-desktop-final.jpg`
+  - `design-qa-assets/teacher-desktop.jpg`
+- State: desktop, warm-light theme, authenticated dashboard empty/demo state, login forms idle.
+- Normalization: the source is a long-form agency page while the implementation is a functional web application. Comparison therefore uses the source's visible design language and above-the-fold proportions rather than copying its marketing section order or copy. Pixel density is 1× for both; crops are compared at their native widths without resampling.
 
-## Comparison evidence
+## Full-view comparison evidence
 
-- full-view comparison: `docs/design-qa/phase7-teacher-ui/full-comparison.jpg`
-- focused top/navigation/KPI/chart comparison: `docs/design-qa/phase7-teacher-ui/top-comparison.jpg`
-- focused table/log/intervention/knowledge comparison: `docs/design-qa/phase7-teacher-ui/detail-comparison.jpg`
-- 两侧已统一为 1680×940、相同深色教师总览状态后同屏检查。
+The source and all four implementation screenshots were opened together in the same comparison input. The implementation preserves the source's defining system: warm off-white field, saturated blue structural axis, black oversized display typography, mono micro-labels, asymmetric two-column composition, thin hairline rules, rectangular controls, and shadowless linear information surfaces.
+
+The application intentionally keeps its existing operational information architecture. Student and teacher dashboards translate the source's vertical axis into a 12-column hero divider, navigation/status rails, numbered-feeling micro labels, and linear metric rows instead of introducing marketing sections that would displace real product functions.
+
+## Focused-region comparison evidence
+
+The authentication hero and form regions were compared separately because title wrapping, axis placement, input treatment, and CTA proportions were too small to judge confidently in the full dashboard view. The final focused captures show:
+
+- a stable `7 / 5` editorial split;
+- a single saturated blue rail occupying roughly 5% of the desktop width;
+- display copy constrained to the safe left grid rather than colliding with the rail;
+- underline-only inputs and rectangular blue CTAs;
+- no decorative illustration, gradient, floating card, large radius, or shadow.
+
+## Required fidelity surfaces
+
+- Fonts and typography: Inter/Helvetica Neue with PingFang SC/Source Han Sans SC fallbacks; display text uses 750–800 weight, `0.94–0.98` line height, negative tracking, and controlled logical line breaks. Micro labels use a mono stack. Body copy stays at 11–14 px with clear contrast hierarchy.
+- Spacing and layout rhythm: application content is capped to a 1280 px system with 12-column hero grids, 48 px desktop gutters, 72–128 px section rhythm, and consistent hairline dividers. Cards are flattened into rows and split panels with no elevation.
+- Colors and visual tokens: `#F4F3EE`, `#111111`, `#555555`, `#888888`, and `#243BFF` are centralized in the final theme layer. Computed-style audits found no visible gradients, large radii, or box shadows across the four core routes.
+- Image quality and asset fidelity: the source visual contains no required photographic or illustrative asset in the design language being transferred. The prior student hero illustration is hidden rather than replaced with a placeholder. All operational icons come from the existing Element Plus icon library.
+- Copy and content: all product-specific Chinese copy, data labels, diagnostic language, task status, navigation, and security notices remain intact. Only display-title line grouping changed; wording did not.
+- Responsiveness: desktop rendering has no horizontal overflow on all four routes. Tablet/mobile breakpoints collapse the 12-column regions, stack authentication panes, remove the desktop rail, preserve large-title hierarchy, and convert teacher navigation to the existing bottom navigation. The in-app browser did not expose viewport resizing, so an alternate mobile screenshot could not be captured without switching browser surfaces; this remains a non-blocking capture gap rather than an identified layout defect.
+- Accessibility: visible focus rings use the brand blue, controls retain semantic button/input markup, reduced-motion rules remove entrance animation, and persistent navigation remains outside the refresh flash layer.
 
 ## Findings
 
-- 无未解决 P0/P1/P2。
-- 字体与排版：实现使用项目既有 Inter、苹方、微软雅黑系统栈，保持源图的紧凑层级；标题、数字、说明和表格小字有明确权重差。动态长设备 ID 和错误码使用截断或可滚动容器，没有溢出。
-- 间距与布局：桌面保留顶部栏、左侧导航、四个 KPI、四个分析区和三列详情区；最终页面高度 956px，接近源图单屏密度。390px 下 KPI 为两列、分析区为单列、导航转为底部三项，没有水平溢出。
-- 颜色与视觉令牌：深海军蓝画布、蓝色描边和高亮、青绿在线、橙色警告、红色异常、紫色完成率状态与源图一致；空状态保持低对比但可读。
-- 图像与图标：源图没有必须复用的照片或产品图。实现使用统一 Element Plus 图标库表达芯片、设备、告警、用户和导航，不使用 emoji、手绘 SVG、CSS 图形或虚构教师头像。
-- 文案与内容：静态中文文案可独立理解；实现没有复制源图中的虚构教师名、学生名、设备数和完成率。缺失业务模型明确显示“未配置”，测试记录明确标记为“测试/模拟”。
-- 交互与状态：左侧导航仅保留“数据总览、设备分析、异常处置”三个当前可用模块，顺序与页面自上而下的内容一致；点击会定位到对应区块，页面滚动时当前项同步高亮。知识审核仍是 Phase 8 禁用卡片，不再冒充主导航功能。另验证了搜索过滤、侧栏折叠/展开、刷新、临时教师会话登录和禁用的知识审核入口；接口失败有可恢复错误页，空数据使用明确空状态。
-- 响应式与可访问性：桌面与移动端 `scrollWidth === clientWidth`；核心按钮有可访问名称，图表有 `role=img` 与中文标签，禁用入口保持 disabled 语义。
+- No actionable P0, P1, or P2 findings remain.
+- [P3] Capture a physical mobile viewport in a future device/browser QA pass.
+  - Location: all four responsive routes.
+  - Evidence: responsive rules are implemented, but the selected in-app browser surface could not change viewport size.
+  - Impact: no current desktop defect; this only limits screenshot evidence for the smallest breakpoint.
+  - Follow-up: capture 390 × 844 and 768 × 1024 states when the selected browser exposes viewport controls.
 
 ## Comparison history
 
-1. 首次同屏比较发现 P2：右侧介入空状态继承了通用 220px 空容器高度，导致详情行被拉高，页面密度明显低于源图。
-2. 修复：为 `.intervention-panel .el-empty` 设置 128px 专用高度，保持空状态可读，同时收紧详情行。
-3. 修复后证据：重新捕获 `dashboard-viewport.png` 并重建三个 comparison 文件；页面高度从 1121px 降至 956px，桌面主体与源图恢复接近的一屏密度，未产生裁切或重叠。
-4. 导航审查发现原八项菜单包含重复锚点、未实现功能和固定首项高亮，菜单文案及顺序与页面内容不一致。
-5. 修复：收敛为三个真实页面区块，加入锚点定位、滚动同步、`aria-current` 和键盘焦点样式；前后截图分别为 `menu-audit-before.png` 与 `menu-audit-after.png`。
+### Pass 1
 
-## Open questions
+- Finding: [P2] the authentication display titles extended into the blue structural rail with black glyphs, reducing contrast and making Chinese wrapping feel accidental.
+- Evidence: `design-qa-assets/student-login-desktop.jpg` and `design-qa-assets/teacher-login-desktop.jpg`.
+- Fix: constrained the hero-copy width to the safe left grid, reduced the desktop Chinese display scale slightly, and grouped both titles into deliberate logical lines without changing copy.
 
-- 源图中的班级进度、学生异常名单、教师姓名和知识案例均无仓库数据支持。当前差异属于数据真实性约束；待项目方提供账号/班级/任务模型及知识来源后再实现对应真实状态。
+### Pass 2
+
+- Post-fix evidence: `design-qa-assets/student-login-desktop-final.jpg` and `design-qa-assets/teacher-login-desktop-final.jpg`.
+- Result: both titles remain large and editorial, line breaks are intentional, and the blue rail is unobstructed. No new P0/P1/P2 issue was observed.
 
 ## Primary interactions tested
 
-- 使用当前测试教师用户名、密码登录并进入 `/teacher`。
-- 搜索不存在的错误码后，异常表从 1 条过滤为 0 条；清空后恢复。
-- 侧栏从 206px 折叠到 76px，再正常展开。
-- 手动刷新成功；30 秒自动刷新逻辑保持启用。
-- 内容超过视口时，桌面页面可从顶部向下滚动并返回；根滚动容器没有被固定高度裁切。
-- 三个导航入口分别定位到总览、设备分析和异常处置；到达底部时异常处置保持高亮，返回顶部后数据总览恢复高亮。
-- 390×844 下显示两列 KPI、单列内容和底部三项导航。
-- 浏览器控制台 error：0。
+- Student and teacher login fields accept text and enable their submit buttons.
+- Student section navigation and teacher section navigation scroll to their target regions.
+- Teacher search filters to the existing empty state and restores after clearing.
+- Teacher navigation collapse/expand remains functional.
+- Student and teacher manual refresh actions still show and dismiss the white refresh transition.
+- All four routes render without visible application error overlays or horizontal overflow.
+
+## Implementation checklist
+
+- [x] Unified design tokens and font hierarchy.
+- [x] 12-column desktop grid and asymmetric hero divider.
+- [x] Linear, shadowless cards and status rows.
+- [x] Rectangular CTA and underline-input system.
+- [x] Student and teacher dashboards restyled without logic changes.
+- [x] Student and teacher login flows restyled without auth changes.
+- [x] Chart palettes aligned to the black/white/blue system.
+- [x] Desktop visual comparison and focused auth comparison completed.
+- [x] Type-check, lint, production build, formatting, and 26 unit tests passed.
 
 ## Follow-up polish
 
-- P3：真实班级/任务数据接入后，可在现有“未配置”卡位置启用 ECharts 实验进度图，并补充表格分页；在数据模型出现前不应以演示数据填充。
+- Capture tablet and mobile screenshots when viewport emulation is available in the selected browser.
 
 final result: passed

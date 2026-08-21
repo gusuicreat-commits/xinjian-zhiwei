@@ -27,6 +27,7 @@ const router = useRouter()
 const sessionStore = useStudentSessionStore()
 const dashboardStore = useStudentDashboardStore()
 const activeNavTarget = ref('overview')
+const showRefreshFlash = ref(false)
 let refreshTimer: number | undefined
 let navigationFrame: number | undefined
 let navigationLockUntil = 0
@@ -82,9 +83,22 @@ const navItems = computed(() => {
   ]
 })
 
-async function refresh(): Promise<void> {
+async function refresh(showTransition = false): Promise<void> {
   if (!sessionStore.credentials) return
-  await dashboardStore.load(sessionStore.credentials)
+  if (showTransition && showRefreshFlash.value) return
+
+  const startedAt = window.performance.now()
+  if (showTransition) showRefreshFlash.value = true
+
+  try {
+    await dashboardStore.load(sessionStore.credentials)
+  } finally {
+    if (showTransition) {
+      const remainingTime = Math.max(0, 460 - (window.performance.now() - startedAt))
+      await new Promise((resolve) => window.setTimeout(resolve, remainingTime))
+      showRefreshFlash.value = false
+    }
+  }
 }
 
 async function submitFeedback(action: FeedbackAction): Promise<void> {
@@ -177,6 +191,14 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="student-app">
+    <Transition name="workspace-refresh">
+      <div
+        v-if="showRefreshFlash"
+        class="workspace-refresh-flash"
+        role="status"
+        aria-label="正在刷新学生端数据"
+      />
+    </Transition>
     <a class="skip-link" href="#main-student-content">跳到主要内容</a>
     <header class="app-topbar">
       <div class="brand-lockup">
@@ -207,7 +229,9 @@ onBeforeUnmount(() => {
             {{ new Date(dashboardStore.dashboard.generated_at).toLocaleTimeString('zh-CN') }}</span
           >
         </div>
-        <el-button :loading="dashboardStore.state === 'loading'" @click="refresh"
+        <el-button
+          :loading="dashboardStore.state === 'loading' || showRefreshFlash"
+          @click="refresh(true)"
           ><Refresh /> 刷新数据</el-button
         >
       </div>
@@ -240,7 +264,9 @@ onBeforeUnmount(() => {
         title="数据加载失败"
         :sub-title="dashboardStore.errorMessage"
       >
-        <template #extra><el-button type="primary" @click="refresh">重新加载</el-button></template>
+        <template #extra
+          ><el-button type="primary" @click="refresh(true)">重新加载</el-button></template
+        >
       </el-result>
       <div v-else-if="dashboardStore.dashboard" class="dashboard-content">
         <el-alert

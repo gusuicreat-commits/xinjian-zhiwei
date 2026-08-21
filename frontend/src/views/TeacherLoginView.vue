@@ -27,7 +27,11 @@ async function submit(): Promise<void> {
         <div class="teacher-login-brand"><Monitor /><span>芯鉴知微</span><b>教师端</b></div>
         <div class="teacher-login-copy">
           <p class="eyebrow">TEACHER OPERATIONS</p>
-          <h1>把异常、证据与教学介入，放在同一视野。</h1>
+          <h1>
+            <span class="auth-title-line">把异常、证据与</span>
+            <span class="auth-title-line">教学介入，放在</span>
+            <span class="auth-title-line">同一视野。</span>
+          </h1>
           <p>快速识别班级设备风险，查看诊断依据，并完成审核与学生协助。</p>
         </div>
         <p class="teacher-login-lede">

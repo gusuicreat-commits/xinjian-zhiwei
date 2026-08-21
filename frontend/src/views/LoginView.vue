@@ -35,7 +35,10 @@ async function submit(): Promise<void> {
 
         <div class="login-hero-copy">
           <p class="auth-kicker">STUDENT LAB ACCESS</p>
-          <h2>让每一次设备异常，<span>都有清晰下一步。</span></h2>
+          <h2>
+            <span class="auth-title-line">让每一次设备异常，</span>
+            <span class="auth-title-line auth-title-accent">都有清晰下一步。</span>
+          </h2>
           <p>连接设备日志、传感数据与诊断建议，在同一工作台完成实验排查与反馈。</p>
         </div>
 

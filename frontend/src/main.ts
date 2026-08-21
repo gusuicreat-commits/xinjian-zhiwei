@@ -1,6 +1,7 @@
 import 'element-plus/dist/index.css'
 import './styles/main.css'
 import './styles/meridian.css'
+import './styles/studio-system.css'
 
 import {
   ElAlert,

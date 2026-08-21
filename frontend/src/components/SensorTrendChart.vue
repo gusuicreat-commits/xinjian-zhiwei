@@ -35,19 +35,19 @@ function renderChart(): void {
   chart.setOption(
     {
       tooltip: { trigger: 'axis' },
-      color: ['#006cd2', '#12a26b', '#d57b22', '#687078'],
-      legend: { type: 'scroll', top: 0, textStyle: { color: '#5e6970', fontSize: 11 } },
+      color: ['#243bff', '#111111', '#777777', '#b0afa9'],
+      legend: { type: 'scroll', top: 0, textStyle: { color: '#555555', fontSize: 11 } },
       grid: { left: 44, right: 18, top: 48, bottom: 36 },
       xAxis: {
         type: 'time',
-        axisLine: { lineStyle: { color: '#cfd5d9' } },
-        axisLabel: { color: '#7b858b' },
+        axisLine: { lineStyle: { color: '#d8d7d1' } },
+        axisLabel: { color: '#888888' },
       },
       yAxis: {
         type: 'value',
         scale: true,
-        splitLine: { lineStyle: { color: '#e6eaed' } },
-        axisLabel: { color: '#7b858b' },
+        splitLine: { lineStyle: { color: '#deddd7' } },
+        axisLabel: { color: '#888888' },
       },
       series: series.value,
     },
