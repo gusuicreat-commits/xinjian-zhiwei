@@ -28,6 +28,8 @@ class AIClient(Protocol):
 
 
 class EmbeddingClient(Protocol):
+    """Deprecated type-only contract retained for historical test/evaluation imports."""
+
     provider: str
     model: str
     dimensions: int
@@ -47,6 +49,8 @@ class DisabledAIClient:
 
 
 class DisabledEmbeddingClient:
+    """Deprecated compatibility sentinel; the MVP has no embedding implementation."""
+
     provider = "unconfigured"
     model = "unconfigured"
     dimensions = 0
@@ -133,48 +137,6 @@ class OpenAICompatibleClient:
         raise AIProviderError("AI Provider request failed after configured retries") from last_error
 
 
-class OpenAICompatibleEmbeddingClient:
-    configured = True
-
-    def __init__(
-        self,
-        *,
-        provider: str,
-        base_url: str,
-        model: str,
-        api_key: str,
-        dimensions: int,
-        timeout_seconds: float,
-        max_retries: int,
-    ) -> None:
-        self.provider = provider
-        self.model = model
-        self.dimensions = dimensions
-        self._transport = OpenAICompatibleClient(
-            provider=provider,
-            base_url=base_url,
-            model=model,
-            api_key=api_key,
-            timeout_seconds=timeout_seconds,
-            max_retries=max_retries,
-        )
-
-    def embed(self, text: str) -> list[float]:
-        body = self._transport._post(
-            "/embeddings",
-            {"model": self.model, "input": text, "dimensions": self.dimensions},
-        )
-        try:
-            vector = body["data"][0]["embedding"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise AIProviderError(
-                "Embedding Provider returned an unsupported response shape"
-            ) from exc
-        if not isinstance(vector, list) or len(vector) != self.dimensions:
-            raise AIProviderError("Embedding dimensions do not match configured dimensions")
-        return [float(value) for value in vector]
-
-
 def build_ai_client(settings: Settings) -> AIClient:
     if not settings.ai_configured:
         return DisabledAIClient()
@@ -223,20 +185,6 @@ def build_cloud_ai_client(settings: Settings) -> AIClient:
         timeout_seconds=settings.ai_timeout_seconds,
         max_retries=settings.ai_max_retries,
         max_output_tokens=settings.ai_output_token_limit,
-    )
-
-
-def build_embedding_client(settings: Settings) -> EmbeddingClient:
-    if not settings.knowledge_embedding_client_configured:
-        return DisabledEmbeddingClient()
-    return OpenAICompatibleEmbeddingClient(
-        provider=settings.knowledge_embedding_provider or "",
-        base_url=settings.knowledge_embedding_base_url or "",
-        model=settings.knowledge_embedding_model or "",
-        api_key=settings.knowledge_embedding_api_key or "",
-        dimensions=settings.knowledge_embedding_dimensions or 0,
-        timeout_seconds=settings.ai_timeout_seconds,
-        max_retries=settings.ai_max_retries,
     )
 
 

@@ -2,6 +2,11 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { createStudentSession } from '@/api/student'
+import {
+  REVIEW_MODE,
+  reviewStudentCredentials,
+  reviewStudentSession,
+} from '@/review/fixtures'
 import type { DeviceCredentials, StudentSession } from '@/types/student'
 
 const STORAGE_KEY = 'xinjian-student-device-session'
@@ -11,6 +16,7 @@ export function hasStoredStudentSession(): boolean {
 }
 
 function restoreCredentials(): DeviceCredentials | null {
+  if (REVIEW_MODE) return { ...reviewStudentCredentials }
   const raw = sessionStorage.getItem(STORAGE_KEY)
   if (!raw) return null
   try {
@@ -39,6 +45,14 @@ export const useStudentSessionStore = defineStore('student-session', () => {
     loading.value = true
     errorMessage.value = ''
     try {
+      if (REVIEW_MODE) {
+        session.value = { ...reviewStudentSession }
+        credentials.value = {
+          ...nextCredentials,
+          experimentSessionId: reviewStudentSession.experiment_session_id ?? undefined,
+        }
+        return
+      }
       session.value = await createStudentSession(nextCredentials)
       const scopedCredentials = {
         ...nextCredentials,

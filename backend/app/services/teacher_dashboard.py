@@ -287,8 +287,8 @@ def build_teacher_dashboard(
             document_count=knowledge_status.document_count,
             pending_review_count=knowledge_status.pending_review_count,
             approved_chunk_count=knowledge_status.approved_chunk_count,
-            embedding_count=knowledge_status.embedding_count,
-            embedding_provider_configured=knowledge_status.embedding_provider_configured,
+            case_count=knowledge_status.case_count,
+            approved_case_count=knowledge_status.approved_case_count,
             notice=knowledge_status.notice,
         ),
     )

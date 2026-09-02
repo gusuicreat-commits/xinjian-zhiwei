@@ -66,6 +66,7 @@ app.add_middleware(
         "Content-Type",
         "X-Device-ID",
         "X-Device-Token",
+        "X-Experiment-Session-ID",
         "X-Review-Token",
     ],
 )

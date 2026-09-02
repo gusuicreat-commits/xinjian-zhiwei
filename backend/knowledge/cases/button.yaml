@@ -1,0 +1,23 @@
+cases:
+  - id: button.input-unstable.v1
+    experimentType: gpio_button_input
+    errorType: INPUT_UNSTABLE
+    symptom: 按键未按下时状态跳变，或单次按下被识别为多次。
+    normalState:
+      description: 稳定读取未按下与按下两种状态，单次操作只触发一次有效事件。
+    evidence:
+      - fact: event_type_count
+        description: 短时间内出现多次状态切换。
+    possibleCauses:
+      - 上拉或下拉配置与接线方式不一致。
+      - 程序未做消抖或消抖窗口不合适。
+      - 按键、连接线或面包板接触不稳定。
+    solutionSteps:
+      - 核对输入模式、上拉或下拉配置与接线图。
+      - 连续输出原始电平与时间戳，区分电平漂移与机械抖动。
+      - 按课程规范加入消抖，再重复单次按压测试。
+    teacherNotes: 教师复核时应同时查看原始电平日志和消抖后事件，避免把软件重复触发误判为硬件故障。
+    reviewStatus: pending
+    sourceRef: knowledge/cases/button.yaml
+    version: "1"
+

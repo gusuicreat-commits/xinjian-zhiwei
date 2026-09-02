@@ -10,6 +10,8 @@
     "dev": "vite",
     "build": "run-p type-check build-only",
     "build-only": "vite build",
+    "build:review": "run-s type-check build:review-only",
+    "build:review-only": "vite build --mode review --base ./ --outDir review-dist",
     "type-check": "vue-tsc --build --force",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",

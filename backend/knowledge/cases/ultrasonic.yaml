@@ -1,0 +1,23 @@
+cases:
+  - id: ultrasonic.timeout.v1
+    experimentType: ultrasonic_distance
+    errorType: SENSOR_READ_FAILED
+    symptom: 超声波测距超时，没有得到有效距离读数。
+    normalState:
+      description: 触发一次测量后，在限定时间内收到回波并换算出距离。
+    evidence:
+      - fact: log_event_count
+        description: 日志中出现测距超时或 SENSOR_READ_FAILED。
+    possibleCauses:
+      - 触发与回波引脚配置或接线需要核对。
+      - 测量时序、超时窗口或相邻测量间隔不合适。
+      - 被测物位置或反射条件不适合当前测量。
+    solutionSteps:
+      - 保留超时日志，核对触发与回波引脚、供电和公共地。
+      - 用课程确认的时序参数执行单次测量，记录触发与回波时间。
+      - 调整被测物位置后重测；若仍超时，请教师核对时序与电平兼容性。
+    teacherNotes: 触发脉宽、超时上限和电平要求必须以实际模块手册为准，未审核前不写入通用案例。
+    reviewStatus: pending
+    sourceRef: knowledge/cases/ultrasonic.yaml
+    version: "1"
+

@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from app.ai.clients import AICompletion, DisabledEmbeddingClient
+from app.ai.clients import AICompletion
 from app.ai.schemas import AIKnowledgeReference
 from app.core.config import Settings
 from app.models import (
@@ -123,7 +123,6 @@ def test_injected_provider_returns_validated_structured_explanation(
             diagnosis,
             settings,
             ai_client=fake,
-            embedding_client=DisabledEmbeddingClient(),
         )
 
         assert result.status == "succeeded"
@@ -173,7 +172,6 @@ def test_untrusted_ai_evidence_fails_closed(api_context: dict[str, Any]) -> None
             diagnosis,
             settings,
             ai_client=fake,
-            embedding_client=DisabledEmbeddingClient(),
         )
 
         assert result.status == "failed"
@@ -231,7 +229,7 @@ def test_graph_supplied_knowledge_is_reused_without_second_retrieval(
             }
         )
         monkeypatch.setattr(
-            "app.services.ai_diagnosis._retrieve_knowledge",
+            "app.services.ai_diagnosis._match_structured_knowledge",
             lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 AssertionError("the graph retrieval result must be reused")
             ),
@@ -243,7 +241,6 @@ def test_graph_supplied_knowledge_is_reused_without_second_retrieval(
             diagnosis,
             settings,
             ai_client=fake,
-            embedding_client=DisabledEmbeddingClient(),
             retrieved_knowledge=[knowledge],
         )
 
@@ -309,7 +306,6 @@ def test_workflow_ai_replay_reuses_audit_without_second_provider_call(
             diagnosis,
             settings,
             ai_client=fake,
-            embedding_client=DisabledEmbeddingClient(),
             workflow_run_id=workflow.id,
         )
         first_record = db.get(AICallRecord, first.call_record_id)
@@ -324,7 +320,6 @@ def test_workflow_ai_replay_reuses_audit_without_second_provider_call(
             diagnosis,
             settings,
             ai_client=fake,
-            embedding_client=DisabledEmbeddingClient(),
             workflow_run_id=workflow.id,
         )
 

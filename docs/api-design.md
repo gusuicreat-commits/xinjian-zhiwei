@@ -158,7 +158,19 @@ Episode 升级状态，不猜测学生或班级。
 
 ### GET `/knowledge/status`
 
-返回框架状态、是否存在可检索内容、来源数、文档数、待审核数、审核通过知识块数、向量数，以及当前 Embedding Provider/模型/维度是否配置。空库返回 200 和明确说明，不创建占位记录。
+返回结构化知识模式、来源/文档数量、案例数量、已审核案例和待审核案例数量。第一阶段不返回或依赖向量、Embedding Provider 与维度。
+
+### GET `/knowledge/case-drafts/pending`
+
+教师或正式批准人查看由已解决诊断事实生成、且通过质量检查的案例草稿。草稿保留原诊断、学生反馈、规则与故障树版本引用，不会被诊断主链使用。
+
+### POST `/knowledge/case-drafts/{draft_id}/approve`
+
+教师或正式批准人提交稳定 `case_id`、`confirmed_root_cause`、`final_solution_steps` 和 `confirmation_note`。服务端只创建 `approved + confirmed + facts_locked + quality_check_passed` 的正式案例。
+
+### POST `/knowledge/case-drafts/{draft_id}/ai-polish`
+
+可选调用已配置 AI，只生成标题、症状描述、教学说明和解决摘要。服务端强制保留 `sourceIds`，禁止修改事实字段或在根因未确认时使用确定因果措辞，并保存模型与 Prompt 审计。
 
 ### GET/POST `/knowledge/sources`
 
@@ -166,7 +178,7 @@ Episode 升级状态，不猜测学生或班级。
 
 ### POST `/knowledge/sources/{source_id}/documents/text`
 
-只接收已经提取的 `text/*` 文本，不直接解析 PDF、DOCX 或扫描件。正式导入还必须提供整理人、适用硬件和内容来源类型；官方资料必须有页码、章节或段落定位，已验证案例必须记录最终修复动作与根因置信度。服务端规范化换行、按可配置字符窗口切分、保存字符定位和 SHA-256；同一来源重复导入相同内容返回原文档并设置 `idempotent_replay=true`。新文档从 `draft` 开始。
+只接收已经提取的 `text/*` 文本，不直接解析 PDF、DOCX 或扫描件。正式导入还必须提供整理人、适用硬件和内容来源类型；官方资料必须有页码、章节或段落定位，已验证案例必须记录最终修复动作与受治理的根因状态。服务端规范化换行、按可配置字符窗口切分、保存字符定位和 SHA-256；同一来源重复导入相同内容返回原文档并设置 `idempotent_replay=true`。新文档从 `draft` 开始。
 
 ### PATCH `/knowledge/documents/{document_id}/review`
 

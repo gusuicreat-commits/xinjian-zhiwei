@@ -30,9 +30,10 @@ from app.models.guidance_history import GuidanceHistory
 from app.models.ingestion_request import IngestionRequest
 from app.models.intervention import ClassroomMessage, InterventionCase, InterventionEvent
 from app.models.knowledge import (
+    KnowledgeCase,
+    KnowledgeCaseDraft,
     KnowledgeChunk,
     KnowledgeDocument,
-    KnowledgeEmbedding,
     KnowledgeReview,
     KnowledgeSource,
 )
@@ -66,8 +67,9 @@ __all__ = [
     "InterventionCase",
     "InterventionEvent",
     "KnowledgeChunk",
+    "KnowledgeCase",
+    "KnowledgeCaseDraft",
     "KnowledgeDocument",
-    "KnowledgeEmbedding",
     "KnowledgeReview",
     "KnowledgeSource",
     "Permission",

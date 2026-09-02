@@ -1,4 +1,4 @@
-"""Run the synthetic diagnosis/retrieval baseline without modifying the database."""
+"""Run the deterministic diagnosis baseline without modifying the database."""
 
 import json
 

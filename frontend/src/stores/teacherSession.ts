@@ -2,11 +2,13 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { createTeacherSession } from '@/api/teacher'
+import { REVIEW_MODE, reviewTeacherSession } from '@/review/fixtures'
 import type { UserSession } from '@/types/auth'
 
 const STORAGE_KEY = 'xinjian-teacher-session'
 
 function restoreSession(): UserSession | null {
+  if (REVIEW_MODE) return { ...reviewTeacherSession }
   const raw = sessionStorage.getItem(STORAGE_KEY)
   if (!raw) return null
   try {
@@ -36,6 +38,10 @@ export const useTeacherSessionStore = defineStore('teacher-session', () => {
     loading.value = true
     errorMessage.value = ''
     try {
+      if (REVIEW_MODE) {
+        session.value = { ...reviewTeacherSession, username }
+        return
+      }
       session.value = await createTeacherSession(username, password)
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session.value))
     } catch (error) {

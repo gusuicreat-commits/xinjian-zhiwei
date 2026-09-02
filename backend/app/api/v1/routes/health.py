@@ -60,13 +60,9 @@ def dependencies(db: DatabaseSession) -> DependencyHealthResponse:
         "status": "ok" if settings.ai_enabled and settings.ai_api_key else "disabled",
         "required": False,
     }
-    ready.dependencies["embedding"] = {
-        "status": (
-            "ok"
-            if settings.knowledge_embedding_provider and settings.knowledge_embedding_model
-            else "disabled"
-        ),
-        "required": False,
+    ready.dependencies["structured_knowledge"] = {
+        "status": "ok",
+        "required": True,
     }
     return ready
 

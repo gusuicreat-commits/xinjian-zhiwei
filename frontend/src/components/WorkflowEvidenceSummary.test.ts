@@ -10,7 +10,7 @@ function workflow(overrides: Partial<DiagnosisWorkflowRecord> = {}): DiagnosisWo
     diagnosis_result_id: 'diagnosis-test',
     device_id: 'device-test',
     graph_thread_id: 'diagnosis:workflow-test',
-    graph_version: 'langgraph-v1',
+    graph_version: 'langgraph-v2',
     status: 'waiting_teacher',
     current_node: 'teacher_review',
     evidence_score: 0.6,

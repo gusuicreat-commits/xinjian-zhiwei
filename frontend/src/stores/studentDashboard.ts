@@ -14,6 +14,12 @@ import {
   withCappedRetry,
   type RequestFailureKind,
 } from '@/api/resilience'
+import {
+  REVIEW_MODE,
+  reviewAIExplanation,
+  reviewStudentDashboard,
+  reviewStudentWorkflow,
+} from '@/review/fixtures'
 import type {
   DeviceCredentials,
   DiagnosisWorkflow,
@@ -36,6 +42,13 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   async function load(credentials: DeviceCredentials): Promise<void> {
     state.value = dashboard.value ? 'ready' : 'loading'
     errorMessage.value = ''
+    if (REVIEW_MODE) {
+      dashboard.value = structuredClone(reviewStudentDashboard)
+      workflow.value = structuredClone(reviewStudentWorkflow)
+      state.value = 'ready'
+      failureKind.value = null
+      return
+    }
     try {
       dashboard.value = await withCappedRetry(() => getStudentDashboard(credentials))
       try {
@@ -58,6 +71,16 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     action: FeedbackAction,
   ): Promise<void> {
     if (!dashboard.value?.diagnosis) return
+    if (REVIEW_MODE) {
+      dashboard.value.feedback = {
+        id: 'review-feedback-interactive',
+        action,
+        note: null,
+        is_test_data: true,
+        created_at: new Date().toISOString(),
+      }
+      return
+    }
     feedbackLoading.value = true
     try {
       dashboard.value.feedback = await createDiagnosisFeedback(
@@ -73,6 +96,10 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
 
   async function generateAIExplanation(credentials: DeviceCredentials): Promise<void> {
     if (!dashboard.value?.diagnosis) return
+    if (REVIEW_MODE) {
+      dashboard.value.ai_explanation = structuredClone(reviewAIExplanation)
+      return
+    }
     aiLoading.value = true
     try {
       dashboard.value.ai_explanation = await requestAIExplanation(
@@ -85,6 +112,10 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   }
 
   async function runDiagnosisWorkflow(credentials: DeviceCredentials): Promise<void> {
+    if (REVIEW_MODE) {
+      workflow.value = structuredClone(reviewStudentWorkflow)
+      return
+    }
     workflowLoading.value = true
     try {
       workflow.value = await startDiagnosisWorkflow(credentials)

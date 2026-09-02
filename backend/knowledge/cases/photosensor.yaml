@@ -1,0 +1,23 @@
+cases:
+  - id: photosensor.value-stuck.v1
+    experimentType: photosensor_adc
+    errorType: VALUE_STUCK
+    symptom: 光照条件明显变化时，采集值长时间保持不变。
+    normalState:
+      description: 采集值随光照变化呈现可重复的变化趋势。
+    evidence:
+      - fact: reading_variation
+        description: 诊断窗口内读数变化幅度过小。
+    possibleCauses:
+      - ADC 引脚或通道配置与接线不一致。
+      - 分压电路连接或光敏元件位置需要核对。
+      - 程序重复上报缓存值而非新采样值。
+    solutionSteps:
+      - 记录遮光与强光两种条件下的多个原始读数。
+      - 核对 ADC 通道、采样代码和分压电路。
+      - 确认每次上报前都执行了新的 ADC 采样。
+    teacherNotes: 当前案例不包含固定电压或 ADC 阈值，具体范围应由已批准的实验模板提供。
+    reviewStatus: pending
+    sourceRef: knowledge/cases/photosensor.yaml
+    version: "1"
+

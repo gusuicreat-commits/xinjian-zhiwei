@@ -21,30 +21,28 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <main class="teacher-login-page">
-    <section class="teacher-login-card">
-      <div class="teacher-login-hero">
-        <div class="teacher-login-brand"><Monitor /><span>芯鉴知微</span><b>教师端</b></div>
-        <div class="teacher-login-copy">
-          <p class="eyebrow">TEACHER OPERATIONS</p>
-          <h1>
-            <span class="auth-title-line">把异常、证据与</span>
-            <span class="auth-title-line">教学介入，放在</span>
-            <span class="auth-title-line">同一视野。</span>
-          </h1>
-          <p>快速识别班级设备风险，查看诊断依据，并完成审核与学生协助。</p>
+  <main class="auth-page auth-page--teacher">
+    <header class="auth-topbar">
+      <div class="auth-topbar-inner">
+        <div class="auth-brand">
+          <Monitor aria-hidden="true" />
+          <div class="auth-brand-copy">
+            <strong>芯鉴知微</strong>
+            <small>嵌入式实验智能分析平台</small>
+          </div>
+          <span class="auth-portal-badge">教师端</span>
         </div>
-        <p class="teacher-login-lede">
-          工作台持续汇总设备状态、错误趋势和待处理请求，让每一次介入都有来源、过程和结果。
-        </p>
+        <router-link class="auth-topbar-switch" to="/login">学生端登录</router-link>
       </div>
+    </header>
 
-      <div class="teacher-login-access">
-        <p class="eyebrow">SECURE ACCOUNT</p>
-        <h2>登录教师工作台</h2>
-        <p>使用已分配教师或管理员角色的正式账号登录，数据范围按班级权限隔离。</p>
+    <section class="auth-stage" aria-labelledby="teacher-login-title">
+      <div class="auth-card auth-card--teacher">
+        <p class="auth-kicker">SECURE ACCOUNT</p>
+        <h1 id="teacher-login-title">登录教师工作台</h1>
+        <p class="auth-panel-copy">使用已分配教师或管理员角色的正式账号登录，数据范围按班级权限隔离。</p>
         <el-alert v-if="store.errorMessage" :title="store.errorMessage" type="error" show-icon />
-        <el-form @submit.prevent="submit">
+        <el-form class="login-form" @submit.prevent="submit">
           <el-form-item>
             <el-input v-model="form.username" autocomplete="username" placeholder="教师用户名"
               ><template #prefix><User /></template
@@ -70,8 +68,8 @@ async function submit(): Promise<void> {
             <Key />进入教师端
           </el-button>
         </el-form>
-        <router-link to="/login">返回学生端登录</router-link>
       </div>
     </section>
+    <footer class="auth-footer">权限隔离 · 操作留痕 · 数据可追溯</footer>
   </main>
 </template>

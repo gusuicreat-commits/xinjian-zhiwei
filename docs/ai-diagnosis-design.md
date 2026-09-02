@@ -1,135 +1,224 @@
-# Phase 9.5 DeepSeek 解释增强与 Provider 无关诊断设计
+# V2 AI 诊断工作流设计
 
-## 当前结论
+最后更新：2026-09-02
 
-Phase 9.5 固定生产对话 Provider 为 DeepSeek 官方 API，模型为
-`deepseek-v4-flash`，显式使用非思考模式。它仍只是可选解释增强，不是诊断
-前置条件。`AI_ENABLED=false` 且仓库没有真实 API Key，所以默认不会发起外部
-请求；学生端仍显示完整确定性解释。
+## 1. V2 结论
 
-2026-08-13 起，这条受治理的解释服务由 LangChain `RunnableLambda` 包装并置于
-LangGraph 控制图中。现有 `AIClient`、Prompt、脱敏、缓存、预算、校验和审计语义保持
-不变；新图只增加条件路由、checkpoint 和教师 interrupt，不让 LLM 成为判定节点。
+V2 将 AI 诊断升级为由 LangGraph 编排的证据驱动流程，同时保留现有确定性诊断、知识治理、AI 降级和教师审核能力。LangGraph 是流程控制器，不是自由规划 Agent；AI 是受规则、故障树候选集和证据白名单约束的诊断助手。
 
-## 不可覆盖的主链路
+实现基线为《芯鉴知微 V2 最终架构文档：完整对话总结与技术决策》，其中“事实不能由 AI 生成、确定事项由规则优先、AI 推理必须说明证据、允许 unknown、知识发布门槛高于学生回答”作为代码级约束。
 
-```text
-设备数据库记录
-  → DiagnosisEpisode 事件聚合
-  → YAML 规则与故障树
-  → DiagnosisCore
-  → 结构化过滤 + PostgreSQL FTS + pgvector + RRF
-  → 确定性说明模板
-  → AIExplanationPolicy
-  → 指纹缓存
-  → 可选 DeepSeek 非思考解释
+当前仍不使用 RAG、Embedding、pgvector 或向量检索。核心问题是把设备真实数据、确定性诊断、学生反馈和教学排查建议连成稳定闭环，而不是从大规模文档中搜索知识。
+
+取消 RAG 的直接原因：
+
+- 首批知识只覆盖 DHT11、LED、按键、光敏传感器和超声波五类实验，规模小且字段稳定。
+- 故障类型和证据必须来自规则，原因排序必须来自故障树；相似度不应参与硬件故障判定。
+- 引入 Embedding Provider、向量维度、索引和召回评测会扩大部署面和失败面，不提升当前 MVP 的核心可验证性。
+- 结构化字段匹配可以给出“为什么匹配”的精确记录，更适合教学场景审核。
+
+## 2. DiagnosisState
+
+`DiagnosisState` 是一次异常诊断的唯一流程状态，核心契约为：
+
+```python
+class DiagnosisState(TypedDict, total=False):
+    device_status: dict
+    experiment_type: str | None
+    logs: list[dict]
+    sensor_data: list[dict]
+    sensor_values: list[dict]
+    experiment_context: dict
+    error_type: str | None
+    evidence: list[dict]
+    possible_causes: list[dict]
+    knowledge_context: list[dict]
+    hint_level: int
+    student_feedback: dict | None
+    historical_failures: int
+    attempt_count: int
+    missing_evidence: list[str]
+    next_verification_action: str | None
+    evidence_conflict: bool
+    need_teacher_help: bool
+    diagnosis_status: str
 ```
 
-`diagnosis_results` 与 `guidance_history` 在 AI 调用前已经确定。AI 返回内容只作为解释增强保存到 `ai_call_records`，不能改写错误类型、规则证据、原因评分或基础提示。
+内部还保存工作流归属、版本、指纹、节点轨迹、耗时、确定性结果和审核状态。V1 字段别名暂时保留，以兼容已有数据库记录和 API。
 
-## Provider 抽象
+## 3. LangGraph 诊断主链
 
-- `AIClient.complete_json()`：接收系统提示与用户 JSON，返回原始 JSON 文本及可选 Token 计数。
-- `EmbeddingClient.embed()`：接收检索文本，返回配置维度的查询向量。
-- 默认实现为 `DisabledAIClient` 和 `DisabledEmbeddingClient`。
-- 生产配置选择 DeepSeek，但继续复用 `OpenAICompatibleClient`，没有复制平行诊断逻辑。
-- Provider 适配层为 DeepSeek 请求发送 `thinking: {"type": "disabled"}`，不默认启用长推理。
-- Mock、Disabled 和本地扩展 Client 保留用于测试或明确扩展；本地 Client 不进入生产默认路由。
-- Provider 名称、Base URL、模型、密钥、超时和重试全部由后端环境变量注入，前端和数据库不保存密钥。
+```text
+context_builder
+  → rule_engine
+  → fault_tree_analyzer
+  → ai_reasoning
+  → knowledge_service
+  → ai_explanation
+  → escalation_handler
+  → feedback_handler（暂停等待学生）
+      ├─ unresolved → 提升 hint_level → ai_reasoning
+      ├─ resolved → persist_result
+      └─ request_teacher_help → teacher_review
+```
 
-## 事件、核心与确定性说明
+节点职责：
 
-- `DiagnosisEpisode` 按设备、可选实验模板和主要错误码聚合重复异常；页面刷新和只读查询不更新事件或触发 AI。
-- `DiagnosisCore` 固化错误类型、置信度、规则证据、原因排序、步骤、提示等级和规则/故障树/知识版本。
-- 确定性模板直接从 `DiagnosisCore` 生成摘要、证据解释、候选原因和 Level 1–4 步骤。它在 AI 完全关闭时仍是完整结果。
-- AI 只能生成 explanation，不能修改 `DiagnosisCore`。
+- `context_builder`：复用 `DiagnosisContext` 构建设备、日志、传感器和实验状态。
+- `rule_engine`：确定异常类型和证据；AI 无权覆盖。
+- `fault_tree_analyzer`：排序可能原因并计算提示等级。
+- `ai_reasoning`：在已有 `cause_id` 集合中重排原因，输出离散支持等级并绑定证据 ID；越界或失败时回退故障树结果。
+- `knowledge_service`：匹配已审核 `KnowledgeCase`，校验推理上下文并补充经验，不做向量检索。
+- `ai_explanation`：基于推理和知识校验结果生成学生可理解的结构化说明。
+- `feedback_handler`：使用 LangGraph interrupt 等待 resolved、unresolved 或 request_teacher_help，并以原工作流 thread 恢复。
+- `escalation_handler`：使用失败次数、异常持续时间、当前提示等级和学生反馈决定升级或教师介入。
 
-## 混合检索
+AI 完全关闭、超时或输出不合法时，状态图仍使用规则、故障树和匹配知识生成确定性结果。`teacher_review`、`persist_result` 和 `reject_result` 是流程基础设施，不是新增智能体。
 
-- 继续使用 Phase 8 的 `knowledge_sources/documents/chunks/embeddings/reviews`，不新建知识库。
-- 先按审核状态、错误码、规则、实验和通用硬件元数据过滤。
-- PostgreSQL 使用 `simple` 配置执行全文检索；SQLite 测试使用等价词项评分。
-- Embedding 客户端可用时追加 pgvector 排名，不可用时关键词检索独立降级。
-- 两路排名使用 Reciprocal Rank Fusion，去重后只返回已审核 Top K 和来源。
+## 4. 模块职责边界
 
-## 调用策略
+### 规则引擎
 
-高置信已知异常、重复 Episode、单纯刷新/查询、只执行知识检索和核心未变化时默认不调用 AI。低置信、证据冲突、多规则、未知异常、学生追问、教师总结或标准步骤多次无效时可以放行。策略输出 `should_call`、`trigger_reason`、`preferred_route` 和输入/输出 Token 上限。
+- 从 `DiagnosisContext` 读取状态、日志、读数和实验预期。
+- 输出错误类型、规则 ID、观测值与证据引用。
+- 它是异常类型的唯一判定者，AI 不得新增或改写。
 
-策略判断与 Provider 是否已配置分离：先判断语义上是否需要增强，再检查缓存和运行门禁。这样即使 Provider 后续关闭，相同指纹的已校验缓存仍可复用；没有缓存时才明确记录 `AI_NOT_CONFIGURED` 并返回确定性模板。页面刷新、教师统计和普通知识检索只读数据库，不调用此路由。
+### 故障树
 
-## 缓存、预算与路由
+- 只分析与已命中规则相关的候选原因。
+- 使用明确证据给原因排序，生成分级提示和教师介入建议。
+- 原因是待验证假设，不得表述为已确认的硬件损坏。
 
-稳定指纹只包含实验/硬件、主要错误、设备状态、排序后的规则与证据代码、Top 原因、知识块、提示等级及规则/故障树/知识/Prompt/Schema 版本，不包含无关时间戳、数据库 ID 或原始日志顺序。
+### 结构化知识库
 
-生产路由为：确定性模板 → 策略判断 → PostgreSQL 缓存 → DeepSeek
-`deepseek-v4-flash` 非思考模式 → Pydantic 校验 → 确定性降级。正式表达为
-`cache → deepseek → deterministic_fallback`，不执行本地小模型到云模型、
-简单模型到复杂模型或便宜模型到昂贵模型的自动分层。缓存命中不计 Provider
-调用次数。真实调用前检查每 Episode、每设备每小时、单次预算、每日人民币
-预算和输入 Token；输出 Token 由请求参数限制。
+- 只返回 `review_status=approved` 的案例。
+- 首先精确匹配 `error_type`，再校验 `experiment_type`，最后用显式证据字段加分。
+- 输出实验规范、排查步骤、教师经验和来源版本。
+- 不做语义召回、相似文本扩展、向量排名或 LLM 重排。
 
-稳定指纹包含规则、故障树、知识块、Hint Level、Prompt、Schema、输出语言和可选用户问题；不包含诊断数据库 ID、时间戳或日志顺序。修改任一语义版本或输出语言都会失效缓存。
+### AI 智能推理
 
-## 调用门禁
+- 输入包括设备事实、规则结果、故障树候选原因、实验上下文和历史失败次数。
+- 输出为结构化 `ranked_causes`，每项包含 `cause_id`、`cause`、`support_level`、`used_evidence_ids` 和 `reason`。
+- `cause_id` 必须来自故障树；`used_evidence_ids` 必须来自证据注册表；`error_type` 必须与规则结果一致。
+- 不允许提出新的故障类型；无法形成可靠排序时输出 `conclusion=unknown`。
+- Provider 不可用、输出非法或引用越界时，系统使用故障树确定性排序并记录降级原因。
 
-默认 `AI_REQUIRE_KNOWLEDGE=true`。以下任一条件成立时不调用 AI，直接返回规则结果：
+### AI 解释器
 
-1. 策略判定为高置信已知异常或核心上下文未变化；
-2. AI 总开关、目标路由或 Provider 未配置；
-3. Episode/设备调用上限或每日预算已耗尽；
-4. Provider 调用失败、超时或限流；
-5. 输出不是合法 JSON或不符合 Pydantic Schema；
-6. 错误类型、证据或知识引用越过服务端白名单。
+- AI 是受约束的“表达层”，不是硬件故障判定器。
+- 只能选择规则已有的 `error_type` 和证据。
+- 只能引用本次已匹配案例的 `case_id`。
+- 只能解释已经约束的原因排序、知识案例和排查步骤，不能再次自由生成原因。
+- 不进行工具规划、节点选择或自主循环；状态分支完全由后端函数决定。
 
-## 输入和隐私
+## 5. AI 输入与输出
 
-模型请求统一经过 `phase9.5-allowlist-v1`：
+推理输入是知识校验前的设备证据、规则结果、故障树候选集和实验上下文；解释输入再加入结构化知识校验结果。学生身份、设备令牌、密码、Authorization、Wi-Fi 密码、API Key 和教师私密备注不进入 Prompt。
 
-- 设备 ID 转换为稳定的不可逆短哈希；
-- 只保留 Episode/Diagnosis、错误码、规则、证据、原因、Hint Level 和限制；
-- 日志仅选取最近 3–10 条与当前规则直接相关的记录，并对文本再次脱敏；
-- 传感器读数转换为样本数、最小值、最大值和最新值等聚合；
-- 知识正文按配置截断，不发送来源私有 URI；
-- 学生技术问题在发送前应用同一脱敏规则。
+推理阶段的核心输出为：
 
-学生姓名、学号、班级实名、手机号、身份证号、邮箱、账号密码、设备令牌、
-Authorization、DeepSeek Key、数据库密码/连接串、Wi-Fi 密码、教师私人备注、
-完整原始请求、无关日志和环境变量都不进入 Prompt 或审计。
+```json
+{
+  "error_type": "SENSOR_READ_FAILED",
+  "conclusion": "ranked",
+  "ranked_causes": [
+    {
+      "cause_id": "gpio_config",
+      "cause": "GPIO 配置错误",
+      "support_level": "high",
+      "used_evidence_ids": ["device:status", "log:log_01"],
+      "reason": "设备在线但读取持续失败，现有证据更符合配置问题。"
+    }
+  ],
+  "summary": "...",
+  "limitations": [],
+  "missing_evidence": ["尚未核对实际 DATA 接线"],
+  "next_verification_action": "核对代码中的 GPIO 与实际 DATA 接线是否一致。",
+  "conflict": false
+}
+```
 
-## 结构化输出
+对外的核心结构为：
 
-输出字段包括 `error_type`、`summary`、`evidence`、`possible_causes`、`steps`、`hint_level`、`need_teacher_help` 和 `limitations`。
+```json
+{
+  "errorType": "SENSOR_READ_FAILED",
+  "evidence": ["log_event_count: 3"],
+  "possibleCauses": ["..."],
+  "steps": ["..."],
+  "hintLevel": 2,
+  "needTeacherHelp": false
+}
+```
 
-- `error_type` 必须属于规则命中；没有规则但存在异常信号时只能使用通用 `UNCLASSIFIED_ANOMALY`，不得虚构硬件故障码；
-- `evidence` 必须逐字选自服务端生成的规则证据；
-- 原因引用的 `knowledge_chunk_ids` 必须属于本次检索结果；
-- 不认识的字段会被拒绝；
-- 失败后按有限次数重试，最终仍失败则降级。
+当前 Python API 内部使用 snake_case，并可附带 `summary` 和 `limitations`；这两个字段不改变上述核心契约。
 
-## 审计
+后端使用错误类型白名单、候选原因 ID 白名单、证据白名单和案例 ID 白名单验证输出。最终 `hint_level` 与 `need_teacher_help` 由 `escalation_handler` 的确定性结果覆盖生成内容，因此 AI 不能改变规则结论或升级决策。
 
-`ai_call_records` 保存成功、失败和跳过三类记录，包括触发原因、Episode、缓存、
-最后路由、`route_path`、Provider/模型、Prompt 版本与哈希、尝试次数、耗时、结构化输出、
-知识引用、Token、校验和降级原因。审计输入只保存匿名标识、内容哈希、计数、
-规则/错误码/知识块 ID 和隐私控制摘要，不保存完整 Prompt、完整日志、API Key
-或 Authorization。典型路径包括 `cache_hit`、`cache_miss → deepseek_success`、
-`cache_miss → deepseek_failed → deterministic_fallback` 和
-`ai_disabled → deterministic_only`。
+## 6. 知识案例模型
 
-## 待项目方提供
+```json
+{
+  "id": "dht11.sensor-read-failed.v1",
+  "experimentType": "dht11_temperature_humidity",
+  "errorType": "SENSOR_READ_FAILED",
+  "symptom": "...",
+  "normalState": {},
+  "evidence": [],
+  "possibleCauses": [],
+  "solutionSteps": [],
+  "teacherNotes": "...",
+  "reviewStatus": "pending",
+  "sourceRef": "knowledge/cases/dht11.yaml",
+  "version": "1"
+}
+```
 
-- `已确定: DeepSeek 官方 API、deepseek-v4-flash、非思考模式`
-- `TODO[待补充]: 服务端 DeepSeek API Key、人民币预算和数据外发审批`
-- `TODO[待补充]: Embedding Provider、模型、维度和服务端密钥`
-- `TODO[待补充]: 经授权、审核并完成向量化的正式知识`
-- `TODO[待补充]: 数据外发、隐私、日志脱敏和保留政策`
-- `TODO[待补充]: 真实诊断准确率、误报率、漏报率与人工审核标准`
+产品层简写 `experiment / causes / steps` 分别映射到数据库字段 `experiment_type / possible_causes / solution_steps`，不另建第二套知识模型。
 
-## 测试知识与阶段边界
+源文件位于 `backend/knowledge/cases/`，由同步命令校验后写入 `knowledge_cases` 表。诊断代码不包含实验经验常量。当前五个初始案例均为 `pending`，须经教师确认才能进入正式匹配。
 
-Phase 9 最终验收允许保留一组 `is_test_data=true` 的合成知识：DHT11 读取失败、设备离线、温湿度越界和无关 LED 案例。来源键为 `phase9.synthetic-acceptance`，版本为 `phase9-acceptance-v1`，审核人引用明确标为自动化验收；配套四维向量由固定测试机制生成，不调用外部 Embedding 服务。它们只验证结构化过滤、全文检索、pgvector 和 RRF，不能作为课程资料、硬件说明书或真实专业知识。
+## 7. AI 辅助案例沉淀
 
-Phase 9.5 完成的是生产决策、运行边界、脱敏和知识治理补强，不包含真实收费
-调用、真实固件或正式部署。其后的无真实硬件路线 P1–P11 通用框架已完成，但没有改变
-上述真实数据、正式知识和外部调用边界。
+案例不是由 AI 自动生成并直接发布。当前闭环为：
+
+1. 保存设备事实、规则结果、故障树过程和诊断版本；
+2. 学生提交 `resolved`，系统生成 `KnowledgeCaseDraft`，但 `root_cause.status` 保持 `unknown`；
+3. 模板把实验、错误类型、证据、候选原因和步骤绑定到事实快照；
+4. AI 只能生成 `title/symptomDescription/teachingNote/solutionSummary`，且每项保留 `sourceIds`；
+5. 质量检查失败的草稿停留在 `draft`；
+6. 通过检查的草稿进入 `pending_review`；
+7. 教师必须确认故障树内的根因和真实解决动作，批准后才生成 `approved + confirmed + facts_locked + quality_check_passed` 的 `KnowledgeCase`。
+
+该流程保证 AI 只能整理表达，不能创造未经学生确认、规则记录或教师审核的事实。
+
+## 8. 失败、反馈与审计
+
+- 没有案例匹配时仍返回规则与故障树结果。
+- AI 未配置、超时、限流、预算不足或结构校验失败时，降级为确定性说明。
+- `ai_call_records` 保存触发原因、模型、Prompt/Schema 版本、耗时、Token、案例 ID、校验结果和降级原因，不保存密钥或完整敏感输入。
+- 旧审计表中的 `chunk_id`/`knowledge_references` 字段暂作升级兼容容器；MVP 新记录中其值是结构化 `case_id`，不表示 RAG Chunk。
+- LangGraph Checkpoint 保存可恢复状态，`diagnosis_workflow_runs` 保存可查询的业务审计；两者不替代原始设备数据和诊断结果表。
+- 学生反馈继续写入现有 `diagnosis_feedback`，同时恢复 `waiting_feedback` 的 LangGraph checkpoint；未解决会继续同一诊断而不是重建自由 Agent。
+- `ai_call_records.call_stage` 区分首次和各反馈轮次的 `reasoning/explanation`，分别保存 Prompt 版本、输入快照、结构化输出、校验状态和降级原因。
+
+## 9. 保持工程简洁
+
+- 单一状态图，不引入多智能体。
+- 节点顺序由代码声明，不允许模型自主规划。
+- AI Provider 使用现有轻量客户端，不叠加复杂 LangChain Agent 封装。
+- 第一阶段没有 RAG 分支、Embedding 调用或向量数据库依赖。
+
+## 10. 未来 RAG 扩展路线
+
+RAG 只在知识规模、查询类型和召回评测证明有必要时增加：
+
+1. 保持 `KnowledgeCase` 与审核状态为业务真相源。
+2. 新增 `knowledge/embedding/` 作为案例到向量的派生索引层。
+3. 新增 `knowledge/vector_store/` 作为 pgvector 或其他存储适配层。
+4. 新增 `knowledge/rag/` 作为召回、重排、引用和评测层。
+5. 在独立特性开关下将 RAG 作为“追加参考”，不修改规则证据或故障树排序。
+6. 通过真实标注集验证 Recall@K、错误引用率、时延、成本和教师采纳率后才能进入默认主链。
+
+这三个未来目录当前不创建，避免空实现被误认为可用能力。

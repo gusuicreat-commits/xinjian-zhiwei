@@ -50,7 +50,6 @@ const guidance: StudentGuidance = {
 const aiStatus: AIStatus = {
   framework_ready: true,
   provider_configured: false,
-  embedding_client_configured: false,
   require_knowledge: true,
   provider: 'deepseek',
   model: 'deepseek-v4-flash',
@@ -113,7 +112,7 @@ const workflow: DiagnosisWorkflowRecord = {
   diagnosis_result_id: 'diagnosis-test',
   device_id: 'device-test',
   graph_thread_id: 'diagnosis:workflow-test',
-  graph_version: 'langgraph-v1',
+  graph_version: 'langgraph-v2',
   status: 'waiting_teacher',
   current_node: 'teacher_review',
   evidence_score: 0.61,
@@ -124,7 +123,17 @@ const workflow: DiagnosisWorkflowRecord = {
   fault_tree_version: 'tree-v2',
   embedding_version: 'embedding-v1',
   model_id: 'model-v1',
-  node_trace: ['collect_context', 'run_rules', 'retrieve_knowledge', 'teacher_review'],
+  node_trace: [
+    'context_builder',
+    'rule_engine',
+    'fault_tree_analyzer',
+    'ai_reasoning',
+    'knowledge_service',
+    'ai_explanation',
+    'feedback_handler',
+    'escalation_handler',
+    'teacher_review',
+  ],
   final_result: null,
   error_messages: [],
   review_request: {
@@ -274,7 +283,7 @@ describe('DiagnosisPanel', () => {
     expect(workflowPanel.text()).toContain('审核详情仅教师可见')
     expect(workflowPanel.text()).not.toContain('LangGraph')
     expect(workflowPanel.text()).not.toContain('rules-v3')
-    expect(workflowPanel.text()).not.toContain('collect_context')
+    expect(workflowPanel.text()).not.toContain('context_builder')
     expect(workflowPanel.text()).not.toContain('manual-sensor')
     expect(workflowPanel.text()).not.toContain('RRF')
     expect(wrapper.text()).not.toContain('teacher-1')

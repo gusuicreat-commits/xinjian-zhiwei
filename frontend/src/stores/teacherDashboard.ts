@@ -15,6 +15,13 @@ import {
   withCappedRetry,
   type RequestFailureKind,
 } from '@/api/resilience'
+import {
+  REVIEW_MODE,
+  reviewTeacherDashboard,
+  reviewTeacherWorkflowHistory,
+  reviewTeacherWorkflowMetrics,
+  reviewTeacherWorkflowQueue,
+} from '@/review/fixtures'
 import type {
   DiagnosisWorkflowMetrics,
   TeacherDashboard,
@@ -75,6 +82,15 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
   async function load(accessToken: string): Promise<void> {
     state.value = dashboard.value ? 'ready' : 'loading'
     errorMessage.value = ''
+    if (REVIEW_MODE) {
+      dashboard.value = structuredClone(reviewTeacherDashboard)
+      workflowQueue.value = structuredClone(reviewTeacherWorkflowQueue)
+      workflowHistory.value = structuredClone(reviewTeacherWorkflowHistory)
+      workflowMetrics.value = structuredClone(reviewTeacherWorkflowMetrics)
+      state.value = 'ready'
+      failureKind.value = null
+      return
+    }
     try {
       dashboard.value = await withCappedRetry(() => getTeacherDashboard(accessToken))
       const [queue, history, metrics] = await Promise.allSettled([
@@ -110,6 +126,10 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
       }
     },
   ): Promise<void> {
+    if (REVIEW_MODE) {
+      workflowQueue.value = workflowQueue.value.filter((item) => item.id !== workflowId)
+      return
+    }
     workflowReviewingId.value = workflowId
     try {
       await reviewDiagnosisWorkflow(accessToken, workflowId, payload)
@@ -129,6 +149,7 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
       is_private: boolean
     },
   ): Promise<void> {
+    if (REVIEW_MODE) return
     actionLoadingCaseId.value = caseId
     try {
       await actOnTeacherIntervention(accessToken, caseId, payload)

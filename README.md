@@ -1,6 +1,6 @@
 # 芯鉴知微
 
-面向高校嵌入式与物联网实验课程的实时日志分析、确定性诊断、知识检索和教师处置平台。
+面向高校嵌入式与物联网实验课程的实时日志分析、证据驱动诊断、结构化知识和教师处置平台。
 
 当前源码与 Docker 运行版本为 `1.0.0`。《无真实硬件条件下后续开发总路线》的 P1–P11
 通用框架已经完成；需要人工提供的真实硬件资料、正式知识、正式课堂数据和生产参数没有
@@ -28,13 +28,12 @@
 - 版本化 Experiment Definition、统一 Observation/Event Normalizer、Expected Behavior 和
   common/interface/component/experiment 作用域规则与故障树已接入；新增实验默认是配置任务。
 - YAML 示例规则和占位故障树生成可追溯证据、候选原因和 Level 1–4 提示。
-- 合成基线包含 30 个诊断、54 个检索和 6 个禁止性陈述测试；检索直接调用生产同源
-  `hybrid_retrieve`，门禁为 Recall@5 不低于 80%。
+- 合成基线包含 30 个确定性诊断和 6 个禁止性陈述测试；结构化案例匹配另行验收。
 - AI 通过统一客户端、严格 Schema、缓存、预算、审计和确定性降级隔离 Provider。
 - Phase 9.5 默认对话路由选择 DeepSeek 兼容配置，但 `AI_ENABLED=false`，仓库没有真实
   Key，本轮没有真实或收费调用。
-- Embedding Provider/模型/维度尚未确认；未配置时不会伪造向量。
-- LangGraph 将上下文、规则、故障树、RAG、受治理 AI 和教师审核组成可恢复状态图；LangChain 只作为结构化 Runnable 和只读工具适配层。
+- 第一阶段不启用 Embedding、向量数据库或 RAG。
+- LangGraph 将上下文、规则、故障树、受约束 AI 原因排序、结构化知识校验、解释、反馈和教师审核组成可恢复状态图；模型不能自主规划或扩大故障原因空间。
 - 学生端可显式启动辅助诊断；Level 4、低证据分或知识不足时暂停，由有班级范围的教师批准、修订或驳回。
 
 ### 课堂、模板、知识和教师处置
@@ -112,7 +111,7 @@ docker compose ps
 - PostgreSQL：只在 Compose 内部网络暴露，不映射宿主机端口。
 
 后端启动前自动执行 `alembic upgrade head`。当前唯一迁移 Head 为
-`20260818_0021`。生产 LangGraph 使用 PostgreSQL checkpoint，并在部署步骤单独运行
+`20260902_0025`。生产 LangGraph 使用 PostgreSQL checkpoint，并在部署步骤单独运行
 `python -m app.cli.setup_diagnosis_checkpoints`；开发/测试默认使用内存 saver。
 
 ### 登录凭据与三个诊断地址
@@ -158,7 +157,7 @@ Git；请在终端显示后立即保存到本地密码管理器。`rbac_student_
 scripts/verify.sh
 ```
 
-LangGraph/LangChain 依赖要求后端 Python 3.10+。如默认 `backend/.venv` 不符合，
+LangGraph 依赖要求后端 Python 3.10+。如默认 `backend/.venv` 不符合，
 重建该虚拟环境，或使用 `BACKEND_PYTHON=/path/to/python scripts/verify.sh`。
 
 Docker 与迁移验收：
@@ -210,7 +209,7 @@ docker compose exec backend python -m app.cli.reset_demo \
 3. 实验目标、步骤、正常范围、完成条件，以及带真值的正常/故障样本、根因和修复结果。
 4. 可授权知识文件、URI、版本、适用硬件、许可证，以及知识整理员与正式批准人的审核结论。
 5. 正式用户、课程、班级、角色、任务和设备绑定清单。
-6. AI Key、预算/限流、数据外发与保留审批；Embedding 方案。
+6. AI Key、预算/限流、数据外发与保留审批。
 7. 生产域名、HTTPS、网络、密钥管理、监控、备份责任、保留期限和验收指标。
 
 这些输入未确认时，具体厂商、硬件型号、传感器字段、阈值和生产参数必须继续通过可配置
@@ -242,7 +241,7 @@ docker compose exec backend python -m app.cli.reset_demo \
 - [故障树与提示](docs/fault-tree-guidance.md)
 - [知识库框架](docs/knowledge-base.md)
 - [AI 诊断设计](docs/ai-diagnosis-design.md)
-- [LangGraph + LangChain 辅助诊断工作流](docs/langgraph-diagnosis-workflow.md)
+- [LangGraph V2 证据驱动诊断工作流](docs/langgraph-diagnosis-workflow.md)
 - [运行架构](docs/runtime-architecture.md)
 - [部署说明](docs/deployment.md)
 - [演示手册](docs/demo-runbook.md)

@@ -1,7 +1,18 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,6 +25,11 @@ class AICallRecord(UuidPrimaryKeyMixin, Base):
         Index("ix_ai_calls_diagnosis_created", "diagnosis_result_id", "created_at"),
         Index("ix_ai_calls_status_created", "status", "created_at"),
         Index("ix_ai_call_records_episode_created", "episode_id", "created_at"),
+        UniqueConstraint(
+            "workflow_run_id",
+            "call_stage",
+            name="uq_ai_call_records_workflow_stage",
+        ),
     )
 
     diagnosis_result_id: Mapped[str] = mapped_column(
@@ -25,7 +41,9 @@ class AICallRecord(UuidPrimaryKeyMixin, Base):
     workflow_run_id: Mapped[Optional[str]] = mapped_column(
         String(36),
         ForeignKey("diagnosis_workflow_runs.id", ondelete="SET NULL"),
-        unique=True,
+    )
+    call_stage: Mapped[str] = mapped_column(
+        String(100), default="explanation", nullable=False
     )
     provider: Mapped[Optional[str]] = mapped_column(String(100))
     model: Mapped[Optional[str]] = mapped_column(String(200))

@@ -1,8 +1,7 @@
-import math
 from datetime import datetime
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 KnowledgeReviewStatus = Literal[
     "draft",
@@ -86,7 +85,6 @@ class KnowledgeChunkWorkspaceItem(StrictKnowledgeModel):
     locator: dict[str, Any]
     metadata: dict[str, Any]
     review_status: KnowledgeReviewStatus
-    embedding_count: int
 
 
 class KnowledgeWorkspaceResponse(StrictKnowledgeModel):
@@ -153,70 +151,6 @@ class KnowledgeReviewResponse(StrictKnowledgeModel):
     affected_chunks: int
 
 
-class KnowledgeEmbeddingItem(StrictKnowledgeModel):
-    chunk_id: str = Field(min_length=1, max_length=36)
-    vector: list[float] = Field(min_length=1)
-
-    @field_validator("vector")
-    @classmethod
-    def validate_vector(cls, value: list[float]) -> list[float]:
-        normalized = [float(item) for item in value]
-        if not all(math.isfinite(item) for item in normalized):
-            raise ValueError("embedding values must be finite")
-        if not any(item != 0 for item in normalized):
-            raise ValueError("embedding vector must not be all zero")
-        return normalized
-
-
-class KnowledgeEmbeddingUpsertRequest(StrictKnowledgeModel):
-    provider: str = Field(min_length=1, max_length=100)
-    model: str = Field(min_length=1, max_length=200)
-    items: list[KnowledgeEmbeddingItem] = Field(min_length=1, max_length=500)
-    is_test_data: bool = False
-
-
-class KnowledgeEmbeddingUpsertResponse(StrictKnowledgeModel):
-    provider: str
-    model: str
-    dimensions: int
-    stored_count: int
-
-
-class KnowledgeSearchRequest(StrictKnowledgeModel):
-    query_embedding: list[float] = Field(min_length=1)
-    provider: str = Field(min_length=1, max_length=100)
-    model: str = Field(min_length=1, max_length=200)
-    limit: int = Field(default=5, ge=1, le=50)
-    source_types: list[str] = Field(default_factory=list, max_length=20)
-    include_test_data: bool = False
-
-    @field_validator("query_embedding")
-    @classmethod
-    def validate_query_embedding(cls, value: list[float]) -> list[float]:
-        return KnowledgeEmbeddingItem(chunk_id="query", vector=value).vector
-
-
-class KnowledgeSearchResult(StrictKnowledgeModel):
-    chunk_id: str
-    document_id: str
-    document_title: str
-    source_id: str
-    source_key: str
-    source_type: str
-    source_title: str
-    source_uri: Optional[str]
-    source_version: Optional[str]
-    content: str
-    locator: dict[str, Any]
-    similarity: float
-    is_test_data: bool
-
-
-class KnowledgeSearchResponse(StrictKnowledgeModel):
-    results: list[KnowledgeSearchResult]
-    notice: str
-
-
 class KnowledgeStatusResponse(StrictKnowledgeModel):
     framework_ready: bool = True
     content_available: bool
@@ -224,9 +158,7 @@ class KnowledgeStatusResponse(StrictKnowledgeModel):
     document_count: int
     pending_review_count: int
     approved_chunk_count: int
-    embedding_count: int
-    embedding_provider_configured: bool
-    configured_provider: Optional[str]
-    configured_model: Optional[str]
-    configured_dimensions: Optional[int]
+    case_count: int = 0
+    approved_case_count: int = 0
+    matching_mode: Literal["structured"] = "structured"
     notice: str

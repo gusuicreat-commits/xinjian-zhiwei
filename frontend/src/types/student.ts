@@ -135,7 +135,8 @@ export interface AIStructuredExplanation {
   evidence: string[]
   possible_causes: Array<{
     cause: string
-    confidence: number
+    support_level?: 'high' | 'medium' | 'low' | 'unknown'
+    confidence?: number | null
     knowledge_chunk_ids: string[]
   }>
   steps: string[]
@@ -165,7 +166,6 @@ export interface AIExplanationResponse {
 export interface AIStatus {
   framework_ready: boolean
   provider_configured: boolean
-  embedding_client_configured: boolean
   require_knowledge: boolean
   provider: string | null
   model: string | null

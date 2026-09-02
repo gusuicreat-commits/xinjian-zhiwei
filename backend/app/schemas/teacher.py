@@ -43,8 +43,8 @@ class TeacherKnowledgeSummary(UnconfiguredDataset):
     document_count: int
     pending_review_count: int
     approved_chunk_count: int
-    embedding_count: int
-    embedding_provider_configured: bool
+    case_count: int = 0
+    approved_case_count: int = 0
 
 
 class TeacherAnomalyItem(StrictTeacherModel):

@@ -101,10 +101,7 @@ function formatDate(value: string): string {
             ><em>已审核</em>
           </li>
         </ul>
-        <p v-else-if="workflow.needs_rag" class="workflow-missing danger">
-          当前没有可采用的已审核资料。
-        </p>
-        <p v-else class="workflow-missing">本次诊断不需要额外资料。</p>
+        <p v-else class="workflow-missing">本次未匹配到已审核的结构化案例。</p>
       </section>
     </div>
 

@@ -63,8 +63,8 @@ export interface TeacherDashboard {
     document_count: number
     pending_review_count: number
     approved_chunk_count: number
-    embedding_count: number
-    embedding_provider_configured: boolean
+    case_count: number
+    approved_case_count: number
     notice: string
   }
 }

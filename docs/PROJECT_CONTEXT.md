@@ -14,13 +14,14 @@ ESP32 与传感器
   -> 后端校验与存储
   -> 规则诊断
   -> 故障树原因排序
-  -> RAG 检索实验知识与案例
-  -> 大模型生成结构化解释
+  -> AI 在候选原因与证据白名单内辅助排序
+  -> 结构化知识校验与经验补充
+  -> 大模型生成结构化教学建议
   -> 学生端排查与反馈
   -> 教师端班级状态与错误统计
 ```
 
-核心原则是“规则负责判定，AI 负责解释”。AI 不得替代确定性规则结论，也不得在缺乏证据时生成高置信原因。
+核心原则是“设备提供事实、规则判断异常、故障树限定原因空间、AI 受约束推理与解释、知识库提供经验、教师审核关键知识”。AI 不得替代确定性规则结论、创造候选集外故障或在缺乏证据时生成高置信原因。
 
 ## 2. 用户与核心价值
 
@@ -36,10 +37,11 @@ ESP32 与传感器
 2. 后端接收、校验和保存设备日志、心跳及传感器数据。
 3. 规则引擎识别 `SENSOR_READ_FAILED`、`DEVICE_OFFLINE`、`VALUE_OUT_OF_RANGE`。
 4. 故障树对可能原因排序，提示等级可逐步升级。
-5. RAG 从经审核的实验知识和历史案例中检索依据。
-6. AI 输出通过 Pydantic 校验的结构化诊断；AI 不可用时规则诊断仍工作。
-7. 学生端展示设备状态、实时日志、传感器曲线、异常卡片和反馈操作。
-8. 教师端展示在线/离线/异常设备、实验进度、高频错误和介入列表。
+5. AI 在故障树候选集内综合证据，输出支持等级与证据 ID，失败时回退确定性排序。
+6. 结构化知识库校验推理上下文并提供实验规范、案例和排查步骤；第一阶段不使用 RAG。
+7. AI 解释输出通过 Pydantic 和白名单校验；AI 不可用时规则诊断仍工作。
+8. 学生端展示设备状态、实时日志、传感器曲线、异常卡片和反馈操作。
+9. 教师端展示在线/离线/异常设备、实验进度、高频错误和介入列表。
 
 扩展知识范围包括 LED、按键、光敏和超声波实验，但第一版硬件联调只聚焦 ESP32 + DHT11。
 
@@ -67,16 +69,16 @@ ESP32 与传感器
 
 - 前端：Vue 3、TypeScript、Vite、Vue Router、Pinia、Axios、Element Plus、ECharts、Vitest、Playwright。
 - 后端：Python、FastAPI、Pydantic、SQLAlchemy 2、Alembic、pytest、HTTPX。
-- 数据库：PostgreSQL + pgvector。
+- 数据库：PostgreSQL；未来需要 RAG 时再增加 pgvector 扩展。
 - 设备端：ESP32、Arduino Framework、PlatformIO、Wi-Fi、HTTP、JSON、DHT11。
-- 诊断：Python/YAML 规则、JSON/YAML 故障树、Embedding、pgvector RAG、统一 `AIClient`、Pydantic 结构化输出；LangGraph 内嵌编排，LangChain 受控能力适配。
+- 诊断：Python/YAML 规则、JSON/YAML 故障树、结构化 `KnowledgeCase`、统一 `AIClient`、Pydantic 结构化推理与解释；LangGraph 内嵌编排，不使用自由规划 Agent。
 - 部署：Docker、Docker Compose、Nginx、GitHub Actions。
 
-背景 Word 中的 `ai-service` 独立目录、Chroma/FAISS 等内容属于早期草案。当前方案将 AI 诊断内聚到 FastAPI 后端，并统一使用 PostgreSQL + pgvector，避免第一版重复引入服务和数据库。
+背景 Word 中的 `ai-service` 独立目录、Chroma/FAISS、pgvector RAG 等内容属于早期草案。当前方案将 AI 诊断内聚到 FastAPI 后端，并使用 PostgreSQL 结构化知识，避免第一阶段重复引入服务和数据库。
 
 ## 6. 主要业务实体
 
-第一版至少包含：`users`、`classes`、`devices`、`experiments`、`experiment_templates`、`device_logs`、`sensor_readings`、`diagnosis_results`、`diagnosis_feedback`、`knowledge_cases`、`knowledge_chunks`、`ai_call_records`。
+第一版至少包含：`users`、`classes`、`devices`、`experiments`、`experiment_templates`、`device_logs`、`sensor_readings`、`diagnosis_results`、`diagnosis_feedback`、`knowledge_cases`、`knowledge_case_drafts`、`ai_call_records`。
 
 数据库结构必须通过 Alembic 迁移管理，不以手工修改表结构代替迁移。
 
@@ -94,11 +96,11 @@ ESP32 与传感器
 
 ## 8. 明确边界
 
-历史第一版曾禁止 LangChain/LangGraph；2026-08-13 的新工程设计已显式替代这一条。当前只在 FastAPI 模块化单体内引入 LangGraph 控制平面和 LangChain 能力层；仍不引入 Spring Boot、微服务、Kubernetes、Redis、消息队列、MQTT、多智能体、TinyML、图片接线识别、复杂机器学习模型或手机 App。前端不得直接访问数据库或 AI Provider，AI 不得直接执行硬件控制。
+历史第一版曾禁止 LangGraph；当前只在 FastAPI 模块化单体内引入受控状态编排，不引入自由规划 Agent 或多智能体。仍不引入 Spring Boot、微服务、Kubernetes、Redis、消息队列、MQTT、TinyML、图片接线识别、复杂机器学习模型或手机 App。前端不得直接访问数据库或 AI Provider，AI 不得直接执行硬件控制。
 
 ## 9. 待补充事实
 
-- `TODO[待补充]: AI Provider、API 基址、模型名与 Embedding 模型`
+- `TODO[待补充]: AI Provider、API 基址与模型名`
 - `TODO[待补充]: ESP32 具体型号`
 - `TODO[待补充]: DHT11 标准接线与 GPIO 规范`
 - `TODO[待补充]: Wi-Fi 名称和密码（仅本地私密配置）`

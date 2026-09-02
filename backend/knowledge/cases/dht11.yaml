@@ -1,0 +1,27 @@
+cases:
+  - id: dht11.sensor-read-failed.v1
+    experimentType: dht11_temperature_humidity
+    errorType: SENSOR_READ_FAILED
+    symptom: DHT11 温湿度采集连续失败或没有有效读数。
+    normalState:
+      description: 设备按实验节奏持续上报可解析的温度与湿度读数。
+      metrics: [temperature, humidity]
+    evidence:
+      - fact: log_event_count
+        description: 日志中出现 SENSOR_READ_FAILED。
+      - fact: reading_count
+        description: 诊断窗口内缺少有效 DHT11 读数。
+    possibleCauses:
+      - 供电、地线或数据线连接需要核对。
+      - 读取时序或软件库配置与当前实验不一致。
+      - 传感器或连线状态不稳定。
+    solutionSteps:
+      - 保留当前日志和接线状态，先不更换元件。
+      - 对照课程确认的接线表逐项核对供电、地线和数据引脚。
+      - 核对代码中的传感器类型、引脚和采样间隔，然后重新采集。
+      - 若仍连续失败，将日志、接线照片和代码片段提交教师复核。
+    teacherNotes: 引脚、供电与最小读取间隔必须以已批准的硬件手册和课程接线表为准。
+    reviewStatus: pending
+    sourceRef: knowledge/cases/dht11.yaml
+    version: "1"
+

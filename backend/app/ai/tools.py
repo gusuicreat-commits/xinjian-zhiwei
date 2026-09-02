@@ -3,19 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 from langchain_core.tools import BaseTool, tool
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.clients import EmbeddingClient
 from app.core.config import Settings
 from app.diagnosis.fault_tree_loader import load_fault_trees
 from app.diagnosis.loader import load_rules
-from app.services.hybrid_retrieval import hybrid_retrieve
+from app.models.knowledge import KnowledgeCase
 
 
 def build_read_only_diagnosis_tools(
     db: Session,
     settings: Settings,
-    embedding_client: EmbeddingClient,
+    embedding_client: Any = None,
     *,
     include_test_data: bool,
 ) -> list[BaseTool]:
@@ -25,6 +25,8 @@ def build_read_only_diagnosis_tools(
     No generic SQL, shell, HTTP, device-control, or database-write tool is exposed.
     """
 
+    del settings, embedding_client
+
     @tool
     def search_approved_fault_knowledge(
         query: str,
@@ -32,25 +34,31 @@ def build_read_only_diagnosis_tools(
         error_code: str | None = None,
         experiment: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Search teacher-approved fault knowledge using constrained metadata filters."""
-        filters = {
-            key: value
-            for key, value in {
-                "device_family": device_family,
-                "error_code": error_code,
-                "experiment": experiment,
-            }.items()
-            if value
-        }
-        result = hybrid_retrieve(
-            db,
-            query,
-            settings,
-            embedding_client,
-            include_test_data=include_test_data,
-            metadata_filters=filters,
-        )
-        return [item.model_dump(mode="json") for item in result.references]
+        """Match approved structured cases using explicit fields only."""
+        del query, device_family
+        statement = select(KnowledgeCase).where(KnowledgeCase.review_status == "approved")
+        if error_code:
+            statement = statement.where(KnowledgeCase.error_type == error_code)
+        if experiment:
+            statement = statement.where(KnowledgeCase.experiment_type == experiment)
+        if not include_test_data:
+            statement = statement.where(KnowledgeCase.is_test_data.is_(False))
+        cases = list(db.scalars(statement.order_by(KnowledgeCase.id).limit(20)))
+        return [
+            {
+                "case_id": item.id,
+                "experiment_type": item.experiment_type,
+                "error_type": item.error_type,
+                "symptom": item.symptom,
+                "evidence": item.evidence,
+                "possible_causes": item.possible_causes,
+                "solution_steps": item.solution_steps,
+                "teacher_notes": item.teacher_notes,
+                "source_ref": item.source_ref,
+                "version": item.version,
+            }
+            for item in cases
+        ]
 
     @tool
     def get_rule_explanation(rule_id: str) -> dict[str, Any]:

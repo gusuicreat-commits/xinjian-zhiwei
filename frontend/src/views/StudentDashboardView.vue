@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import {
   Bell,
-  Document,
   HomeFilled,
   List,
   Monitor,
@@ -72,11 +71,10 @@ const navItems = computed(() => {
 
   return [
     { label: '实验概览', meta: deviceStatus, target: 'overview', icon: HomeFilled },
-    { label: '实时日志', meta: `${data?.logs.length ?? 0} 条记录`, target: 'logs', icon: Document },
     {
-      label: '传感数据',
-      meta: `${data?.readings.length ?? 0} 组数据`,
-      target: 'readings',
+      label: '日志与传感数据',
+      meta: `${data?.logs.length ?? 0} 条日志 · ${data?.readings.length ?? 0} 组数据`,
+      target: 'logs',
       icon: TrendCharts,
     },
     { label: '诊断与反馈', meta: diagnosisStatus, target: 'diagnosis', icon: Warning },
@@ -129,6 +127,9 @@ async function runDiagnosisWorkflow(): Promise<void> {
     await dashboardStore.runDiagnosisWorkflow(sessionStore.credentials)
     const workflow = dashboardStore.workflow
     if (workflow?.status === 'waiting_teacher') ElMessage.warning('诊断已暂停，等待教师审核')
+    else if (workflow?.status === 'waiting_feedback') {
+      ElMessage.info('请按建议排查后反馈结果，系统将继续本次诊断')
+    }
     else if (workflow?.status === 'completed') ElMessage.success('辅助诊断工作流已完成')
     else ElMessage.info(`工作流状态：${workflow?.status || '未知'}`)
   } catch {

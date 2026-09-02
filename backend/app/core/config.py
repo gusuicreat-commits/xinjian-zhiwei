@@ -18,7 +18,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
-    api_cors_origins: str = "http://localhost:5173,http://localhost:8080"
+    api_cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:4173,http://127.0.0.1:4173,"
+        "http://localhost:8080"
+    )
     database_url: str = (
         "postgresql+psycopg://xinjian_app:TODO_CHANGE_ME@localhost:5432/xinjian_zhiwei"
     )
@@ -36,12 +40,6 @@ class Settings(BaseSettings):
     knowledge_chunk_overlap_chars: int = 150
     knowledge_max_document_chars: int = 500_000
     knowledge_max_file_bytes: int = 10_485_760
-    knowledge_embedding_provider: Optional[str] = None
-    knowledge_embedding_model: Optional[str] = None
-    knowledge_embedding_dimensions: Optional[int] = None
-    knowledge_embedding_transport: Literal["disabled", "openai-compatible"] = "disabled"
-    knowledge_embedding_base_url: Optional[str] = None
-    knowledge_embedding_api_key: Optional[str] = None
     ai_transport: Literal["disabled", "openai-compatible"] = "openai-compatible"
     ai_provider: Optional[str] = "deepseek"
     ai_base_url: Optional[str] = "https://api.deepseek.com"
@@ -101,17 +99,14 @@ class Settings(BaseSettings):
     ai_output_cost_per_1k_tokens: Optional[float] = None
     ai_cache_ttl_seconds: int = 86400
     ai_schema_version: str = "phase9-light-v1"
-    rag_lexical_top_n: int = 10
-    rag_vector_top_n: int = 10
-    rag_fused_top_k: int = 5
-    rag_rrf_k: int = 60
     diagnosis_workflow_enabled: bool = True
-    diagnosis_graph_version: str = "langgraph-v1"
+    diagnosis_graph_version: str = "langgraph-v2"
     diagnosis_checkpoint_backend: Literal["memory", "postgres"] = "memory"
     diagnosis_checkpoint_dsn: Optional[str] = None
     diagnosis_checkpoint_setup: bool = False
-    diagnosis_rag_trigger_score: float = 0.75
     diagnosis_teacher_review_score: float = 0.55
+    diagnosis_teacher_max_attempts: int = 3
+    diagnosis_teacher_duration_seconds: int = 900
 
     @field_validator("log_level")
     @classmethod
@@ -151,13 +146,6 @@ class Settings(BaseSettings):
             raise ValueError("knowledge_chunk_overlap_chars must not be negative")
         return value
 
-    @field_validator("knowledge_embedding_dimensions")
-    @classmethod
-    def validate_embedding_dimensions(cls, value: Optional[int]) -> Optional[int]:
-        if value is not None and value < 1:
-            raise ValueError("knowledge_embedding_dimensions must be positive")
-        return value
-
     @field_validator("ai_timeout_seconds")
     @classmethod
     def validate_ai_timeout(cls, value: float) -> float:
@@ -195,10 +183,6 @@ class Settings(BaseSettings):
         "ai_max_log_items",
         "ai_knowledge_content_max_chars",
         "ai_cache_ttl_seconds",
-        "rag_lexical_top_n",
-        "rag_vector_top_n",
-        "rag_fused_top_k",
-        "rag_rrf_k",
     )
     @classmethod
     def validate_positive_phase9_limit(cls, value: int) -> int:
@@ -220,11 +204,21 @@ class Settings(BaseSettings):
             raise ValueError("ai_low_confidence_threshold must be between 0 and 1")
         return value
 
-    @field_validator("diagnosis_rag_trigger_score", "diagnosis_teacher_review_score")
+    @field_validator("diagnosis_teacher_review_score")
     @classmethod
     def validate_workflow_threshold(cls, value: float) -> float:
         if value < 0 or value > 1:
             raise ValueError("diagnosis workflow thresholds must be between 0 and 1")
+        return value
+
+    @field_validator(
+        "diagnosis_teacher_max_attempts",
+        "diagnosis_teacher_duration_seconds",
+    )
+    @classmethod
+    def validate_workflow_limits(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("diagnosis workflow limits must be positive")
         return value
 
     @field_validator(
@@ -240,7 +234,6 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "knowledge_embedding_dimensions",
         "ai_daily_budget",
         "ai_max_cost_per_call",
         "ai_input_cost_per_1k_tokens",
@@ -252,10 +245,6 @@ class Settings(BaseSettings):
         return None if value == "" else value
 
     @field_validator(
-        "knowledge_embedding_provider",
-        "knowledge_embedding_model",
-        "knowledge_embedding_base_url",
-        "knowledge_embedding_api_key",
         "ai_provider",
         "ai_base_url",
         "ai_model",
@@ -291,23 +280,6 @@ class Settings(BaseSettings):
         if self.ai_transport != "openai-compatible":
             raise ValueError("DeepSeek production profile requires openai-compatible transport")
         return self
-
-    @property
-    def knowledge_embedding_configured(self) -> bool:
-        return bool(
-            self.knowledge_embedding_provider
-            and self.knowledge_embedding_model
-            and self.knowledge_embedding_dimensions
-        )
-
-    @property
-    def knowledge_embedding_client_configured(self) -> bool:
-        return bool(
-            self.knowledge_embedding_configured
-            and self.knowledge_embedding_transport != "disabled"
-            and self.knowledge_embedding_base_url
-            and self.knowledge_embedding_api_key
-        )
 
     @property
     def ai_configured(self) -> bool:

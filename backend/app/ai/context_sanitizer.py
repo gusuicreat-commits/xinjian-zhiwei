@@ -364,9 +364,10 @@ def build_safe_ai_input(
     *,
     episode_id: str | None,
     user_question: str | None,
+    workflow_state: dict[str, Any] | None = None,
 ) -> AIDiagnosisInput:
     context = dict(record.context_snapshot or {})
-    sensitive_values = _sensitive_values(context)
+    sensitive_values = _sensitive_values(context) | _sensitive_values(workflow_state or {})
     experiment = context.get("experiment_template") or {}
     safe_knowledge = _safe_knowledge(knowledge, settings, sensitive_values)
     return AIDiagnosisInput(
@@ -395,6 +396,40 @@ def build_safe_ai_input(
         rule_matches=_safe_rule_matches(record.matched_rules, sensitive_values),
         fault_tree_guidance=_safe_guidance(guidance, sensitive_values),
         knowledge=safe_knowledge,
+        workflow_state=_safe_value(
+            {
+                key: (workflow_state or {}).get(key)
+                for key in (
+                    "device_status",
+                    "experiment_type",
+                    "logs",
+                    "sensor_data",
+                    "sensor_values",
+                    "experiment_context",
+                    "error_type",
+                    "evidence",
+                    "possible_causes",
+                    "reasoned_causes",
+                    "reasoning_status",
+    "reasoning_summary",
+    "missing_evidence",
+    "next_verification_action",
+    "evidence_conflict",
+    "evidence_registry",
+    "allowed_verification_actions",
+    "knowledge_validation",
+                    "knowledge_context",
+                    "hint_level",
+                    "student_feedback",
+                    "historical_failures",
+                    "need_teacher_help",
+                    "diagnosis_status",
+                )
+                if key in (workflow_state or {})
+            },
+            sensitive_values=sensitive_values,
+            max_chars=500,
+        ),
         allowed_evidence=[
             sanitize_text(
                 f"{item.get('fact')}: {item.get('observed_value')}",

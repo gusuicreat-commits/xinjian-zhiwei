@@ -1,0 +1,23 @@
+cases:
+  - id: led.no-response.v1
+    experimentType: gpio_led_output
+    errorType: ACTUATOR_NO_RESPONSE
+    symptom: 程序已执行 LED 控制逻辑，但 LED 状态没有按预期变化。
+    normalState:
+      description: LED 按实验定义的电平和时序亮灭。
+    evidence:
+      - fact: expected_behavior_violation_count
+        description: 输出行为与实验预期不一致。
+    possibleCauses:
+      - GPIO 引脚配置与实际接线不一致。
+      - LED 极性、限流电阻或公共地连接需要核对。
+      - 代码的高低电平语义与实验板电路相反。
+    solutionSteps:
+      - 核对实验定义中的 GPIO 号与实际接线。
+      - 断电后检查 LED 极性、限流电阻与公共地。
+      - 用最小亮灭程序验证单一引脚，记录高低电平时的实际现象。
+    teacherNotes: 不应只根据“不亮”直接判定 LED 损坏，应先分离软件配置与物理连接。
+    reviewStatus: pending
+    sourceRef: knowledge/cases/led.yaml
+    version: "1"
+

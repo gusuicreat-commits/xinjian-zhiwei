@@ -60,6 +60,7 @@ const workflowStatusLabels: Record<
   deterministic_analysis: { label: '正在执行确定性诊断', type: 'primary' },
   retrieving: { label: '正在检索已审核知识', type: 'primary' },
   ai_analysis: { label: '正在生成辅助解释', type: 'primary' },
+  waiting_feedback: { label: '等待你的反馈', type: 'warning' },
   waiting_teacher: { label: '等待教师审核', type: 'warning' },
   completed: { label: '流程完成', type: 'success' },
   rejected: { label: '教师已驳回', type: 'danger' },
@@ -115,6 +116,7 @@ const workflowStatusMessage = computed(() => {
     deterministic_analysis: '正在根据设备记录分析异常原因。',
     retrieving: '正在对照已审核的操作资料。',
     ai_analysis: '正在把诊断结果整理成易懂的说明。',
+    waiting_feedback: '请按建议完成一次检查，然后反馈是否解决；你的反馈会作为下一轮证据。',
     waiting_teacher: '结果已提交教师确认，确认前不会作为最终建议发布。',
     completed: '辅助诊断已完成，可按建议继续排查或实验。',
     rejected: '教师认为当前信息不足，请补充设备记录后再试。',
@@ -133,6 +135,7 @@ const workflowBasis = computed(() => {
 })
 const workflowActionLabel = computed(() => {
   if (props.workflow?.status === 'waiting_teacher') return '等待教师确认'
+  if (props.workflow?.status === 'waiting_feedback') return '等待排查反馈'
   if (props.workflow?.status === 'completed') return '更新辅助诊断'
   if (props.workflow?.status === 'rejected' || props.workflow?.status === 'failed') {
     return '重新进行辅助诊断'
@@ -317,8 +320,8 @@ function formatReviewTime(value: string): string {
           当前限制：{{ diagnosis.explanation.limitations.join('；') }}
         </small>
         <small>
-          Provider {{ aiStatus.provider_configured ? '已配置' : '待配置' }} · Embedding
-          {{ aiStatus.embedding_client_configured ? '已配置' : '待配置' }} · Prompt
+          Provider {{ aiStatus.provider_configured ? '已配置' : '待配置' }} · 知识匹配
+          结构化案例 · Prompt
           {{ aiStatus.prompt_version }}
         </small>
       </div>

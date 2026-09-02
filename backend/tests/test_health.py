@@ -27,6 +27,27 @@ def test_root_probe_paths_are_available() -> None:
     assert "/health/dependencies" in openapi["paths"]
 
 
+def test_local_dev_origin_can_preflight_student_session_headers() -> None:
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/v1/student/dashboard",
+            headers={
+                "Origin": "http://localhost:4173",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": (
+                    "X-Device-ID,X-Device-Token,X-Experiment-Session-ID"
+                ),
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:4173"
+    allowed_headers = response.headers["access-control-allow-headers"].lower()
+    assert "x-device-id" in allowed_headers
+    assert "x-device-token" in allowed_headers
+    assert "x-experiment-session-id" in allowed_headers
+
+
 def test_openapi_exposes_health_endpoint() -> None:
     with TestClient(app) as client:
         response = client.get("/openapi.json")

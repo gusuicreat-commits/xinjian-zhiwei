@@ -4,6 +4,7 @@ export type DiagnosisWorkflowStatus =
   | 'deterministic_analysis'
   | 'retrieving'
   | 'ai_analysis'
+  | 'waiting_feedback'
   | 'waiting_teacher'
   | 'completed'
   | 'rejected'
@@ -45,20 +46,35 @@ export interface WorkflowKnowledgeReference {
 }
 
 export interface WorkflowReviewRequest {
+  kind?: 'student_feedback' | 'teacher_review'
   candidates?: WorkflowCandidateCause[]
   rule_hits?: WorkflowRuleHit[]
   retrieved_chunks?: WorkflowKnowledgeReference[]
   ai_result?: WorkflowExplanation | null
   deterministic_result?: WorkflowExplanation | null
   instruction?: string
+  allowed_actions?: Array<'resolved' | 'unresolved' | 'request_teacher_help'>
+  hint_level?: number
+  attempt_count?: number
+  next_verification_action?: string | null
 }
 
 export interface WorkflowExplanation {
   summary?: string
   evidence?: string[]
-  possible_causes?: Array<string | { cause?: string; confidence?: number }>
+  possible_causes?: Array<
+    string | { cause?: string; support_level?: 'high' | 'medium' | 'low' | 'unknown' }
+  >
   steps?: string[]
   limitations?: string[]
+}
+
+export interface WorkflowReasonedCause {
+  cause_id: string
+  cause: string
+  support_level: 'high' | 'medium' | 'low' | 'unknown'
+  used_evidence_ids: string[]
+  reason: string
 }
 
 export interface WorkflowFinalResult extends WorkflowExplanation {
@@ -70,6 +86,15 @@ export interface WorkflowFinalResult extends WorkflowExplanation {
   evidence_score?: number
   guidance_level?: number
   teacher_reviewed?: boolean
+  ai_reasoning?: {
+    mode?: 'ai' | 'deterministic_fallback'
+    status?: 'ranked' | 'unknown' | 'fallback'
+    summary?: string
+    ranked_causes?: WorkflowReasonedCause[]
+    missing_evidence?: string[]
+    next_verification_action?: string | null
+    conflict?: boolean
+  }
 }
 
 export interface WorkflowReview {

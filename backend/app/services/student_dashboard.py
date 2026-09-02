@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.knowledge.case_drafting import CaseDraftError, build_case_draft
 from app.models.ai_call_record import AICallRecord
 from app.models.classroom import DeviceBinding
 from app.models.device import Device
@@ -71,7 +72,10 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
         )
         ai_call = db.scalar(
             select(AICallRecord)
-            .where(AICallRecord.diagnosis_result_id == diagnosis.id)
+            .where(
+                AICallRecord.diagnosis_result_id == diagnosis.id,
+                AICallRecord.call_stage.like("explanation%"),
+            )
             .order_by(AICallRecord.created_at.desc(), AICallRecord.id.desc())
             .limit(1)
         )
@@ -223,6 +227,7 @@ def save_student_feedback(
         is_test_data=diagnosis.is_test_data,
     )
     db.add(record)
+    db.flush()
     episode = db.scalar(
         select(DiagnosisEpisode)
         .where(
@@ -260,6 +265,26 @@ def save_student_feedback(
                 actor_user_id=binding.student_user_id,
                 source="student_device_feedback",
             )
+    if payload.action == "resolved":
+        guidance = list(
+            db.scalars(
+                select(GuidanceHistory)
+                .where(GuidanceHistory.diagnosis_result_id == diagnosis.id)
+                .order_by(GuidanceHistory.fault_tree_id)
+            )
+        )
+        try:
+            build_case_draft(
+                db,
+                diagnosis,
+                record,
+                guidance,
+                commit=False,
+            )
+        except CaseDraftError:
+            # Feedback remains valid even when the diagnosis lacks enough verified
+            # facts to create a knowledge draft.
+            pass
     db.commit()
     db.refresh(record)
     return record

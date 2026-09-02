@@ -15,7 +15,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.vector import PortableVector
 from app.models.base import TimestampMixin, UuidPrimaryKeyMixin, utc_now
 
 
@@ -90,35 +89,6 @@ class KnowledgeChunk(UuidPrimaryKeyMixin, Base):
     )
 
     document = relationship("KnowledgeDocument", back_populates="chunks")
-    embeddings = relationship(
-        "KnowledgeEmbedding", back_populates="chunk", cascade="all, delete-orphan"
-    )
-
-
-class KnowledgeEmbedding(UuidPrimaryKeyMixin, Base):
-    __tablename__ = "knowledge_embeddings"
-    __table_args__ = (
-        UniqueConstraint(
-            "chunk_id", "provider", "model", name="uq_knowledge_embedding_chunk_model"
-        ),
-        Index("ix_knowledge_embeddings_model", "provider", "model"),
-    )
-
-    chunk_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("knowledge_chunks.id", ondelete="CASCADE"), nullable=False
-    )
-    provider: Mapped[str] = mapped_column(String(100), nullable=False)
-    model: Mapped[str] = mapped_column(String(200), nullable=False)
-    dimensions: Mapped[int] = mapped_column(Integer, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(PortableVector(), nullable=False)
-    is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
-    )
-
-    chunk = relationship("KnowledgeChunk", back_populates="embeddings")
-
-
 class KnowledgeReview(UuidPrimaryKeyMixin, Base):
     __tablename__ = "knowledge_reviews"
     __table_args__ = (Index("ix_knowledge_reviews_document_created", "document_id", "created_at"),)
@@ -135,3 +105,98 @@ class KnowledgeReview(UuidPrimaryKeyMixin, Base):
     )
 
     document = relationship("KnowledgeDocument", back_populates="reviews")
+
+
+class KnowledgeCase(TimestampMixin, Base):
+    """A reviewable, structured troubleshooting case used by the MVP matcher."""
+
+    __tablename__ = "knowledge_cases"
+    __table_args__ = (
+        Index(
+            "ix_knowledge_cases_match",
+            "experiment_type",
+            "error_type",
+            "review_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    experiment_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    error_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    symptom: Mapped[str] = mapped_column(Text, nullable=False)
+    normal_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    possible_causes: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    solution_steps: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    teacher_notes: Mapped[Optional[str]] = mapped_column(Text)
+    facts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    root_cause_value: Mapped[Optional[str]] = mapped_column(String(200))
+    root_cause_status: Mapped[str] = mapped_column(
+        String(20), default="unknown", nullable=False
+    )
+    confirmed_by: Mapped[Optional[str]] = mapped_column(String(200))
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    solution_record: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    ai_generated_fields: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    source_type: Mapped[str] = mapped_column(
+        String(30), default="curated_template", nullable=False
+    )
+    facts_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    quality_check_passed: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    review_status: Mapped[str] = mapped_column(
+        String(20), default="draft", index=True, nullable=False
+    )
+    source_ref: Mapped[str] = mapped_column(String(500), nullable=False)
+    version: Mapped[str] = mapped_column(String(50), default="1", nullable=False)
+    is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class KnowledgeCaseDraft(UuidPrimaryKeyMixin, TimestampMixin, Base):
+    """Fact-bound case draft that must pass teacher review before publication."""
+
+    __tablename__ = "knowledge_case_drafts"
+    __table_args__ = (
+        Index("ix_knowledge_case_drafts_status_created", "status", "created_at"),
+        UniqueConstraint(
+            "diagnosis_result_id",
+            "feedback_id",
+            name="uq_knowledge_case_drafts_diagnosis_feedback",
+        ),
+    )
+
+    diagnosis_result_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("diagnosis_results.id", ondelete="CASCADE"), nullable=False
+    )
+    feedback_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("diagnosis_feedback.id", ondelete="RESTRICT"), nullable=False
+    )
+    experiment_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    error_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    fact_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    template_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    polished_payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
+    quality_checks: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    root_cause: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    solution_record: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    source_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    allowed_ai_fields: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
+    facts_locked: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    ai_audit: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30), default="draft", index=True, nullable=False
+    )
+    reviewer_ref: Mapped[Optional[str]] = mapped_column(String(200))
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

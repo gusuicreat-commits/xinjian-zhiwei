@@ -1,149 +1,162 @@
 # 芯鉴知微系统架构
 
-## 1. 架构目标
+最后更新：2026-09-02
 
-系统以可追溯的真实设备数据为基础，将采集、存储、确定性诊断、知识检索、AI 解释和教学反馈分层。第一版采用模块化单体后端，避免为尚未验证的规模引入微服务复杂度。
+## 1. V2 架构目标
+
+V2 在现有 MVP 上增加证据驱动的 Diagnosis Workflow，不推翻设备采集、规则、故障树、结构化知识、AI 治理、学生端和教师端。采用 FastAPI 模块化单体、LangGraph 流程编排、PostgreSQL 业务库和 Vue 3 前端，不引入多智能体、自主规划、向量数据库或 RAG 核心链路。
+
+本轮实现以《芯鉴知微 V2 最终架构文档：完整对话总结与技术决策》（2026 年 9 月）为开发基线，落实 Evidence、Deterministic Diagnosis、Constrained Reasoning、Teaching Workflow 和 Knowledge Lifecycle 五层边界。
 
 ## 2. 逻辑架构
 
 ```text
-[待确定的嵌入式设备 + 传感器适配器]
+[嵌入式设备 / 传感器]
        | HTTP + JSON + device token
        v
 [FastAPI /api/v1]
-       |-- 请求校验与限流
-       |-- 设备/用户/实验服务
-       |-- 规则引擎（YAML）
-       |-- 故障树（JSON/YAML）
-       |-- Episode 事件聚合
-       |-- 混合 RAG（PostgreSQL FTS + pgvector + RRF）
-       |-- 设备状态解释层（确定性翻译 / 可选 AI 综合）
-       |-- AI 策略/缓存/可选增强
-       |-- LangGraph 控制平面 / LangChain 受控能力层
-       |-- 教师 interrupt 审核与恢复
+       |-- 设备认证、校验、限流与幂等采集
+       |-- DiagnosisContext 归一化
+       |-- LangGraph Diagnosis Workflow
+       |     |-- 规则引擎：异常类型 + 确定性证据
+       |     |-- 故障树：候选原因 + 证据排序
+       |     |-- AI 受约束原因排序：候选集内推理 + 证据白名单
+       |     |-- KnowledgeCase 结构化校验与经验补充
+       |     |-- 可选 AI 结构化解释
+       |     `-- 学生反馈、提示升级与教师介入
+       |-- 校验、审计、Checkpoint 与确定性降级
        v
-[PostgreSQL + pgvector]
+[PostgreSQL]
        ^
        |
-[Vue 3 学生端 / 教师端] -- Axios --> [FastAPI]
+[学生端 / 教师端] -- Axios --> [FastAPI]
 ```
 
-Nginx 在部署阶段提供统一入口和静态资源服务。设备端、前端和后端之间只通过明确 API 交互。
+LangGraph 只管理节点顺序、状态流转、条件分支和暂停恢复，不替代规则判断。AI 可以在故障树限定的原因空间内综合证据、重排原因并输出离散支持等级，但不能改变规则错误类型、创造新原因或引用白名单以外的证据。支持等级不是统计概率。
 
-## 3. 目标目录
+## 3. 核心目录
 
 ```text
-xinjian-zhiwei/
-├── frontend/                 # Vue 3 学生端与教师端
-├── backend/                  # FastAPI、业务服务与诊断流水线
-│   └── app/
-│       ├── api/
-│       ├── core/
-│       ├── models/
-│       ├── schemas/
-│       ├── repositories/
-│       ├── services/
-│       ├── diagnosis/        # rules、fault_tree、rag、anomaly
-│       └── ai/               # clients、prompts、structured_output
-├── device/                   # PlatformIO 设备项目
-├── simulator/                # 明确标记的测试设备模拟器
-├── data/knowledge/           # 本地原始资料与解析缓存（Git 忽略）
-├── docs/
-├── scripts/
-├── tests/
-├── compose.yaml
-└── .env.example
+backend/
+├── app/
+│   ├── diagnosis/             # DiagnosisContext、DiagnosisState、规则与故障树
+│   ├── knowledge/             # 结构化案例加载与确定性匹配代码
+│   ├── ai/                    # LangGraph 编排、AI Provider、脱敏与输出校验
+│   ├── models/                # 业务与 KnowledgeCase 数据模型
+│   ├── schemas/
+│   └── services/
+├── knowledge/                 # 内容与代码分离
+│   ├── cases/                 # 五类实验的 YAML 案例
+│   ├── templates/             # 案例导入/审核模板
+│   └── rules/                 # 显式匹配字段规则
+└── migrations/
 ```
 
-Phase 9 已落地 `frontend/`、`backend/`、设备认证与采集 API、可配置测试模拟器、YAML 确定性规则诊断、可配置故障树与分层提示、学生/教师工作台、来源可追溯的知识框架，以及 Provider 无关的 AI/Embedding 客户端、结构化输出校验、审计和降级。P1 在此基础上增加协议 V1、持久化幂等、批量原子上传、乱序保护、时间质量和模拟器重试。当前没有真实设备数据或正式知识，禁用状态不会冒充硬件、知识或 AI 能力。
+MVP 中不存在 `knowledge/embedding/`、`knowledge/vector_store/` 或 `knowledge/rag/`。它们是有明确需求和验收指标后才增加的扩展层。
 
-## 4. 模块职责
+## 4. V2 DiagnosisState
 
-### 设备端
+一次诊断的运行状态由 `DiagnosisState` 承载，核心字段为：
 
-- 通过待确定的硬件适配器采集通用指标、日志和心跳。
-- 对网络错误重试并限制上传频率。
-- 使用私密配置保存 Wi-Fi 和设备令牌；仓库只提交示例配置。
-- 可生成低风险边缘错误码，但不执行云端诊断或自动硬件控制。
+```text
+device_status / experiment_type / logs / sensor_values / experiment_context
+error_type / evidence / possible_causes / knowledge_context
+historical_failures / hint_level / student_feedback
+attempt_count / missing_evidence / next_verification_action
+evidence_conflict / need_teacher_help / diagnosis_status
+```
 
-### FastAPI 后端
+状态中还保留工作流 ID、规则版本、故障树版本、输入指纹、节点轨迹和耗时指标，用于幂等执行、审计与恢复。日志和传感器状态进入 Checkpoint 前会被脱敏和限量；完整业务快照仍由现有 `diagnosis_results` 权限边界管理。
 
-- 校验身份、请求大小、字段和时间戳。
-- 保存业务字段及原始请求，保证诊断证据可追溯。
-- 以 Repository/Service 分层管理数据库访问和业务逻辑。
-- 统一编排规则、故障树、RAG 和 AI，不让前端越过后端访问内部服务。
+## 5. V2 诊断流程
 
-### 诊断流水线
+```text
+context_builder
+  → rule_engine
+  → fault_tree_analyzer
+  → ai_reasoning
+  → knowledge_service
+  → ai_explanation
+  → escalation_handler
+  → feedback_handler（LangGraph interrupt）
+      ├─ unresolved → escalation_handler → ai_reasoning（继续同一诊断）
+      ├─ resolved → persist_result + KnowledgeCaseDraft
+      └─ request_teacher_help → teacher_review
+```
 
-1. 加载稳定 ID/版本的 Experiment Definition；旧调用未指定定义时进入兼容模式。
-2. Normalizer 把实验原始格式或旧日志、心跳、读数投影为统一 Observation/Event，Unknown
-   数据连同原始载荷显式保留。
-3. 从设备、组件、接口、Expected Behavior 和标准事实构造 `DiagnosisContext`，并把同设备、
-   同实验、同主要错误在时间窗口内聚合为 `DiagnosisEpisode`。
-4. 按 common/interface/component/experiment Scope 加载 YAML 规则与故障树，生成不可被 AI
-   覆盖的 `DiagnosisCore`。
-5. 在 Phase 8 同一知识表上执行结构化过滤、PostgreSQL FTS 关键词检索和可选 pgvector 检索，再以 RRF 融合。
-6. 设备状态解释层把已确认的设备状态、错误码、规则、故障树与 Level 投影为稳定的
-   `status_title/status_summary/meaning/next_step/source/technical_details`；原始日志、读数、
-   规则和故障树证据仍保留在技术详情中。
-7. 明确错误码、正常状态和单一简单异常只使用确定性翻译。`AIExplanationPolicy` 只对
-   低置信、冲突、未知、多异常、明确追问或升级场景放行；高置信已知异常默认零调用。
-8. 放行后先查 PostgreSQL 指纹缓存；生产默认只调用 DeepSeek
-   `deepseek-v4-flash` 非思考模式，不做多模型分层。
-9. AI 输出经 Pydantic、证据白名单和知识引用校验，只能改写学生文案；任何失败、限流、
-   预算耗尽或 Provider 未配置都返回完整确定性说明。
+1. `context_builder` 复用 `DiagnosisContext`，构建脱敏、有限的 V2 状态。
+2. `rule_engine` 是异常类型与确定性证据的唯一判定节点。
+3. `fault_tree_analyzer` 根据证据排序原因，并计算初始提示等级。
+4. `ai_reasoning` 只能在故障树候选集中排序，输出 `high/medium/low/unknown`、`used_evidence_ids`、缺失证据、冲突和允许的下一验证动作；越界时回退故障树排序。
+5. `knowledge_service` 按显式字段匹配已审核案例，校验推理上下文并补充规范、历史经验和步骤。
+6. `ai_explanation` 把已约束推理与知识校验结果转换成学生可理解的结构化建议。
+7. `feedback_handler` 暂停工作流等待学生反馈；反馈作为新证据恢复同一 LangGraph thread。
+8. `escalation_handler` 根据尝试次数、异常持续时间、提示等级、未知结论和证据冲突，决定继续推理或请求教师介入。
 
-### 前端
+`teacher_review`、`persist_result` 和 `reject_result` 是审核与持久化基础设施节点，不属于 AI 推理能力。
 
-- 学生端异常卡片先显示一句话状态、通俗含义和下一步，再用折叠区保留原始错误码、
-  日志、读数、规则命中和故障树证据。
-- 教师端面向班级进度、设备状态、错误统计和介入队列。
-- 统一 API 类型和 Axios 客户端，完整处理加载、空、错误状态。
+## 6. KnowledgeCase 与内容治理
 
-### PostgreSQL + pgvector
+`knowledge_cases` 是 MVP 诊断知识的业务真相源，核心字段包括：
 
-- 统一保存业务数据、诊断证据、调用记录、知识案例和向量。
-- Alembic 是数据库结构唯一变更路径。
-- 第一版不并行引入其他业务数据库、向量数据库或缓存。
+- `id`、`experiment_type`、`error_type`、`symptom`；
+- `normal_state`、`evidence`、`possible_causes`、`solution_steps`；
+- `teacher_notes`、`review_status`、`source_ref`、`version`、`is_test_data`。
+- `facts`、`root_cause_status`、`confirmed_by`、`solution_record`；
+- `facts_locked`、`quality_check_passed`、`ai_generated_fields`、`source_type`。
 
-## 5. 关键架构决策
+YAML 文件是可审阅源文本，PostgreSQL 记录是运行时数据。`python -m app.cli.sync_knowledge_cases` 负责格式校验和幂等同步。只有同时满足 `approved + confirmed + facts_locked + quality_check_passed` 的真实实验案例可进入诊断。
 
-| 决策 | 选择 | 理由 |
+诊断案例沉淀采用 `KnowledgeCaseDraft`，不允许 AI 自动写入正式知识库：
+
+```text
+事实数据与规则过程
+  → 学生 resolved 反馈
+  → 模板生成事实绑定草稿（根因仍为 unknown）
+  → 可选 AI 表达字段优化并保存模型/Prompt 审计
+  → 事实字段一致性检查
+  → 教师确认根因与真实解决动作
+  → approved KnowledgeCase
+```
+
+AI 优化时不得修改 `experimentType`、`errorType`、`normalState`、`evidence`、`possibleCauses` 或 `solutionSteps`。只有教师/正式审核角色可将草稿发布为正式案例。
+
+## 7. 关键架构决策
+
+| 决策 | MVP 选择 | 理由 |
 | --- | --- | --- |
-| 后端形态 | FastAPI 模块化单体 | 第一版闭环优先，降低部署和联调复杂度 |
-| 传输 | HTTP + JSON | ESP32 与浏览器易实现、易调试；第一版不引入 MQTT |
-| 数据库 | PostgreSQL + pgvector | 业务和向量数据统一治理，减少重复基础设施 |
-| 诊断优先级 | 规则/故障树先，AI 后 | 结果确定、可解释，并支持 AI 故障降级 |
-| AI 接入 | DeepSeek 官方 API + 可替换 `AIClient` | 生产模型固定为 `deepseek-v4-flash` 非思考模式，业务逻辑仍不绑定厂商 |
-| API 版本 | `/api/v1` | 稳定设备协议并支持后续兼容演进 |
-| 容器基础镜像 | AWS Public ECR 的 Docker Official Images 镜像源 | 当前网络无法连接 Docker Hub；保留 `BASE_REGISTRY` 参数以便切换 |
+| 后端形态 | FastAPI 模块化单体 | 减少部署与联调复杂度 |
+| 工作流 | 单一 LangGraph 状态图 | 流程可控、可恢复、节点可审计 |
+| 数据库 | PostgreSQL | 统一业务与结构化知识治理 |
+| 诊断优先级 | 规则 → 故障树 → 知识 → AI | 判定确定、证据可追溯、AI 可降级 |
+| 知识匹配 | 精确字段 + 证据加分 | 小规模知识下更稳定、可解释 |
+| RAG / Embedding | MVP 不引入 | 当前不是大规模搜索问题 |
+| AI 推理 | 候选集内排序 + 证据白名单 | 允许综合推理，但不扩大故障空间 |
+| AI 解释 | 可替换 `AIClient` 的受约束表达层 | 生成结构化教学建议，不接管规则判定 |
+| Agent | 不引入多智能体或自主规划 | 避免不可控执行与额外状态复杂度 |
+| API | `/api/v1` | 保持设备协议和前端兼容性 |
 
-## 6. 安全与可观测性基线
+## 8. 安全、审计与兼容
 
-- 密码和设备令牌哈希保存；密钥只通过后端环境变量注入。
-- 按角色校验学生、教师和管理员权限。
-- 限制请求大小、设备上传速率和 AI 超时/重试。
-- 日志不得记录密码、令牌或 AI 密钥。
-- `phase9.5-allowlist-v1` 在模型调用前匿名化设备、截取关键日志、聚合读数并剔除学生身份、令牌、密码、Authorization、Wi-Fi 和教师私人备注。
-- `ai_call_records` 保存模型名、完整路由路径、安全输入摘要、耗时、状态和失败分类，但不保存敏感输入或密钥。
-- 健康检查、结构化日志和容器健康状态从 Phase 1 开始建立。
+- 设备令牌和用户密码哈希保存；Provider 密钥只从服务端环境变量读取。
+- AI 前的 allowlist 会匿名化设备、聚合读数、截取相关日志并删除身份、令牌和密钥。
+- AI 输出不能修改错误类型、规则证据或故障树分数。
+- AI 推理与解释按首次运行及反馈轮次分别审计，`call_stage` 包含反馈 ID，保留每轮输入输出。
+- 学生确认产生的案例先进入 `knowledge_case_drafts`；未经过教师审核不会被诊断主链匹配。
+- V1 数据表和对外 API 保留；新运行记录使用 `graph_version=langgraph-v2`，历史记录仍可审计。
+- 已存在数据库中的 `needs_rag`、`embedding_version`、`retrieval_audit` 和部分 `chunk_id` 字段暂保留为升级兼容容器。新流程固定 `needs_rag=false`、`embedding_version=null`，`retrieval_audit.mode=structured_case_match`，它们不表示 MVP 仍在执行 RAG。
 
-## 7. 当前架构风险
+## 9. 未来 RAG 扩展
 
-1. Git 已包含 Phase 9.5/9.6 基线；无真实硬件路线 P1–P11 经最终独立审计后纳入
-   `1.0.0` 软件就绪提交。
-2. Docker Desktop 4.82.0 已安装，Compose 三服务运行验收通过；PlatformIO 仍不可用，将在设备阶段处理。
-3. LangGraph/LangChain 引入后后端最低 Python 为 3.10；容器与 CI 使用 Python 3.12，旧的本机 Python 3.9 虚拟环境必须重建。
-4. Node.js v26.3.0 已通过本地 lint、Vitest、类型检查、构建和 Playwright，但生产容器固定使用 Node 22，降低部署兼容风险。
-5. DeepSeek Provider、`deepseek-v4-flash` 和非思考模式已经确定；真实 API Key、正式预算、Embedding、ESP32 型号、接线、账号和知识来源仍待确认。
-6. 上传限流与保留 dry-run 已实现；设备令牌轮换、生产保留策略和责任人仍待确认。
-7. 背景 Word 的旧技术草案与固定方案有差异，已在 `PROJECT_CONTEXT.md` 中明确裁决，后续不得同时保留两套实现。
-8. 当前源码和 Docker 版本为 `1.0.0`，迁移 Head 为 `20260818_0021`；AI 总开关默认
-   关闭，无 Key 时保持 Disabled。
+当结构化案例数量、跨文档问答需求或同义表达召回问题超过显式匹配能力时，再增加：
 
-物理拓扑、USB/Wi-Fi 职责、局域网/公网边界和三种部署模式见
-[运行架构](runtime-architecture.md) 与 [部署说明](deployment.md)。P1–P11 的通用框架
-完成不代表真实硬件、正式知识或生产部署已经就绪。
+```text
+knowledge/
+├── embedding/       # 可重建的派生索引
+├── vector_store/    # pgvector 或其他存储适配器
+└── rag/             # 召回、重排、引用与评测
+```
 
-跨实验诊断内核、Experiment Definition、Normalizer、Expected Behavior、规则/故障树 Scope、
-Knowledge Scope 及新增实验流程见[可迁移实验诊断框架](experiment-diagnostic-framework.md)。
+扩展时不改变 `KnowledgeCase`、规则引擎、故障树和 AI 输出契约；向量只是可重建的检索索引，不是诊断事实源。
+
+运行拓扑与部署边界另见 [运行架构](runtime-architecture.md)；AI 输入、输出与校验详见 [V2 AI 诊断设计](ai-diagnosis-design.md)。

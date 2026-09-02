@@ -606,7 +606,7 @@ body {
 
 .student-section-nav {
   top: 100px;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   gap: 0;
   width: 100%;
   max-width: 1600px;
@@ -1933,7 +1933,7 @@ body {
   }
 
   .student-section-nav {
-    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    grid-template-columns: repeat(3, minmax(130px, 1fr));
     overflow-x: auto;
   }
 

@@ -14,6 +14,8 @@ RUN python -m pip install --upgrade pip && \
 
 COPY alembic.ini ./
 COPY app ./app
+COPY knowledge ./knowledge
+COPY evaluation ./evaluation
 COPY migrations ./migrations
 
 RUN python -m pip install --no-deps .

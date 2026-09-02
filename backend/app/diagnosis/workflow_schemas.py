@@ -15,6 +15,7 @@ DiagnosisWorkflowStatus = Literal[
     "deterministic_analysis",
     "retrieving",
     "ai_analysis",
+    "waiting_feedback",
     "waiting_teacher",
     "completed",
     "rejected",
@@ -46,6 +47,43 @@ class WorkflowRetrievedChunk(TypedDict):
 
 
 class DiagnosisState(TypedDict, total=False):
+    """V2 state for one controlled diagnosis run.
+
+    The first block is the product-facing state contract. Fields below it retain
+    identifiers, audit metadata and V1 aliases required by existing APIs and
+    persisted workflow records.
+    """
+
+    device_status: dict[str, Any]
+    experiment_type: str | None
+    logs: list[dict[str, Any]]
+    sensor_data: list[dict[str, Any]]
+    sensor_values: list[dict[str, Any]]
+    experiment_context: dict[str, Any]
+    error_type: str | None
+    evidence: list[dict[str, Any]]
+    possible_causes: list[dict[str, Any]]
+    knowledge_context: list[WorkflowRetrievedChunk]
+    hint_level: int
+    student_feedback: dict[str, Any] | None
+    historical_failures: int
+    attempt_count: int
+    need_teacher_help: bool
+    diagnosis_status: DiagnosisWorkflowStatus
+    failure_count: int
+    anomaly_duration_seconds: int
+    reasoned_causes: list[dict[str, Any]]
+    reasoning_status: Literal["ranked", "unknown", "fallback"]
+    reasoning_summary: str
+    reasoning_mode: Literal["ai", "deterministic_fallback"]
+    missing_evidence: list[str]
+    next_verification_action: str | None
+    evidence_conflict: bool
+    evidence_registry: list[dict[str, Any]]
+    allowed_verification_actions: list[dict[str, Any]]
+    knowledge_validation: dict[str, Any]
+
+    # Workflow identity and audit metadata.
     diagnosis_id: str
     student_user_id: str
     experiment_session_id: str

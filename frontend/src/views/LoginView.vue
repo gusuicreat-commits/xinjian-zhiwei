@@ -21,41 +21,25 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <main class="login-page">
-    <section class="login-shell">
-      <div class="login-hero">
-        <header class="login-brand">
+  <main class="auth-page auth-page--student">
+    <header class="auth-topbar">
+      <div class="auth-topbar-inner">
+        <div class="auth-brand">
           <Monitor aria-hidden="true" />
-          <div>
-            <h1>芯鉴知微</h1>
-            <p>嵌入式实验智能分析平台</p>
+          <div class="auth-brand-copy">
+            <strong>芯鉴知微</strong>
+            <small>嵌入式实验智能分析平台</small>
           </div>
-          <b>学生端</b>
-        </header>
-
-        <div class="login-hero-copy">
-          <p class="auth-kicker">STUDENT LAB ACCESS</p>
-          <h2>
-            <span class="auth-title-line">让每一次设备异常，</span>
-            <span class="auth-title-line auth-title-accent">都有清晰下一步。</span>
-          </h2>
-          <p>连接设备日志、传感数据与诊断建议，在同一工作台完成实验排查与反馈。</p>
+          <span class="auth-portal-badge">学生端</span>
         </div>
-
-        <img
-          class="login-illustration"
-          src="/assets/login-chip-platform.png"
-          alt="铜色微芯片与传感模块三维插画"
-        />
-
-        <p class="login-hero-lede">
-          系统持续整理设备状态和实验记录，帮助你更快定位异常、验证排查结果，并在需要时请求教师协助。
-        </p>
+        <router-link class="auth-topbar-switch" to="/teacher/login">教师端登录</router-link>
       </div>
+    </header>
 
-      <div class="login-access">
+    <section class="auth-stage" aria-labelledby="student-login-title">
+      <div class="auth-card">
         <p class="auth-kicker">DEVICE SESSION</p>
-        <h2>连接实验设备</h2>
+        <h1 id="student-login-title">连接实验设备</h1>
         <p class="auth-panel-copy">输入设备 ID 与一次性令牌，进入当前实验会话。</p>
 
         <el-form class="login-form" @submit.prevent="submit">
@@ -108,9 +92,8 @@ async function submit(): Promise<void> {
             <span>测试凭据请由后端 demo 数据脚本生成；页面仅保存本次浏览器会话。</span>
           </div>
         </div>
-        <router-link class="auth-switch" to="/teacher/login">切换到教师账号登录</router-link>
-        <footer>安全 · 稳定 · 可追溯</footer>
       </div>
     </section>
+    <footer class="auth-footer">安全 · 稳定 · 可追溯</footer>
   </main>
 </template>

@@ -79,8 +79,8 @@ P2 的可空 `test_run_id` 只标记合成场景运行并建立索引，用于�
 追加保存诊断、Episode 与可选工作流关联、触发原因、缓存状态、最后路由、完整
 `route_path`、Provider/模型、Prompt 版本与哈希、状态、耗时、结构化输出、知识引用、
 Token、成本占位、校验和降级原因。输入快照只保存匿名标识、哈希、计数与隐私控制
-摘要；失败和跳过记录同样保留。`workflow_run_id` 唯一，使同一图工作流重放复用原审计，
-不重复累计预算、成本与 Episode AI 调用数。
+摘要；失败和跳过记录同样保留。`workflow_run_id + call_stage` 唯一，推理与解释按反馈轮次分别记录，
+同一阶段的图工作流重放复用原审计，不重复累计预算或成本。
 
 ### `ai_explanation_cache`
 
@@ -89,7 +89,7 @@ Token、成本占位、校验和降级原因。输入快照只保存匿名标识
 ### `diagnosis_workflow_runs` 与 `diagnosis_workflow_reviews`
 
 前者保存 LangGraph 业务流水、设备/诊断关联、`diagnosis:<workflow_id>`、图/规则/
-故障树/Embedding/模型版本、节点路径/耗时、RAG 审计、恢复次数、证据分、Level、
+故障树/模型版本、节点路径/耗时、结构化案例匹配审计、恢复次数、证据分、Level、
 审核请求和最终投影；后者追加保存唯一一次审核人与 `approve/edit/reject` 决定。
 LangGraph checkpoint 表由官方
 PostgreSQL saver 的 `.setup()` 独立管理，不在 Alembic 中重复定义。
@@ -148,6 +148,10 @@ PostgreSQL saver 的 `.setup()` 独立管理，不在 Alembic 中重复定义。
 - `20260813_0019` 为 AI 调用增加可空的工作流唯一外键，使图节点重放复用既有审计记录。
 - `20260818_0021` 为诊断结果增加可空的实验 ID、版本、定义哈希与 Knowledge Scope，并为
   Guidance 增加故障树来源和 Scope；不回填或删除旧数据。
+- `20260901_0022` 增加结构化 `knowledge_cases`，第一阶段不创建向量表。
+- `20260901_0023` 将 AI 调用幂等键扩展为 `workflow_run_id + call_stage`，支持原因推理与解释分别审计。
+- `20260901_0024` 增加事实绑定的 `knowledge_case_drafts`，只有教师审核后才能发布为正式案例。
+- `20260902_0025` 增加根因状态、事实锁定、真实解决记录、AI 表达审计和反馈轮次调用阶段；正式案例必须教师确认根因。
 
 用户、班级和实验模板通用框架已经建立，但正式用户、班级、任务与模板内容仍待人工
 录入和审核。知识库与 AI 审计表已经建立；仅有测试记录和禁用真实 Provider 只代表

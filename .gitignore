@@ -19,6 +19,7 @@ htmlcov/
 # Node
 node_modules/
 frontend/dist/
+frontend/review-dist/
 frontend/playwright-report/
 frontend/test-results/
 

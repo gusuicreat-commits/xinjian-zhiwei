@@ -26,6 +26,7 @@ from app.models.classroom import (
     User,
 )
 from app.models.device import Device
+from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_workflow import DiagnosisWorkflowRun
 
 
@@ -196,8 +197,8 @@ def _interrupt_payload(result: dict[str, Any]) -> dict[str, Any] | None:
     value = getattr(interrupts[0], "value", None)
     if not isinstance(value, dict):
         return {"value": value}
-    # Both checkpoints and business APIs retain only stable source metadata and
-    # scores, never RAG chunk content.
+    # Both checkpoints and business APIs retain only stable structured-case
+    # metadata and scores, never teacher notes or full case content.
     payload = dict(value)
     payload["retrieved_chunks"] = [
         _public_knowledge_reference(item)
@@ -212,6 +213,9 @@ def _public_knowledge_reference(item: dict[str, Any]) -> dict[str, Any]:
     locator = metadata.get("locator") if isinstance(metadata.get("locator"), dict) else {}
     return {
         "chunk_id": sanitize_text(item.get("chunk_id"), max_chars=100),
+        "case_id": sanitize_text(
+            item.get("case_id") or item.get("chunk_id"), max_chars=100
+        ),
         "source_id": sanitize_text(item.get("source_id"), max_chars=200),
         "title": sanitize_text(item.get("title"), max_chars=200),
         "score": float(item.get("score") or 0.0),
@@ -242,7 +246,7 @@ def _public_knowledge_reference(item: dict[str, Any]) -> dict[str, Any]:
             "retrieval_scores": {
                 key: float(value)
                 for key, value in (metadata.get("retrieval_scores") or {}).items()
-                if key in {"lexical", "vector", "rrf"} and isinstance(value, (int, float))
+                if key == "structured_match" and isinstance(value, (int, float))
             },
             "is_test_data": bool(metadata.get("is_test_data")),
         },
@@ -258,12 +262,14 @@ def _sync_business_record(
 ) -> DiagnosisWorkflowRun:
     trace = list(state.get("node_trace") or [])
     workflow.diagnosis_result_id = state.get("diagnosis_result_id") or workflow.diagnosis_result_id
-    workflow.status = state.get("status") or workflow.status
+    workflow.status = state.get("diagnosis_status") or state.get("status") or workflow.status
     workflow.current_node = trace[-1] if trace else workflow.current_node
     workflow.evidence_score = state.get("evidence_score")
-    workflow.guidance_level = state.get("guidance_level")
-    workflow.needs_rag = bool(state.get("needs_rag"))
-    workflow.needs_teacher = bool(state.get("needs_teacher"))
+    workflow.guidance_level = state.get("hint_level", state.get("guidance_level"))
+    workflow.needs_rag = False
+    workflow.needs_teacher = bool(
+        state.get("need_teacher_help", state.get("needs_teacher", False))
+    )
     workflow.rule_engine_version = state.get("rule_engine_version")
     workflow.fault_tree_version = state.get("fault_tree_version")
     workflow.model_id = state.get("model_id")
@@ -282,8 +288,9 @@ def _sync_business_record(
     workflow.node_metrics = [
         item for item in failed_metrics if item.get("node") not in succeeded_nodes
     ] + checkpoint_metrics
-    chunks = list(state.get("retrieved_chunks") or [])
+    chunks = list(state.get("knowledge_context") or state.get("retrieved_chunks") or [])
     workflow.retrieval_audit = {
+        "mode": "structured_case_match",
         "query": state.get("retrieval_query"),
         "top_k": len(chunks),
         "matches": [
@@ -300,6 +307,7 @@ def _sync_business_record(
             if item.get("chunk_id")
             and any(
                 item.get("chunk_id") in (cause.get("knowledge_chunk_ids") or [])
+                or item.get("chunk_id") in (cause.get("knowledge_case_ids") or [])
                 for cause in (state.get("ai_result") or {}).get("possible_causes", [])
             )
         ],
@@ -310,6 +318,9 @@ def _sync_business_record(
     workflow.review_request = review_request
     if workflow.status == "waiting_teacher":
         workflow.current_node = "teacher_review"
+    if review_request and review_request.get("kind") == "student_feedback":
+        workflow.status = "waiting_feedback"
+        workflow.current_node = "feedback_handler"
     if workflow.status in {"completed", "rejected", "failed"} and workflow.completed_at is None:
         workflow.completed_at = datetime.now(timezone.utc)
     db.commit()
@@ -370,7 +381,7 @@ def start_workflow(
         status="created",
         current_node=None,
         question=payload.question,
-        embedding_version=settings.knowledge_embedding_model,
+        embedding_version=None,
         node_trace=[],
         error_messages=[],
         is_test_data=device.device_type in {"test-fixture", "generic-test-fixture"},
@@ -379,6 +390,34 @@ def start_workflow(
     db.commit()
     db.refresh(workflow)
     initial_state: DiagnosisState = {
+        "device_status": {},
+        "experiment_type": payload.experiment_id,
+        "logs": [],
+        "sensor_data": [],
+        "sensor_values": [],
+        "experiment_context": {},
+        "error_type": None,
+        "evidence": [],
+        "possible_causes": [],
+        "knowledge_context": [],
+        "hint_level": 1,
+        "student_feedback": None,
+        "historical_failures": 0,
+        "attempt_count": 0,
+        "need_teacher_help": False,
+        "diagnosis_status": "collecting",
+        "failure_count": 0,
+        "anomaly_duration_seconds": 0,
+        "reasoned_causes": [],
+        "reasoning_status": "unknown",
+        "reasoning_summary": "尚未执行智能推理。",
+        "reasoning_mode": "deterministic_fallback",
+        "missing_evidence": [],
+        "next_verification_action": None,
+        "evidence_conflict": False,
+        "evidence_registry": [],
+        "allowed_verification_actions": [],
+        "knowledge_validation": {},
         "diagnosis_id": workflow.id,
         "student_user_id": workflow.student_user_id,
         "experiment_session_id": workflow.experiment_session_id,
@@ -565,6 +604,72 @@ def review_workflow(
     )
 
 
+def resume_workflow_with_feedback(
+    db: Session,
+    graph: Any,
+    workflow: DiagnosisWorkflowRun,
+    feedback: DiagnosisFeedback,
+    device: Device,
+    settings: Settings,
+) -> DiagnosisWorkflowRun:
+    """Resume the same diagnosis state with student feedback as new evidence."""
+
+    locked = db.scalar(
+        select(DiagnosisWorkflowRun)
+        .where(DiagnosisWorkflowRun.id == workflow.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None:
+        raise WorkflowConflict("workflow no longer exists")
+    workflow = locked
+    assert_workflow_ownership(db, workflow, expected_device_id=device.id)
+    if workflow.status != "waiting_feedback":
+        raise WorkflowConflict("workflow is not waiting for student feedback")
+    if workflow.diagnosis_result_id != feedback.diagnosis_result_id:
+        raise WorkflowScopeViolation("feedback belongs to another diagnosis")
+    decision = {
+        "id": feedback.id,
+        "action": feedback.action,
+        "note": sanitize_text(feedback.note, max_chars=1000) if feedback.note else None,
+        "created_at": feedback.created_at.isoformat(),
+    }
+    try:
+        result = graph.invoke(
+            Command(resume=decision),
+            config=_config(workflow),
+            context=DiagnosisGraphContext(db=db, device=device, settings=settings),
+        )
+    except Exception:
+        db.rollback()
+        refreshed = db.get(DiagnosisWorkflowRun, workflow.id)
+        if refreshed is not None and refreshed.status in _TERMINAL_STATUSES:
+            result = _reconcile_terminal_checkpoint(
+                db,
+                graph,
+                refreshed,
+                context=DiagnosisGraphContext(db=db, device=device, settings=settings),
+            )
+            refreshed.resume_count = int(refreshed.resume_count or 0) + 1
+            return _sync_business_record(
+                db,
+                refreshed,
+                result,
+                review_request=_interrupt_payload(result),
+            )
+        raise
+    refreshed = db.get(DiagnosisWorkflowRun, workflow.id)
+    if refreshed is None:
+        raise WorkflowConflict("workflow no longer exists")
+    refreshed.resume_count = int(refreshed.resume_count or 0) + 1
+    return _sync_business_record(
+        db,
+        refreshed,
+        result,
+        review_request=_interrupt_payload(result),
+    )
+
+
 def teacher_can_review(db: Session, reviewer: User, workflow: DiagnosisWorkflowRun) -> bool:
     # Admin access is checked by the caller's permission dependency. Teachers must
     # additionally share a teaching assignment with the workflow device.
@@ -597,6 +702,13 @@ def serialize_workflow(
     audience: str = "teacher",
 ) -> DiagnosisWorkflowResponse:
     is_student = audience == "student"
+    public_review_request = workflow.review_request
+    if is_student:
+        public_review_request = (
+            workflow.review_request
+            if (workflow.review_request or {}).get("kind") == "student_feedback"
+            else None
+        )
     return DiagnosisWorkflowResponse(
         id=workflow.id,
         diagnosis_id=workflow.id,
@@ -622,7 +734,7 @@ def serialize_workflow(
         resume_count=workflow.resume_count,
         final_result=workflow.final_result,
         error_messages=workflow.error_messages,
-        review_request=None if is_student else workflow.review_request,
+        review_request=public_review_request,
         reviews=[
             DiagnosisWorkflowReviewResponse(
                 id=item.id,

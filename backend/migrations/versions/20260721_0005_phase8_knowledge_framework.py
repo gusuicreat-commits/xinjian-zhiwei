@@ -11,8 +11,6 @@ from typing import Optional, Union
 import sqlalchemy as sa
 from alembic import op
 
-from app.db.vector import PortableVector
-
 revision: str = "20260721_0005"
 down_revision: Optional[str] = "20260720_0004"
 branch_labels: Union[str, Sequence[str], None] = None
@@ -20,9 +18,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    if op.get_bind().dialect.name == "postgresql":
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-
     op.create_table(
         "knowledge_sources",
         sa.Column("source_key", sa.String(length=128), nullable=False),
@@ -96,24 +91,6 @@ def upgrade() -> None:
     )
 
     op.create_table(
-        "knowledge_embeddings",
-        sa.Column("chunk_id", sa.String(length=36), nullable=False),
-        sa.Column("provider", sa.String(length=100), nullable=False),
-        sa.Column("model", sa.String(length=200), nullable=False),
-        sa.Column("dimensions", sa.Integer(), nullable=False),
-        sa.Column("embedding", PortableVector(), nullable=False),
-        sa.Column("is_test_data", sa.Boolean(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("id", sa.String(length=36), nullable=False),
-        sa.ForeignKeyConstraint(["chunk_id"], ["knowledge_chunks.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "chunk_id", "provider", "model", name="uq_knowledge_embedding_chunk_model"
-        ),
-    )
-    op.create_index("ix_knowledge_embeddings_model", "knowledge_embeddings", ["provider", "model"])
-
-    op.create_table(
         "knowledge_reviews",
         sa.Column("document_id", sa.String(length=36), nullable=False),
         sa.Column("decision", sa.String(length=20), nullable=False),
@@ -134,8 +111,6 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_knowledge_reviews_document_created", table_name="knowledge_reviews")
     op.drop_table("knowledge_reviews")
-    op.drop_index("ix_knowledge_embeddings_model", table_name="knowledge_embeddings")
-    op.drop_table("knowledge_embeddings")
     op.drop_index("ix_knowledge_chunks_review_document", table_name="knowledge_chunks")
     op.drop_index("ix_knowledge_chunks_review_status", table_name="knowledge_chunks")
     op.drop_index("ix_knowledge_chunks_content_hash", table_name="knowledge_chunks")

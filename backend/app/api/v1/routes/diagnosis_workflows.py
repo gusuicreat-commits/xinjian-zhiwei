@@ -228,7 +228,14 @@ def diagnosis_workflow_metrics(
         total=len(workflows),
         in_progress=sum(
             item.status
-            in {"created", "collecting", "deterministic_analysis", "retrieving", "ai_analysis"}
+            in {
+                "created",
+                "collecting",
+                "deterministic_analysis",
+                "retrieving",
+                "ai_analysis",
+                "waiting_feedback",
+            }
             for item in workflows
         ),
         completed=sum(item.status == "completed" for item in workflows),

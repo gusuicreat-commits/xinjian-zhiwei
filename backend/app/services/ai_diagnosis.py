@@ -13,9 +13,7 @@ from sqlalchemy.orm import Session
 from app.ai.clients import (
     AIClient,
     AIProviderError,
-    EmbeddingClient,
     build_ai_client,
-    build_embedding_client,
 )
 from app.ai.context_sanitizer import audit_snapshot, build_safe_ai_input
 from app.ai.prompts import build_prompts
@@ -27,6 +25,7 @@ from app.ai.schemas import (
     AIStructuredExplanation,
 )
 from app.core.config import Settings
+from app.knowledge.matcher import match_knowledge_cases
 from app.models.ai_call_record import AICallRecord
 from app.models.ai_explanation_cache import AIExplanationCache
 from app.models.device import Device
@@ -34,8 +33,6 @@ from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 from app.services.diagnosis_episode import upsert_episode
-from app.services.hybrid_retrieval import hybrid_retrieve
-from app.services.knowledge import get_knowledge_status
 from app.services.lightweight_diagnosis import (
     budget_allowed,
     build_diagnosis_core,
@@ -56,7 +53,6 @@ def get_ai_status(settings: Settings) -> AIStatusResponse:
         notice = "DeepSeek 非思考模式已配置；调用仍受知识审核、隐私过滤、预算、缓存和结构校验保护。"
     return AIStatusResponse(
         provider_configured=settings.ai_configured,
-        embedding_client_configured=settings.knowledge_embedding_client_configured,
         require_knowledge=settings.ai_require_knowledge,
         provider=settings.ai_provider,
         model=settings.ai_model,
@@ -78,6 +74,7 @@ def _build_input(
     *,
     episode_id: str | None,
     user_question: str | None,
+    workflow_state: dict[str, Any] | None,
 ) -> AIDiagnosisInput:
     return build_safe_ai_input(
         record,
@@ -86,47 +83,48 @@ def _build_input(
         settings,
         episode_id=episode_id,
         user_question=user_question,
+        workflow_state=workflow_state,
     )
 
 
-def _knowledge_query(record: DiagnosisResult, guidance: list[GuidanceHistory]) -> str:
-    parts = [
-        str(match.get("error_type", ""))
-        for match in record.matched_rules
-        if match.get("error_type")
-    ]
-    parts.extend(
-        str(cause.get("title", ""))
-        for item in guidance
-        for cause in item.ranked_causes
-        if cause.get("title")
-    )
-    return "；".join(dict.fromkeys(parts))
-
-
-def _retrieve_knowledge(
+def _match_structured_knowledge(
     db: Session,
     record: DiagnosisResult,
     guidance: list[GuidanceHistory],
     settings: Settings,
-    embedding_client: EmbeddingClient,
-    *,
-    query_override: str | None = None,
 ) -> list[AIKnowledgeReference]:
-    status = get_knowledge_status(db, settings)
-    if not status.content_available and not record.is_test_data:
-        return []
-    query = query_override if query_override is not None else _knowledge_query(record, guidance)
-    if not query:
-        return []
-    response = hybrid_retrieve(
-        db,
-        query,
-        settings,
-        embedding_client,
-        include_test_data=record.is_test_data,
-    )
-    return response.references
+    """Adapt deterministic structured-case matches for the governed AI input."""
+
+    cases = match_knowledge_cases(db, record, guidance, limit=settings.ai_knowledge_limit)
+    return [
+        AIKnowledgeReference(
+            chunk_id=item.case_id,
+            source_key=item.source_ref,
+            source_title=f"{item.experiment_type}: {item.symptom}",
+            source_type="structured_case",
+            source_uri=None,
+            source_version=item.version,
+            locator={"case_id": item.case_id},
+            content=json.dumps(
+                {
+                    "caseId": item.case_id,
+                    "experimentType": item.experiment_type,
+                    "errorType": item.error_type,
+                    "symptom": item.symptom,
+                    "evidence": item.evidence,
+                    "possibleCauses": item.possible_causes,
+                    "solutionSteps": item.solution_steps,
+                    "teacherNotes": item.teacher_notes,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            similarity=item.match_score,
+            retrieval_scores={"structured_match": item.match_score},
+            is_test_data=item.is_test_data,
+        )
+        for item in cases
+    ]
 
 
 def _validate_explanation(raw_content: str, payload: AIDiagnosisInput) -> AIStructuredExplanation:
@@ -141,9 +139,34 @@ def _validate_explanation(raw_content: str, payload: AIDiagnosisInput) -> AIStru
     allowed_evidence = set(payload.allowed_evidence)
     if any(item not in allowed_evidence for item in explanation.evidence):
         raise ValueError("AI evidence must be selected from deterministic evidence")
+    reasoned_causes = payload.workflow_state.get("reasoned_causes") or []
+    allowed_cause_support = {
+        str(item.get("cause")): str(item.get("support_level") or "unknown")
+        for item in reasoned_causes
+        if isinstance(item, dict) and item.get("cause")
+    }
+    allowed_causes = set(allowed_cause_support)
+    if not allowed_causes:
+        allowed_causes = {
+            str(cause.get("title"))
+            for guidance in payload.fault_tree_guidance
+            for cause in guidance.get("ranked_causes", [])
+            if cause.get("title")
+        }
+    if any(item.cause not in allowed_causes for item in explanation.possible_causes):
+        raise ValueError("AI explanation introduced a cause outside constrained reasoning")
+    support_rank = {"unknown": 0, "low": 1, "medium": 2, "high": 3}
+    if allowed_cause_support and any(
+        support_rank[item.support_level]
+        > support_rank[allowed_cause_support[item.cause]]
+        for item in explanation.possible_causes
+    ):
+        raise ValueError("AI explanation increased a constrained support level")
     allowed_chunks = {item.chunk_id for item in payload.knowledge}
     referenced_chunks = {
-        chunk_id for cause in explanation.possible_causes for chunk_id in cause.knowledge_chunk_ids
+        reference_id
+        for cause in explanation.possible_causes
+        for reference_id in [*cause.knowledge_case_ids, *cause.knowledge_chunk_ids]
     }
     if not referenced_chunks.issubset(allowed_chunks):
         raise ValueError("AI knowledge references must come from retrieved chunks")
@@ -171,10 +194,19 @@ def _safe_error_summary(error: Exception | None) -> str:
     return "AI_RESPONSE_VALIDATION_FAILED"
 
 
-def _workflow_ai_record(db: Session, workflow_run_id: str | None) -> AICallRecord | None:
+def _workflow_ai_record(
+    db: Session,
+    workflow_run_id: str | None,
+    call_stage: str = "explanation",
+) -> AICallRecord | None:
     if not workflow_run_id:
         return None
-    return db.scalar(select(AICallRecord).where(AICallRecord.workflow_run_id == workflow_run_id))
+    return db.scalar(
+        select(AICallRecord).where(
+            AICallRecord.workflow_run_id == workflow_run_id,
+            AICallRecord.call_stage == call_stage,
+        )
+    )
 
 
 def _save_record(
@@ -205,11 +237,13 @@ def _save_record(
     model_name: str | None = None,
     transport: str | None = None,
     workflow_run_id: str | None = None,
+    call_stage: str = "explanation",
 ) -> tuple[AICallRecord, bool]:
-    existing = _workflow_ai_record(db, workflow_run_id)
+    existing = _workflow_ai_record(db, workflow_run_id, call_stage)
     if existing is not None:
         return existing, False
     record = AICallRecord(
+        call_stage=call_stage,
         diagnosis_result_id=diagnosis.id,
         episode_id=episode.id if episode else None,
         workflow_run_id=workflow_run_id,
@@ -251,7 +285,7 @@ def _save_record(
         db.commit()
     except IntegrityError:
         db.rollback()
-        existing = _workflow_ai_record(db, workflow_run_id)
+        existing = _workflow_ai_record(db, workflow_run_id, call_stage)
         if existing is not None:
             return existing, False
         raise
@@ -306,7 +340,7 @@ def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanation
     elif record.error_code == "AI_NOT_CONFIGURED":
         notice = "AI Provider 未配置，当前仅展示确定性规则诊断。"
     elif record.error_code == "KNOWLEDGE_NOT_READY":
-        notice = "正式知识与向量尚未就绪，当前仅展示确定性规则诊断。"
+        notice = "尚无匹配且已审核的结构化知识案例，当前仅展示确定性诊断。"
     else:
         notice = "AI 调用已跳过，当前展示确定性规则诊断。"
     return _response(
@@ -344,6 +378,7 @@ def _skipped_response(
     started: float,
     estimated_cost: float = 0.0,
     workflow_run_id: str | None = None,
+    call_stage: str = "explanation",
 ) -> AIExplanationResponse:
     route_path = (
         "ai_disabled → deterministic_only"
@@ -371,6 +406,7 @@ def _skipped_response(
         validation_status="not_run",
         estimated_cost=estimated_cost,
         workflow_run_id=workflow_run_id,
+        call_stage=call_stage,
     )
     if not created:
         return serialize_ai_call(saved, settings)
@@ -405,13 +441,14 @@ def explain_diagnosis(
     *,
     ai_client: AIClient | None = None,
     ai_clients: list[tuple[str, AIClient]] | None = None,
-    embedding_client: EmbeddingClient | None = None,
     user_question: str | None = None,
+    workflow_state: dict[str, Any] | None = None,
     retrieved_knowledge: list[AIKnowledgeReference] | None = None,
     workflow_run_id: str | None = None,
+    call_stage: str = "explanation",
 ) -> AIExplanationResponse:
     started = time.monotonic()
-    existing = _workflow_ai_record(db, workflow_run_id)
+    existing = _workflow_ai_record(db, workflow_run_id, call_stage)
     if existing is not None:
         return serialize_ai_call(existing, settings)
     guidance = list(
@@ -445,12 +482,11 @@ def explain_diagnosis(
             default_route = "cloud"
         clients = [(default_route, production_client)] if production_client.configured else []
     ai = clients[0][1] if clients else build_ai_client(settings)
-    embedding = embedding_client or build_embedding_client(settings)
     knowledge: list[AIKnowledgeReference] = list(retrieved_knowledge or [])
     retrieval_error: str | None = None
     if retrieved_knowledge is None:
         try:
-            knowledge = _retrieve_knowledge(db, diagnosis, guidance, settings, embedding)
+            knowledge = _match_structured_knowledge(db, diagnosis, guidance, settings)
         except (AIProviderError, ValueError) as exc:
             retrieval_error = str(exc)
     core = build_diagnosis_core(diagnosis, guidance, [item.chunk_id for item in knowledge])
@@ -466,6 +502,7 @@ def explain_diagnosis(
         settings,
         episode_id=episode.id if episode else None,
         user_question=user_question,
+        workflow_state=workflow_state,
     )
     # Persist and return only the allowlisted/redacted representation produced by
     # the privacy boundary, never the original retrieved chunk objects.
@@ -486,8 +523,8 @@ def explain_diagnosis(
     skip_code: str | None = None
     notice: str | None = None
     if retrieval_error:
-        skip_code = "KNOWLEDGE_RETRIEVAL_FAILED"
-        notice = "知识检索失败，已降级为规则诊断；未调用 AI。"
+        skip_code = "KNOWLEDGE_MATCH_FAILED"
+        notice = "结构化知识匹配失败，已降级为确定性诊断；未调用 AI。"
     elif not policy.should_call:
         skip_code = policy.reason
         notice = "确定性结果已足够，本次无需调用 AI。"
@@ -510,6 +547,7 @@ def explain_diagnosis(
             deterministic_result=deterministic.model_dump(mode="json"),
             started=started,
             workflow_run_id=workflow_run_id,
+            call_stage=call_stage,
         )
 
     now = datetime.now(timezone.utc)
@@ -545,6 +583,7 @@ def explain_diagnosis(
             model_name=cached.model_name,
             transport="cache",
             workflow_run_id=workflow_run_id,
+            call_stage=call_stage,
         )
         if not created:
             return serialize_ai_call(saved, settings)
@@ -586,6 +625,7 @@ def explain_diagnosis(
             deterministic_result=deterministic.model_dump(mode="json"),
             started=started,
             workflow_run_id=workflow_run_id,
+            call_stage=call_stage,
         )
 
     if settings.ai_require_knowledge and not knowledge:
@@ -600,10 +640,11 @@ def explain_diagnosis(
             trigger_reason=policy.reason,
             error_code="KNOWLEDGE_NOT_READY",
             error_message=None,
-            notice="尚无可用的已审核知识片段，已保持确定性诊断模式。",
+            notice="尚无可用的已审核结构化知识案例，已保持确定性诊断模式。",
             deterministic_result=deterministic.model_dump(mode="json"),
             started=started,
             workflow_run_id=workflow_run_id,
+            call_stage=call_stage,
         )
 
     if estimated_input_tokens > settings.ai_input_token_limit:
@@ -622,6 +663,7 @@ def explain_diagnosis(
             deterministic_result=deterministic.model_dump(mode="json"),
             started=started,
             workflow_run_id=workflow_run_id,
+            call_stage=call_stage,
         )
 
     projected_cost = estimate_ai_cost(
@@ -647,6 +689,7 @@ def explain_diagnosis(
             started=started,
             estimated_cost=projected_cost or 0.0,
             workflow_run_id=workflow_run_id,
+            call_stage=call_stage,
         )
 
     system_prompt, user_prompt, prompt_hash = build_prompts(payload, settings.ai_prompt_version)
@@ -706,6 +749,7 @@ def explain_diagnosis(
             model_name=ai.model,
             transport=client_transport,
             workflow_run_id=workflow_run_id,
+            call_stage=call_stage,
         )
         if not created:
             return serialize_ai_call(saved, settings)
@@ -773,6 +817,7 @@ def explain_diagnosis(
         model_name=ai.model,
         transport=client_transport,
         workflow_run_id=workflow_run_id,
+        call_stage=call_stage,
     )
     if not created:
         return serialize_ai_call(saved, settings)

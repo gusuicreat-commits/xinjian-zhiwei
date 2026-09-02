@@ -20,6 +20,7 @@ from app.models import (
     Course,
     Device,
     DeviceBinding,
+    DiagnosisFeedback,
     DiagnosisResult,
     DiagnosisWorkflowReview,
     DiagnosisWorkflowRun,
@@ -28,6 +29,7 @@ from app.models import (
 )
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
+    resume_workflow_with_feedback,
     review_workflow,
     start_workflow,
 )
@@ -56,6 +58,22 @@ def _settings(**updates: Any) -> Settings:
         **updates,
     }
     return Settings(**values)
+
+
+def _resume_feedback(db, graph, workflow, device, settings, action="resolved"):
+    feedback = DiagnosisFeedback(
+        device_id=device.id,
+        diagnosis_result_id=workflow.diagnosis_result_id,
+        action=action,
+        note="合成反馈",
+        is_test_data=True,
+    )
+    db.add(feedback)
+    db.commit()
+    db.refresh(feedback)
+    return resume_workflow_with_feedback(
+        db, graph, workflow, feedback, device, settings
+    )
 
 
 class FailOnceAfterTerminalSaver(InMemorySaver):
@@ -101,21 +119,28 @@ def test_graph_wraps_existing_deterministic_pipeline_without_changing_facts(
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
         )
 
+        assert workflow.status == "waiting_feedback"
+        workflow = _resume_feedback(db, graph, workflow, device, settings)
         assert workflow.status == "completed"
         assert workflow.graph_thread_id == f"diagnosis:{workflow.id}"
         assert workflow.node_trace == [
-            "collect_context",
-            "run_rules",
-            "run_fault_tree",
-            "assess_evidence",
-            "explain_for_student",
-            "approval_gate",
+            "context_builder",
+            "rule_engine",
+            "fault_tree_analyzer",
+            "ai_reasoning",
+            "knowledge_service",
+            "ai_explanation",
+            "escalation_handler",
+            "feedback_handler",
+            "escalation_handler",
             "persist_result",
         ]
-        assert [item["node"] for item in workflow.node_metrics] == workflow.node_trace
+        assert [item["node"] for item in workflow.node_metrics] == [
+            item for item in workflow.node_trace if item != "feedback_handler"
+        ]
         assert all(item["duration_ms"] >= 0 for item in workflow.node_metrics)
         assert all(item["status"] == "succeeded" for item in workflow.node_metrics)
-        assert workflow.resume_count == 0
+        assert workflow.resume_count == 1
         assert workflow.retrieval_audit["top_k"] == 0
         assert "full provider detail" not in str(workflow.node_metrics)
         assert workflow.final_result["rules_preserved"] is True
@@ -149,6 +174,43 @@ def test_graph_wraps_existing_deterministic_pipeline_without_changing_facts(
         assert not any("text" in item for item in public_payload.get("knowledge_references", []))
 
 
+def test_unresolved_feedback_resumes_same_workflow_and_waits_again(
+    api_context: dict[str, Any],
+) -> None:
+    _add_failure_log(api_context)
+    graph = build_diagnosis_graph(InMemorySaver())
+    settings = _settings(
+        diagnosis_teacher_max_attempts=3,
+        diagnosis_teacher_duration_seconds=3600,
+    )
+    with api_context["session_factory"]() as db:
+        device = db.scalar(select(Device).where(Device.device_key == "phase2-test-device"))
+        workflow = start_workflow(
+            db,
+            graph,
+            device,
+            settings,
+            DiagnosisWorkflowStartRequest(lookback_seconds=60),
+        )
+        original_thread = workflow.graph_thread_id
+
+        workflow = _resume_feedback(
+            db, graph, workflow, device, settings, action="unresolved"
+        )
+
+        assert workflow.status == "waiting_feedback"
+        assert workflow.graph_thread_id == original_thread
+        assert workflow.resume_count == 1
+        assert workflow.final_result is None
+        assert workflow.node_trace.count("ai_reasoning") == 2
+        assert workflow.node_trace.count("ai_explanation") == 2
+        checkpoint = graph.get_state(
+            {"configurable": {"thread_id": workflow.graph_thread_id}}
+        ).values
+        assert checkpoint["attempt_count"] == 1
+        assert checkpoint["student_feedback"]["action"] == "unresolved"
+
+
 def test_terminal_checkpoint_failure_is_reconciled_without_duplicate_result(
     api_context: dict[str, Any],
 ) -> None:
@@ -164,6 +226,8 @@ def test_terminal_checkpoint_failure_is_reconciled_without_duplicate_result(
             _settings(),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
         )
+
+        workflow = _resume_feedback(db, graph, workflow, device, _settings())
 
         assert saver.failure_was_injected()
         assert workflow.status == "completed"
@@ -279,19 +343,24 @@ def test_public_knowledge_reference_drops_nested_untrusted_metadata() -> None:
     assert "internal-only" not in serialized
 
 
-def test_graph_is_the_only_rag_control_plane(
+def test_graph_has_one_structured_knowledge_control_plane(
     api_context: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A no-RAG branch must not trigger hidden retrieval in the legacy facade."""
+    """The V2 graph matches structured knowledge once and never enters RAG."""
 
-    from app.services import ai_diagnosis
+    from app.ai import diagnosis_graph
+
+    calls = 0
+
+    def fake_match(*_args: Any, **_kwargs: Any):
+        nonlocal calls
+        calls += 1
+        return []
 
     monkeypatch.setattr(
-        ai_diagnosis,
-        "_retrieve_knowledge",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("hidden second retrieval is forbidden")
-        ),
+        diagnosis_graph,
+        "_match_structured_knowledge",
+        fake_match,
     )
     graph = build_diagnosis_graph(InMemorySaver())
     with api_context["session_factory"]() as db:
@@ -303,23 +372,14 @@ def test_graph_is_the_only_rag_control_plane(
             _settings(diagnosis_rag_trigger_score=0.0),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
         )
-        assert workflow.status == "completed"
+        assert workflow.status in {"waiting_feedback", "waiting_teacher"}
         assert workflow.needs_rag is False
+        assert calls == 1
+        assert "knowledge_service" in workflow.node_trace
         assert "retrieve_knowledge" not in workflow.node_trace
 
 
-def test_retrieval_audit_query_is_the_query_actually_executed(
-    api_context: dict[str, Any], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from app.ai import diagnosis_graph
-
-    captured: dict[str, str | None] = {}
-
-    def fake_retrieve(*_args: Any, query_override: str | None = None, **_kwargs: Any):
-        captured["query"] = query_override
-        return []
-
-    monkeypatch.setattr(diagnosis_graph, "_retrieve_knowledge", fake_retrieve)
+def test_structured_match_audit_keeps_explanatory_query(api_context: dict[str, Any]) -> None:
     graph = build_diagnosis_graph(InMemorySaver())
     question = "为什么采集不到温度？"
     with api_context["session_factory"]() as db:
@@ -335,8 +395,8 @@ def test_retrieval_audit_query_is_the_query_actually_executed(
             DiagnosisWorkflowStartRequest(lookback_seconds=60, question=question),
         )
         assert workflow.status == "waiting_teacher"
-        assert captured["query"] == workflow.retrieval_audit["query"]
-        assert question in str(captured["query"])
+        assert workflow.retrieval_audit["mode"] == "structured_case_match"
+        assert question in str(workflow.retrieval_audit["query"])
 
 
 def test_failed_node_records_bounded_observability(
@@ -363,10 +423,10 @@ def test_failed_node_records_bounded_observability(
 
         workflow = db.scalar(select(DiagnosisWorkflowRun))
         assert workflow.status == "failed"
-        assert workflow.current_node == "collect_context"
+        assert workflow.current_node == "context_builder"
         assert workflow.node_metrics == [
             {
-                "node": "collect_context",
+                "node": "context_builder",
                 "duration_ms": workflow.node_metrics[0]["duration_ms"],
                 "status": "failed",
             }

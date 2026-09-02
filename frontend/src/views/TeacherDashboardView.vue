@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import {
   Bell,
-  CircleCheckFilled,
   Cpu,
   DataAnalysis,
-  Fold,
   HomeFilled,
   Management,
-  Menu as MenuIcon,
   Monitor,
   Refresh,
   Search,
@@ -31,7 +28,6 @@ import type { TeacherDiagnosisWorkflow, TeacherIntervention } from '@/types/teac
 const router = useRouter()
 const sessionStore = useTeacherSessionStore()
 const dashboardStore = useTeacherDashboardStore()
-const sidebarCollapsed = ref(false)
 const activeNavTarget = ref('teacher-overview')
 const showRefreshFlash = ref(false)
 const searchQuery = ref('')
@@ -296,7 +292,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="teacher-app" :class="{ 'sidebar-is-collapsed': sidebarCollapsed }">
+  <main class="teacher-app">
     <Transition name="workspace-refresh">
       <div
         v-if="showRefreshFlash"
@@ -346,20 +342,6 @@ onBeforeUnmount(() => {
           >
         </button>
       </nav>
-      <div class="teacher-system-status">
-        <CircleCheckFilled />
-        <div><b>接口状态正常</b><small>每 30 秒刷新</small></div>
-      </div>
-      <button
-        type="button"
-        class="teacher-collapse"
-        :aria-label="sidebarCollapsed ? '展开教师菜单' : '收起教师菜单'"
-        @click="sidebarCollapsed = !sidebarCollapsed"
-      >
-        <Fold v-if="!sidebarCollapsed" /><MenuIcon v-else /><span>{{
-          sidebarCollapsed ? '展开菜单' : '收起菜单'
-        }}</span>
-      </button>
     </aside>
 
     <section id="teacher-overview" class="teacher-content">
@@ -624,7 +606,7 @@ onBeforeUnmount(() => {
                   ><small>已审</small><b>{{ workflowMetrics.reviewed ?? 0 }}</b></span
                 >
                 <span
-                  ><small>触发 RAG</small><b>{{ workflowMetrics.needs_rag_count ?? 0 }}</b></span
+                  ><small>旧流程兼容标记</small><b>{{ workflowMetrics.needs_rag_count ?? 0 }}</b></span
                 >
                 <span
                   ><small>修订率</small><b>{{ percent(workflowMetrics.edit_rate ?? 0) }}</b></span
@@ -751,17 +733,16 @@ onBeforeUnmount(() => {
             <article id="knowledge-review" class="teacher-panel knowledge-panel">
               <header>
                 <h2>知识案例审核入口</h2>
-                <small>Phase 8 框架</small>
+                <small>MVP 结构化知识</small>
               </header>
               <Management />
               <div>
-                <b>{{ dashboard.knowledge_cases.configured ? '知识库可检索' : '等待授权资料' }}</b>
+                <b>{{ dashboard.knowledge_cases.configured ? '结构化案例可用' : '等待审核案例' }}</b>
                 <p>{{ dashboard.knowledge_cases.notice }}</p>
                 <p>
-                  来源 {{ dashboard.knowledge_cases.source_count ?? 0 }} · 文档
-                  {{ dashboard.knowledge_cases.document_count ?? 0 }} · 待审核
-                  {{ dashboard.knowledge_cases.pending_review_count ?? 0 }} · 向量
-                  {{ dashboard.knowledge_cases.embedding_count ?? 0 }}
+                  案例 {{ dashboard.knowledge_cases.case_count ?? 0 }} · 已审核
+                  {{ dashboard.knowledge_cases.approved_case_count ?? 0 }} · 待审核
+                  {{ dashboard.knowledge_cases.pending_review_count ?? 0 }}
                 </p>
               </div>
               <span class="knowledge-status-chip">审核 API 已就绪</span>

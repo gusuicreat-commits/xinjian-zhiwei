@@ -26,7 +26,6 @@ function dashboard(overrides: Record<string, unknown> = {}) {
     ai_status: {
       framework_ready: true,
       provider_configured: false,
-      embedding_client_configured: false,
       require_knowledge: true,
       provider: 'deepseek',
       model: 'deepseek-v4-flash',
@@ -265,7 +264,7 @@ test('shows workflow provenance, missing evidence and teacher review history', a
     diagnosis_result_id: 'workflow-diagnosis',
     device_id: device.device_id,
     graph_thread_id: 'diagnosis:workflow-browser',
-    graph_version: 'langgraph-v1',
+    graph_version: 'langgraph-v2',
     status: 'completed',
     current_node: 'persist_result',
     evidence_score: 0.6,
@@ -276,7 +275,17 @@ test('shows workflow provenance, missing evidence and teacher review history', a
     fault_tree_version: 'tree-v2',
     embedding_version: 'embedding-v1',
     model_id: 'model-v1',
-    node_trace: ['collect_context', 'run_rules', 'retrieve_knowledge', 'persist_result'],
+    node_trace: [
+      'context_builder',
+      'rule_engine',
+      'fault_tree_analyzer',
+      'ai_reasoning',
+      'knowledge_service',
+      'ai_explanation',
+      'feedback_handler',
+      'escalation_handler',
+      'persist_result',
+    ],
     final_result: {
       summary: '建议检查连接',
       limitations: ['缺少供电电压读数'],
@@ -329,5 +338,5 @@ test('shows workflow provenance, missing evidence and teacher review history', a
   await expect(page.getByText('审核详情仅教师可见')).toBeVisible()
   await expect(page.getByText('证据可用')).toHaveCount(0)
   await expect(page.getByText('teacher-1')).toHaveCount(0)
-  await expect(page.getByText('collect_context')).toHaveCount(0)
+  await expect(page.getByText('context_builder')).toHaveCount(0)
 })
