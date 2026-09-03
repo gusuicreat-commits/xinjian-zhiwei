@@ -22,13 +22,16 @@ error_type 是规则引擎已经确定的事实，不得修改。
 只能使用 candidate_causes 中已有的 cause_id，不得创造新故障。
 used_evidence_ids 只能选择 evidence_registry 中已有的 id。
 next_verification_action 只能逐字选择 allowed_verification_actions 中的 text。
+knowledge_constraints 只提供实验定义、正常条件、标准故障映射和已确认案例；
+不得将历史案例直接当作本次根因。
 使用 high、medium、low、unknown 表示证据支持等级，不得把它表述为统计概率。
 证据冲突时 conflict=true，且不得给出 high；资料不足时 conclusion 必须为 unknown。
 时间先后不等于因果，不得把候选原因表述为已确认根因。
 只返回符合 JSON Schema 的 JSON。"""
 
 
-def _allowed_evidence(state: dict[str, Any]) -> list[dict[str, str]]:
+def build_evidence_registry(state: dict[str, Any]) -> list[dict[str, str]]:
+    """Build the complete evidence allowlist shared by reasoning and validation."""
     facts: list[dict[str, str]] = []
 
     def add(evidence_id: str, fact: str, source: str) -> None:
@@ -90,7 +93,7 @@ def _fallback_reasoning(
     state: dict[str, Any], *, limitation: str
 ) -> AIReasoningResult:
     candidates = list(state.get("fault_tree_candidates") or [])
-    evidence = _allowed_evidence(state)
+    evidence = build_evidence_registry(state)
     evidence_ids = [item["id"] for item in evidence]
     actions = list(state.get("allowed_verification_actions") or [])
     if not candidates:
@@ -191,7 +194,7 @@ def _validate_reasoning(
 def _reasoning_prompt(
     state: dict[str, Any],
 ) -> tuple[str, str, str, list[dict[str, str]]]:
-    evidence = _allowed_evidence(state)
+    evidence = build_evidence_registry(state)
     payload = {
         "prompt_version": REASONING_PROMPT_VERSION,
         "error_type": state.get("error_type"),
@@ -199,6 +202,7 @@ def _reasoning_prompt(
         "experiment_context": state.get("experiment_context"),
         "candidate_causes": state.get("fault_tree_candidates") or [],
         "evidence_registry": evidence,
+        "knowledge_constraints": state.get("knowledge_constraints") or {},
         "allowed_verification_actions": state.get("allowed_verification_actions") or [],
         "output_json_schema": AIReasoningResult.model_json_schema(),
     }

@@ -74,12 +74,13 @@ evidence_conflict / need_teacher_help / diagnosis_status
 context_builder
   → rule_engine
   → fault_tree_analyzer
+  → knowledge_context
   → ai_reasoning
-  → knowledge_service
+  → knowledge_validation
   → ai_explanation
   → escalation_handler
   → feedback_handler（LangGraph interrupt）
-      ├─ unresolved → escalation_handler → ai_reasoning（继续同一诊断）
+      ├─ unresolved → escalation_handler → knowledge_context（继续同一诊断）
       ├─ resolved → persist_result + KnowledgeCaseDraft
       └─ request_teacher_help → teacher_review
 ```
@@ -87,11 +88,12 @@ context_builder
 1. `context_builder` 复用 `DiagnosisContext`，构建脱敏、有限的 V2 状态。
 2. `rule_engine` 是异常类型与确定性证据的唯一判定节点。
 3. `fault_tree_analyzer` 根据证据排序原因，并计算初始提示等级。
-4. `ai_reasoning` 只能在故障树候选集中排序，输出 `high/medium/low/unknown`、`used_evidence_ids`、缺失证据、冲突和允许的下一验证动作；越界时回退故障树排序。
-5. `knowledge_service` 按显式字段匹配已审核案例，校验推理上下文并补充规范、历史经验和步骤。
-6. `ai_explanation` 把已约束推理与知识校验结果转换成学生可理解的结构化建议。
-7. `feedback_handler` 暂停工作流等待学生反馈；反馈作为新证据恢复同一 LangGraph thread。
-8. `escalation_handler` 根据尝试次数、异常持续时间、提示等级、未知结论和证据冲突，决定继续推理或请求教师介入。
+4. `knowledge_context` 在推理前按显式字段匹配已审核案例，提供实验定义、正常条件、标准故障映射和教师确认案例。
+5. `ai_reasoning` 只能在故障树候选集中排序，输出 `high/medium/low/unknown`、`used_evidence_ids`、缺失证据、冲突和允许的下一验证动作。
+6. `knowledge_validation` 在推理后独立校验实验规范、证据 ID、故障树候选集、规则结果和允许的验证动作；失败时不发布为学生建议并转教师。
+7. `ai_explanation` 把通过校验的推理与知识结果转换成学生可理解的结构化建议。
+8. `feedback_handler` 暂停工作流等待学生反馈；反馈作为新证据恢复同一 LangGraph thread。
+9. `escalation_handler` 根据尝试次数、异常持续时间、提示等级、未知结论和证据冲突，决定继续推理或请求教师介入。
 
 `teacher_review`、`persist_result` 和 `reject_result` 是审核与持久化基础设施节点，不属于 AI 推理能力。
 

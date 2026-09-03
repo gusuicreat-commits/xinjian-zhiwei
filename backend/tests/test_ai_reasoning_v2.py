@@ -2,7 +2,13 @@ import json
 
 import pytest
 
+from app.ai.diagnosis_graph import route_after_knowledge_validation
 from app.ai.reasoning import _fallback_reasoning, _validate_reasoning
+from app.ai.schemas import AIKnowledgeReference
+from app.knowledge.validation import (
+    build_reasoning_knowledge_constraints,
+    validate_reasoning_against_knowledge,
+)
 
 
 def _state() -> dict:
@@ -107,3 +113,75 @@ def test_reasoning_returns_unknown_without_candidates() -> None:
 
     assert result.conclusion == "unknown"
     assert result.ranked_causes == []
+
+
+def test_pre_reasoning_knowledge_exposes_only_structured_constraints() -> None:
+    reference = AIKnowledgeReference(
+        chunk_id="dht11.case.v1",
+        source_key="knowledge/cases/dht11.yaml",
+        source_title="DHT11",
+        source_type="structured_case",
+        source_uri=None,
+        content=json.dumps(
+            {
+                "caseId": "dht11.case.v1",
+                "experimentType": "dht11_temperature_humidity",
+                "errorType": "SENSOR_READ_FAILED",
+                "symptom": "DHT11 连续读取失败",
+                "normalState": {"metrics": ["temperature", "humidity"]},
+                "possibleCauses": ["GPIO 配置错误"],
+                "solutionSteps": ["核对 GPIO"],
+                "teacherNotes": "以课程接线表为准",
+                "rootCause": {"value": "GPIO 配置错误", "status": "confirmed"},
+            },
+            ensure_ascii=False,
+        ),
+        similarity=1.0,
+        is_test_data=True,
+    )
+
+    constraints = build_reasoning_knowledge_constraints(
+        {"experiment_id": "dht11_temperature_humidity"}, [reference]
+    )
+
+    assert constraints["experiment_definition"]["experiment_id"] == (
+        "dht11_temperature_humidity"
+    )
+    assert constraints["normal_conditions"][0]["normal_state"]["metrics"] == [
+        "temperature",
+        "humidity",
+    ]
+    assert constraints["teacher_confirmed_cases"][0]["case_id"] == "dht11.case.v1"
+
+
+def test_post_reasoning_validation_rejects_unknown_cause_and_evidence() -> None:
+    state = {
+        "error_type": "SENSOR_READ_FAILED",
+        "rule_hits": [{"error_type": "SENSOR_READ_FAILED"}],
+        "fault_tree_candidates": [{"cause_id": "gpio_config"}],
+        "reasoned_causes": [
+            {
+                "cause_id": "invented_damage",
+                "support_level": "high",
+                "used_evidence_ids": ["evidence:not-found"],
+            }
+        ],
+        "evidence_registry": [{"id": "device:status"}],
+        "allowed_verification_actions": [{"text": "核对 GPIO"}],
+        "next_verification_action": "直接更换主板",
+        "knowledge_constraints": {
+            "teacher_confirmed_cases": [
+                {"case_id": "dht11.case.v1", "error_type": "SENSOR_READ_FAILED"}
+            ]
+        },
+    }
+
+    result = validate_reasoning_against_knowledge(state)
+
+    assert result["status"] == "rejected"
+    assert result["checks"]["cause_ids_in_fault_tree"] is False
+    assert result["checks"]["evidence_ids_exist"] is False
+    assert result["checks"]["verification_action_allowed"] is False
+    assert route_after_knowledge_validation({"knowledge_validation": result}) == (
+        "teacher_review"
+    )

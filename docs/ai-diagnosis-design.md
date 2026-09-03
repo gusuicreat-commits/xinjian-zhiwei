@@ -52,12 +52,13 @@ class DiagnosisState(TypedDict, total=False):
 context_builder
   → rule_engine
   → fault_tree_analyzer
+  → knowledge_context
   → ai_reasoning
-  → knowledge_service
+  → knowledge_validation
   → ai_explanation
   → escalation_handler
   → feedback_handler（暂停等待学生）
-      ├─ unresolved → 提升 hint_level → ai_reasoning
+      ├─ unresolved → 提升 hint_level → knowledge_context
       ├─ resolved → persist_result
       └─ request_teacher_help → teacher_review
 ```
@@ -67,8 +68,9 @@ context_builder
 - `context_builder`：复用 `DiagnosisContext` 构建设备、日志、传感器和实验状态。
 - `rule_engine`：确定异常类型和证据；AI 无权覆盖。
 - `fault_tree_analyzer`：排序可能原因并计算提示等级。
+- `knowledge_context`：在 AI 推理前供给已审核的实验定义、正常条件、故障映射和教师确认案例。
 - `ai_reasoning`：在已有 `cause_id` 集合中重排原因，输出离散支持等级并绑定证据 ID；越界或失败时回退故障树结果。
-- `knowledge_service`：匹配已审核 `KnowledgeCase`，校验推理上下文并补充经验，不做向量检索。
+- `knowledge_validation`：在 AI 推理后校验实验规范、证据 ID、候选原因、规则结果和允许动作，不调用模型。
 - `ai_explanation`：基于推理和知识校验结果生成学生可理解的结构化说明。
 - `feedback_handler`：使用 LangGraph interrupt 等待 resolved、unresolved 或 request_teacher_help，并以原工作流 thread 恢复。
 - `escalation_handler`：使用失败次数、异常持续时间、当前提示等级和学生反馈决定升级或教师介入。

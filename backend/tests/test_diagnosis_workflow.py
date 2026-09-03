@@ -127,8 +127,9 @@ def test_graph_wraps_existing_deterministic_pipeline_without_changing_facts(
             "context_builder",
             "rule_engine",
             "fault_tree_analyzer",
+            "knowledge_context",
             "ai_reasoning",
-            "knowledge_service",
+            "knowledge_validation",
             "ai_explanation",
             "escalation_handler",
             "feedback_handler",
@@ -203,6 +204,8 @@ def test_unresolved_feedback_resumes_same_workflow_and_waits_again(
         assert workflow.resume_count == 1
         assert workflow.final_result is None
         assert workflow.node_trace.count("ai_reasoning") == 2
+        assert workflow.node_trace.count("knowledge_context") == 2
+        assert workflow.node_trace.count("knowledge_validation") == 2
         assert workflow.node_trace.count("ai_explanation") == 2
         checkpoint = graph.get_state(
             {"configurable": {"thread_id": workflow.graph_thread_id}}
@@ -343,10 +346,10 @@ def test_public_knowledge_reference_drops_nested_untrusted_metadata() -> None:
     assert "internal-only" not in serialized
 
 
-def test_graph_has_one_structured_knowledge_control_plane(
+def test_graph_supplies_knowledge_before_reasoning_and_validates_after(
     api_context: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The V2 graph matches structured knowledge once and never enters RAG."""
+    """The V2 graph supplies structured knowledge before AI and never enters RAG."""
 
     from app.ai import diagnosis_graph
 
@@ -375,7 +378,12 @@ def test_graph_has_one_structured_knowledge_control_plane(
         assert workflow.status in {"waiting_feedback", "waiting_teacher"}
         assert workflow.needs_rag is False
         assert calls == 1
-        assert "knowledge_service" in workflow.node_trace
+        assert workflow.node_trace.index("knowledge_context") < workflow.node_trace.index(
+            "ai_reasoning"
+        )
+        assert workflow.node_trace.index("ai_reasoning") < workflow.node_trace.index(
+            "knowledge_validation"
+        )
         assert "retrieve_knowledge" not in workflow.node_trace
 
 

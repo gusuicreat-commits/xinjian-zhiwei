@@ -81,6 +81,7 @@ class DiagnosisState(TypedDict, total=False):
     evidence_conflict: bool
     evidence_registry: list[dict[str, Any]]
     allowed_verification_actions: list[dict[str, Any]]
+    knowledge_supply: dict[str, Any]
     knowledge_validation: dict[str, Any]
 
     # Workflow identity and audit metadata.

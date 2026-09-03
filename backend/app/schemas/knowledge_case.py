@@ -75,6 +75,7 @@ class MatchedKnowledgeCase(StrictKnowledgeCaseModel):
     experiment_type: str
     error_type: str
     symptom: str
+    normal_state: dict[str, Any]
     evidence: list[dict[str, Any]]
     possible_causes: list[str]
     solution_steps: list[str]

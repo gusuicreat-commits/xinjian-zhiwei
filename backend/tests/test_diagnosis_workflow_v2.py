@@ -7,8 +7,9 @@ V2_NODES = {
     "context_builder",
     "rule_engine",
     "fault_tree_analyzer",
+    "knowledge_context",
     "ai_reasoning",
-    "knowledge_service",
+    "knowledge_validation",
     "ai_explanation",
     "feedback_handler",
     "escalation_handler",
@@ -37,7 +38,16 @@ def test_v2_graph_exposes_controlled_diagnosis_nodes() -> None:
     graph = build_diagnosis_graph(InMemorySaver()).get_graph()
 
     assert V2_NODES.issubset(graph.nodes)
-    assert {"assess_evidence", "retrieve_knowledge"}.isdisjoint(graph.nodes)
+    assert {"assess_evidence", "retrieve_knowledge", "knowledge_service"}.isdisjoint(
+        graph.nodes
+    )
+    edges = {(edge.source, edge.target) for edge in graph.edges}
+    assert edges >= {
+        ("fault_tree_analyzer", "knowledge_context"),
+        ("knowledge_context", "ai_reasoning"),
+        ("ai_reasoning", "knowledge_validation"),
+        ("knowledge_validation", "ai_explanation"),
+    }
 
 
 def test_v2_state_exposes_product_contract() -> None:

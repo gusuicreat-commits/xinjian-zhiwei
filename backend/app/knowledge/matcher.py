@@ -107,6 +107,7 @@ def match_knowledge_cases(
                 experiment_type=case.experiment_type,
                 error_type=case.error_type,
                 symptom=case.symptom,
+                normal_state=case.normal_state,
                 evidence=case.evidence,
                 possible_causes=case.possible_causes,
                 solution_steps=case.solution_steps,

@@ -86,11 +86,11 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 ### GET `/diagnosis/ai/status`
 
-返回 Phase 9.5 框架、已选定的 DeepSeek Provider、`deepseek-v4-flash`、非思考模式、Embedding 客户端、知识门禁、传输类型、生产路由和 Prompt 版本状态。该接口不返回 Base URL、API Key 或其他密钥。即使 Provider 已选定，只要 `AI_ENABLED=false` 或未注入服务端密钥，状态仍明确为未启用，不会发起请求。
+返回 AI 框架、已选定的 Provider/模型、结构化知识门禁、传输类型、生产路由和 Prompt 版本状态。第一阶段不返回 Embedding 或 RAG 状态。该接口不返回 Base URL、API Key 或其他密钥。
 
 ### POST `/diagnosis/results/{diagnosis_result_id}/ai-explanation`
 
-使用设备凭据，只能解释当前设备的诊断结果。请求体可选 `user_question`。接口先确保故障树与 Episode 存在，以结构化过滤、全文检索和可选 pgvector 检索审核知识，再执行策略、预算、稳定指纹缓存及统一 `AIClient`。Phase 9.5 的唯一生产调用路径为 `cache → deepseek → deterministic_fallback`，不做多模型分层。AI 不能修改确定性错误类型；证据必须来自规则白名单，知识引用必须来自本次检索结果。
+使用设备凭据，只能解释当前设备的诊断结果。请求体可选 `user_question`。工作流先用显式字段匹配已审核结构化案例，将实验规范供给受约束原因排序；推理后再校验证据 ID、候选集、规则结果和允许动作。AI 不能修改确定性错误类型，也不能引用本次匹配之外的知识。
 
 送往 Provider 的上下文先经过 `phase9.5-allowlist-v1` 最小化：设备标识匿名化；日志只保留最多 3–10 条相关项；读数和心跳转换为统计摘要；令牌、密钥、Wi-Fi、学生身份、联系方式和自由文本中的敏感片段被删除或遮蔽。知识正文按字符上限截断，原始 Prompt 不写入审计表。
 

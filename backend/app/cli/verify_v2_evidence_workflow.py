@@ -16,6 +16,7 @@ from app.knowledge.case_drafting import (
     build_case_draft,
     submit_case_draft_for_review,
 )
+from app.knowledge.validation import validate_reasoning_against_knowledge
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
@@ -215,13 +216,33 @@ def _verify_case_draft_governance() -> str:
 
 def main() -> None:
     _verify_reasoning_constraints()
+    validation = validate_reasoning_against_knowledge(
+        {
+            "error_type": "SENSOR_READ_FAILED",
+            "rule_hits": [{"error_type": "SENSOR_READ_FAILED"}],
+            "fault_tree_candidates": [{"cause_id": "gpio_config"}],
+            "reasoned_causes": [
+                {
+                    "cause_id": "gpio_config",
+                    "support_level": "medium",
+                    "used_evidence_ids": ["device:status"],
+                }
+            ],
+            "evidence_registry": [{"id": "device:status"}],
+            "allowed_verification_actions": [{"text": "核对 GPIO"}],
+            "next_verification_action": "核对 GPIO",
+            "knowledge_constraints": {"teacher_confirmed_cases": []},
+        }
+    )
+    if validation["status"] != "validated_without_case":
+        raise SystemExit("post-reasoning knowledge validation failed")
     if route_after_explanation({"error_type": "SENSOR_READ_FAILED"}) != "escalation_handler":
         raise SystemExit("initial anomaly does not enter escalation assessment")
     if (
         route_after_escalation(
             {"student_feedback": {"action": "unresolved"}, "needs_teacher": False}
         )
-        != "ai_reasoning"
+        != "knowledge_context"
     ):
         raise SystemExit("unresolved feedback does not continue diagnosis")
     case_id = _verify_case_draft_governance()
@@ -230,6 +251,8 @@ def main() -> None:
             "reasoning_rejects_new_causes": True,
             "unknown_fallback": True,
             "unresolved_feedback_continues_reasoning": True,
+            "knowledge_context_precedes_reasoning": True,
+            "knowledge_validation_follows_reasoning": True,
             "ai_polish_preserves_facts": True,
             "student_feedback_does_not_confirm_root_cause": True,
             "formal_case_requires_teacher_confirmation": True,

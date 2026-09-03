@@ -24,8 +24,9 @@ def main() -> None:
         "context_builder",
         "rule_engine",
         "fault_tree_analyzer",
+        "knowledge_context",
         "ai_reasoning",
-        "knowledge_service",
+        "knowledge_validation",
         "ai_explanation",
         "feedback_handler",
         "escalation_handler",
@@ -57,6 +58,8 @@ def main() -> None:
         "evidence_conflict",
         "evidence_registry",
         "allowed_verification_actions",
+        "knowledge_supply",
+        "knowledge_validation",
     }
     if not required_state_fields.issubset(DiagnosisState.__annotations__):
         raise SystemExit("DiagnosisState does not expose the complete V2 contract")
@@ -111,7 +114,8 @@ def main() -> None:
                     "graph_version": "langgraph-v2",
                     "state_fields": len(required_state_fields),
                     "ai_reasoning_constrained": "ai_reasoning" in graph_nodes,
-                    "graph_has_structured_match": "knowledge_service" in graph_nodes,
+                    "knowledge_before_reasoning": "knowledge_context" in graph_nodes,
+                    "knowledge_after_reasoning": "knowledge_validation" in graph_nodes,
                     "rag_enabled": False,
                 }
             )

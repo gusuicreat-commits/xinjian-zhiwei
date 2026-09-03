@@ -15,11 +15,15 @@ from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient
 from app.ai.context_sanitizer import sanitize_text
-from app.ai.reasoning import reason_about_causes
+from app.ai.reasoning import build_evidence_registry, reason_about_causes
 from app.ai.schemas import AIExplanationResponse, AIKnowledgeReference
 from app.core.config import Settings
 from app.diagnosis.schemas import DiagnosisOutcome, ExperimentTemplateContext
 from app.diagnosis.workflow_schemas import DiagnosisState
+from app.knowledge.validation import (
+    build_reasoning_knowledge_constraints,
+    validate_reasoning_against_knowledge,
+)
 from app.models.base import utc_now
 from app.models.classroom import ExperimentSession
 from app.models.device import Device
@@ -396,10 +400,15 @@ def ai_reasoning_node(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
 ) -> dict[str, Any]:
     diagnosis = _diagnosis(runtime, state)
+    graph_knowledge, _ = _load_graph_knowledge(state, runtime)
+    reasoning_state = dict(state)
+    reasoning_state["knowledge_constraints"] = build_reasoning_knowledge_constraints(
+        state.get("experiment_context"), graph_knowledge
+    )
     result, mode = reason_about_causes(
         runtime.context.db,
         diagnosis,
-        dict(state),
+        reasoning_state,
         runtime.context.settings,
         workflow_run_id=state["diagnosis_id"],
         call_stage=(
@@ -424,17 +433,7 @@ def ai_reasoning_node(
         "missing_evidence": result.missing_evidence,
         "next_verification_action": result.next_verification_action,
         "evidence_conflict": result.conflict,
-        "evidence_registry": [
-            {
-                "id": evidence_id,
-                "source": "validated_reasoning_input",
-            }
-            for evidence_id in dict.fromkeys(
-                evidence_id
-                for cause in reasoned_causes
-                for evidence_id in cause.get("used_evidence_ids", [])
-            )
-        ],
+        "evidence_registry": build_evidence_registry(reasoning_state),
         "node_trace": ["ai_reasoning"],
     }
 
@@ -570,6 +569,7 @@ def _load_graph_knowledge(
                     "experimentType": case.experiment_type,
                     "errorType": case.error_type,
                     "symptom": case.symptom,
+                    "normalState": case.normal_state,
                     "evidence": case.evidence,
                     "possibleCauses": case.possible_causes,
                     "solutionSteps": case.solution_steps,
@@ -596,8 +596,8 @@ def _load_graph_knowledge(
     return _safe_graph_knowledge(references, runtime.context.settings), safe_state_refs
 
 
-@observed_node("knowledge_service")
-def knowledge_service(
+@observed_node("knowledge_context")
+def knowledge_context(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
 ) -> dict[str, Any]:
     diagnosis = _diagnosis(runtime, state)
@@ -610,32 +610,60 @@ def knowledge_service(
         runtime.context.settings,
     )
     knowledge_context = [_knowledge_state_reference(item) for item in references]
-    validation = {
-        "status": "validated" if references else "no_approved_case",
+    supply = {
+        "status": "available" if references else "no_approved_case",
         "case_ids": [item.chunk_id for item in references],
-        "reasoned_cause_ids": [
-            item.get("cause_id")
-            for item in state.get("reasoned_causes", [])
-            if item.get("cause_id")
+        "provides": [
+            "experiment_definition",
+            "normal_conditions",
+            "standard_fault_mappings",
+            "teacher_confirmed_cases",
         ],
-        "error_type_preserved": state.get("error_type")
-        in {item.get("error_type") for item in state.get("rule_hits", [])},
         "note": (
-            "结构化案例用于校验和补充排查经验，不替代规则与故障树。"
+            "已在 AI 推理前提供实验定义、正常条件、故障映射与教师确认案例。"
             if references
-            else "没有已审核案例；保留证据驱动推理并明确知识限制。"
+            else "没有已审核案例；AI 仍只能在规则和故障树约束内推理。"
         ),
     }
     return {
         "retrieval_query": query,
         "knowledge_context": knowledge_context,
-        "knowledge_validation": validation,
+        "knowledge_supply": supply,
         "retrieved_chunks": knowledge_context,
         "needs_rag": False,
+        "status": "retrieving",
+        "diagnosis_status": "retrieving",
+        "node_trace": ["knowledge_context"],
+    }
+
+
+@observed_node("knowledge_validation")
+def knowledge_validation(
+    state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
+) -> dict[str, Any]:
+    graph_knowledge, _ = _load_graph_knowledge(state, runtime)
+    validation_state = dict(state)
+    validation_state["knowledge_constraints"] = build_reasoning_knowledge_constraints(
+        state.get("experiment_context"), graph_knowledge
+    )
+    result = validate_reasoning_against_knowledge(validation_state)
+    rejected = result["status"] == "rejected"
+    return {
+        "knowledge_validation": result,
+        "evidence_conflict": bool(state.get("evidence_conflict")) or rejected,
+        "need_teacher_help": bool(state.get("need_teacher_help")) or rejected,
+        "needs_teacher": bool(state.get("needs_teacher")) or rejected,
         "status": "deterministic_analysis",
         "diagnosis_status": "deterministic_analysis",
-        "node_trace": ["knowledge_service"],
+        "node_trace": ["knowledge_validation"],
     }
+
+
+def route_after_knowledge_validation(
+    state: DiagnosisState,
+) -> Literal["ai_explanation", "teacher_review"]:
+    validation = state.get("knowledge_validation") or {}
+    return "teacher_review" if validation.get("status") == "rejected" else "ai_explanation"
 
 
 @observed_node("ai_explanation")
@@ -675,6 +703,7 @@ def ai_explanation(
                 "evidence_conflict",
                 "evidence_registry",
                 "allowed_verification_actions",
+                "knowledge_supply",
                 "knowledge_validation",
                 "knowledge_context",
                 "hint_level",
@@ -825,14 +854,14 @@ def route_after_escalation(
 ) -> Literal[
     "teacher_review",
     "persist_result",
-    "ai_reasoning",
+    "knowledge_context",
     "feedback_handler",
 ]:
     if state.get("needs_teacher"):
         return "teacher_review"
     feedback_action = (state.get("student_feedback") or {}).get("action")
     if feedback_action == "unresolved":
-        return "ai_reasoning"
+        return "knowledge_context"
     if feedback_action is None:
         return "feedback_handler"
     return "persist_result"
@@ -1003,8 +1032,9 @@ def build_diagnosis_graph(checkpointer: Any):
     builder.add_node("context_builder", context_builder)
     builder.add_node("rule_engine", rule_engine)
     builder.add_node("fault_tree_analyzer", fault_tree_analyzer)
+    builder.add_node("knowledge_context", knowledge_context)
     builder.add_node("ai_reasoning", ai_reasoning_node)
-    builder.add_node("knowledge_service", knowledge_service)
+    builder.add_node("knowledge_validation", knowledge_validation)
     builder.add_node("ai_explanation", ai_explanation)
     builder.add_node("feedback_handler", feedback_handler)
     builder.add_node("escalation_handler", escalation_handler)
@@ -1014,9 +1044,12 @@ def build_diagnosis_graph(checkpointer: Any):
     builder.add_edge(START, "context_builder")
     builder.add_edge("context_builder", "rule_engine")
     builder.add_edge("rule_engine", "fault_tree_analyzer")
-    builder.add_edge("fault_tree_analyzer", "ai_reasoning")
-    builder.add_edge("ai_reasoning", "knowledge_service")
-    builder.add_edge("knowledge_service", "ai_explanation")
+    builder.add_edge("fault_tree_analyzer", "knowledge_context")
+    builder.add_edge("knowledge_context", "ai_reasoning")
+    builder.add_edge("ai_reasoning", "knowledge_validation")
+    builder.add_conditional_edges(
+        "knowledge_validation", route_after_knowledge_validation
+    )
     builder.add_conditional_edges("ai_explanation", route_after_explanation)
     builder.add_edge("feedback_handler", "escalation_handler")
     builder.add_conditional_edges("escalation_handler", route_after_escalation)

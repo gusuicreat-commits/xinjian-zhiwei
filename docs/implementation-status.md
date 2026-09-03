@@ -23,7 +23,7 @@
 | 故障树 | 保留 | 负责候选原因、证据排序、分级提示和教师介入 |
 | AI 原因推理 | 已升级 | 只在故障树候选集中重排，输出支持等级、证据 ID、缺失证据、冲突和验证动作 |
 | `KnowledgeCase` | 新增 | 使用实验类型、错误类型和证据字段做确定性匹配 |
-| 知识校验 | 已升级 | 在 AI 原因排序后匹配 approved 案例，补充经验并记录校验状态 |
+| 知识双阶段 | 已升级 | 推理前匹配 approved 案例并供给约束；推理后以确定性代码校验输出 |
 | 外置知识文件 | 新增 | `backend/knowledge/cases/`、`templates/`、`rules/`，诊断函数不再硬编码实验经验 |
 | AI 解释 | 保留 | 输入仅为已确定数据、规则、故障树和匹配案例；输出经严格结构校验 |
 | 学生反馈节点 | 已升级 | interrupt 等待学生反馈，并恢复同一 LangGraph thread 持续诊断 |
@@ -41,17 +41,18 @@
 context_builder
   → rule_engine
   → fault_tree_analyzer
+  → knowledge_context
   → ai_reasoning
-  → knowledge_service
+  → knowledge_validation
   → ai_explanation
   → escalation_handler
   → feedback_handler
-      ├─ unresolved → ai_reasoning（下一轮）
+      ├─ unresolved → knowledge_context（下一轮）
       ├─ resolved → persist_result
       └─ request_teacher_help → teacher_review
 ```
 
-`ai_reasoning` 不能扩展故障树原因空间；非法输出自动回退确定性排序。`knowledge_service` 在推理之后匹配结构化案例，它不是 RAG 分支。没有已审核案例时记录 `no_approved_case`，但不阻断诊断。`ai_explanation` 不决定下一节点；分支只由 `escalation_handler` 的确定性代码控制。
+`knowledge_context` 在推理前供给已审核的实验定义、正常条件、故障映射和教师确认案例。`ai_reasoning` 不能扩展故障树原因空间；非法输出自动回退确定性排序。`knowledge_validation` 在推理后独立检查实验规范、证据 ID、候选集、规则结果和允许动作；它不是 RAG 分支。没有已审核案例时记录 `validated_without_case`，但不阻断诊断。
 
 ## DiagnosisState 状态
 
@@ -124,20 +125,20 @@ python -m app.cli.sync_knowledge_cases
 
 ## 验证状态
 
-| 检查 | 2026-09-02 结果 |
+| 检查 | 2026-09-03 结果 |
 | --- | --- |
 | 后端 Ruff | 通过 |
 | Python 语法编译 | `backend/app` 与迁移脚本通过 |
 | Docker 后端镜像 | 使用 Python 3.12 与锁定依赖构建通过 |
 | 迁移 Head | `20260902_0025 (head)` |
-| V2 状态图验收 | 8 个核心节点与 21 个核心状态字段通过；未解决反馈继续推理、支持等级、证据 ID、`unknown` 回退和无 RAG 分支均通过 |
+| V2 状态图验收 | 9 个核心节点与 23 个核心状态字段通过；推理前知识供给、推理后独立校验、未解决反馈续诊、证据 ID、`unknown` 回退和无 RAG 分支均通过 |
 | 结构化知识验收 | 5 个外置案例加载通过；精确匹配命中实验类型、错误类型和证据 |
 | 案例沉淀闭环 | unknown 根因草稿、AI 表达字段防篡改、教师根因/修复动作确认和正式案例四重门槛通过 |
 | 确定性合成评测 | 30/30 错误类型精确匹配；原因 Top-1/Top-3 与必需步骤均为 100%；禁止性声明 0 命中；AI Provider 调用 0 |
 | 前端类型检查 | 通过 |
 | 前端 ESLint | 通过 |
 | 前端 Vitest | 5 个文件、26 个测试全部通过 |
-| V2 后端定向测试 | 29 个推理、AI 案例整理、知识治理、结构化匹配与 LangGraph 工作流测试通过 |
+| V2 后端定向测试 | 31 个推理、AI 案例整理、知识双阶段校验、结构化匹配与 LangGraph 工作流测试通过 |
 | PostgreSQL 全量迁移 | 在独立临时数据库从初始版本升级至 `20260902_0025` 通过，临时数据库已删除 |
 
 本地历史 `backend/.venv` 仍是 Python 3.9 且没有 LangGraph，不符合当前 Python 3.10+ 要求，因此后端运行验证使用 Python 3.12 容器。生产镜像不安装 pytest，不在该镜像中声称执行全量后端 pytest；使用专用验收命令、约束单元测试和生产同源确定性评测覆盖主链变更。已取消的向量召回指标不再列入 V2 验收。
