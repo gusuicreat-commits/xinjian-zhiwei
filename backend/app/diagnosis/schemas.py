@@ -160,6 +160,7 @@ class DiagnosisContext(StrictModel):
     experiment_version_id: Optional[str] = None
     experiment_package_hash: Optional[str] = None
     experiment_package_schema_version: Optional[str] = None
+    experiment_package_is_test_data: bool = False
     experiment_definition_hash: Optional[str] = None
     device: Optional[DeviceDescriptor] = None
     components: list[ComponentDefinition] = Field(default_factory=list)

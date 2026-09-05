@@ -11,7 +11,7 @@ then
 fi
 
 if git ls-files -z --cached --others --exclude-standard \
-  | xargs -0 grep -IEn \
+  | xargs -0 grep -IEns \
     'BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}' \
   | grep -v -E '(^|/)\.env\.example:|simulator/\.env\.example:|scripts/security_scan\.sh:'
 then

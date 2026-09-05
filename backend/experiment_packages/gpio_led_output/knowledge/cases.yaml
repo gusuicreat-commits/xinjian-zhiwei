@@ -25,3 +25,4 @@ cases:
     reviewStatus: approved
     sourceRef: experiment_packages/gpio_led_output/knowledge/cases.yaml
     version: "2.0.0"
+    isTestData: true

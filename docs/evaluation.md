@@ -1,75 +1,121 @@
-# 合成诊断与检索评测（P3）
+# 测试与评测准则
 
-## 评测边界
+最后更新：2026-09-05
 
-本评测的全部输入都是仓库内合成数据，只验证当前示例规则、边界语义、冲突排序、生产同源
-混合检索路径和禁止性陈述门禁。它不是设备说明书、行业标准、课程真值或真实故障样本，
-不能据此声明真实硬件诊断准确率、误报率、漏报率、专业知识有效性或生产就绪。
+## 1. 评测边界
 
-## 数据集
+仓库内自动评测全部使用合成、Mock 或明确测试标记的数据，只证明代码符合已提交的 Schema、规则、状态流转和安全约束。它不能证明真实硬件诊断准确率、传感器参数正确性、教师知识有效性或生产环境可用性。
 
-- `backend/evaluation/golden_cases.json`：30 个合成诊断用例，覆盖正常、读取失败、离线、
-  数值越界、边界值、未知事件、多规则冲突和优先级；同时声明示例原因与必须包含的排查
-  步骤片段。
-- `backend/evaluation/retrieval_cases.json`：25 个合成文档、54 个带有明确
-  `expected_document_ids` 和 `expected_chunk_ids` 的人工标注查询。评测在
-  隔离的内存数据库中装载这些知识块，直接调用生产同源的
-  `hybrid_retrieve`（词法 + 确定性测试向量 + RRF）。确定性哈希向量
-  只是无网络的代码验收 fixture，不是语义 Embedding 模型。
-  语料包含 6 条多相关知识块查询、独立自然语言改写以及共享高频词的
-  负例干扰块；不再依赖扩展到全语料的候选集或唯一大写标签。
-- `backend/evaluation/forbidden_claims.json`：6 个禁止性陈述模式。
+第一阶段不评测向量召回，不保留 Recall@K、MRR、RRF 或 Embedding 基线。当前知识验收关注结构化字段匹配、版本隔离、审核状态和推理前/推理后约束。
 
-三个数据集都带 `is_test_data` 或明确合成依据。默认运行只写入内存
-SQLite，不写入 PostgreSQL。
+## 2. 自动化测试层次
 
-## 指标与门禁
+### 静态和构建门禁
 
-- 诊断 exact match、Top-1/Top-3 原因命中和必含步骤：阈值 100%，因为规则与模板是
-  确定性的；
-- 无证据高置信输出必须为 0；
-- 合成混合检索主门禁：Recall@5 不低于 80%；同时报告 MRR@5、
-  Hit Rate@5、Top-1/Top-3 命中率和逐条 miss 列表；
-- 候选与融合上限使用生产默认值：词法 Top-10、向量 Top-10、融合 Top-5；
-- 两次同设备、同实验、同错误的诊断必须聚合为一个 Episode；
-- 输出诊断平均响应时间、AI Provider 调用次数和缓存命中次数。本评测不调用 AI，
-  因此后两项预期均为 0；
-- 禁止性陈述：必须 0 命中；
-- 任一门禁失败，CLI 返回非零退出码，测试失败。
+- Ruff：后端、迁移、CLI 和模拟器静态检查。
+- Python 3.10+ 运行时检查。
+- ESLint、TypeScript 类型检查、Vitest 和前端生产构建。
+- 安全扫描与项目版本一致性检查。
 
-运行：
+### 后端行为测试
+
+- 设备认证、批量幂等、序列冲突、时间质量、限流和定向测试数据清理。
+- `DiagnosisContext` 归一化、规则命中、故障树排序、Episode 聚合和重复调用不升级。
+- Experiment Package 严格 Schema、跨文件引用、内容哈希、状态流转、运行时版本锁定和证据落库。
+- LangGraph 节点顺序、Checkpoint、暂停恢复、反馈分支、教师审核和确定性降级。
+- AI 原因只能来自候选集合，证据只能来自本次诊断实际落库的证据 UUID，错误类型不可覆盖。
+- 推理前知识供给和推理后知识校验；错误实验、错误类型、未审核、未锁定事实和测试数据不得越界。
+- 案例草稿的事实锁定、AI 表达字段限制和教师确认发布。
+- 学生/教师认证、班级范围、处置乐观锁和私人备注隔离。
+
+### 合成诊断评测
+
+`backend/evaluation/golden_cases.json` 当前包含 30 个确定性用例，覆盖正常、读取失败、离线、数值越界、边界值、未知事件和多规则冲突。门禁包括：
+
+- 错误类型精确匹配；
+- 原因 Top-1 / Top-3 与必需排查步骤；
+- 无证据时不得产生高置信结论；
+- 禁止性陈述 0 命中；
+- Episode 重复故障按预期聚合；
+- 默认评测不调用真实 AI Provider。
+
+阈值针对提交的确定性合成规则设为严格通过，不应解释为真实世界准确率。
+
+### 前端与端到端测试
+
+- 学生和教师关键页面、状态投影和错误降级。
+- 合成身份登录、诊断反馈、请求教师帮助、教师认领/解决/关闭和学生端回显。
+- 就绪状态不因演示数据被错误提升为生产 ready。
+
+## 3. 标准运行方式
+
+完整本地门禁：
+
+```bash
+scripts/verify.sh
+```
+
+该脚本依次运行 Python 静态检查、后端测试、模拟器测试、合成诊断评测、实验包校验、结构化知识校验、V2 证据工作流校验、安全扫描，以及前端 lint、类型、单元、构建和 Playwright 测试。
+
+分层执行：
 
 ```bash
 cd backend
+ruff check app tests
+pytest -q
 python -m app.cli.run_synthetic_evaluation
-pytest tests/test_synthetic_evaluation.py
+python -m app.cli.verify_experiment_packages
+python -m app.cli.verify_structured_knowledge
+python -m app.cli.verify_v2_evidence_workflow
+
+cd ../simulator
+pytest -q
+
+cd ../frontend
+npm run lint
+npm run type-check
+npm run test -- --run
+npm run build
+npm run test:e2e
 ```
 
-默认评测使用 SQLite，会覆盖同一个 `hybrid_retrieve` 入口及 SQLite 词法、
-向量和 RRF 分支，但不会执行 PostgreSQL FTS/pgvector SQL。可用专用的、
-可丢弃的 PostgreSQL 数据库补跑集成验收：
+## 4. 数据库和部署验收
+
+迁移变更必须同时验证空库升级、现有库升级、单一 Head 和模型差异：
 
 ```bash
-TEST_RAG_POSTGRES_DSN=postgresql+psycopg://.../rag_eval_ci \
-  pytest tests/test_synthetic_evaluation.py::test_optional_postgres_hybrid_retrieval_acceptance
+docker compose build
+docker compose up -d
+docker compose exec -T backend alembic current
+docker compose exec -T backend alembic heads
+docker compose exec -T backend alembic check
 ```
 
-为防止误操作业务库，该 DSN 的数据库名必须以 `test`、`tmp` 或
-`rag_eval` 开头，且 public schema 不得已有任何表。专用库需预先启用
-pgvector 扩展。集成评测会在该空库中建表并于结束时清理，不得指向
-共享、已迁移或生产库。未配置 `TEST_RAG_POSTGRES_DSN` 时，该用例明确 skip。
+历史初始迁移会创建 `vector` 扩展，因此测试和 Compose 数据库镜像必须提供该扩展；这只是迁移兼容条件，不是 RAG 功能验收。
 
-2026-08-13 更严格的 SQLite 基线为诊断 30/30、原因 Top-1/Top-3 与必含
-步骤均 100%、无证据高置信输出 0；合成混合检索 50/54 完全找齐，
-Top-1 87.04%、Top-3 90.74%、Recall@5 93.83%、MRR@5 89.72%、
-Hit Rate@5 94.44%、4 条 miss，通过 Recall@5 ≥ 80% 门禁；其中一条为
-多相关块的部分召回，因而 Recall@5 与 Hit Rate@5 不再等价。禁止性陈述必须
-0/6 命中，Episode 必须 2→1 聚合，AI/缓存调用为 0/0。平均响应时间
-不作为跨机器固定性能承诺。机器可读摘要位于
-`docs/evaluation-baseline.json`。这些结果只证明代码与提交的合成预期一致。
+生产前还必须演练：
 
-## 仍待真实资料
+- PostgreSQL 备份和隔离恢复；
+- 无公网、无 AI Key 时的确定性诊断；
+- Provider 超时、限流、非法 JSON 和越界证据的降级；
+- 服务重启后的 LangGraph Checkpoint 恢复；
+- 凭据撤销、班级隔离和审计查询；
+- 磁盘、数据库、队列/请求积压和错误率告警。
 
-真实评测仍需要：硬件/传感器型号与说明书、正式实验模板和阈值、带真值的正常/故障
-数据、确认根因和修复结果、正式知识语料与审核结论，以及由项目方确认的误报/漏报/
-覆盖率目标。未提供前不得将合成基线替换成专业结论。
+## 5. 真实硬件验收要求
+
+正式准确性结论至少需要：
+
+1. 明确板卡、传感器、固件、接线、GPIO、供电和环境版本；
+2. 带时间戳的原始设备数据和不可变真值标签；
+3. 正常、典型故障、复合故障、证据不足和恢复样本；
+4. 由教师或硬件负责人确认的根因和最终修复动作；
+5. 预先约定的误报率、漏报率、Top-K、诊断时延和教师介入目标；
+6. 测试集与知识整理、阈值设定数据隔离；
+7. 按实验包版本、硬件版本和规则版本分层报告结果。
+
+未满足以上条件时，只能报告“合成门禁通过”，不得报告“诊断准确率已达到生产要求”。
+
+## 6. 失败处理
+
+任一强制门禁失败时不得通过删除测试、放宽白名单、降低真实性标记或恢复旧 RAG 逻辑绕过。应先判断是代码回归、测试预期过期、缺少外部资料还是环境故障，再修复根因并记录验证命令和结果。

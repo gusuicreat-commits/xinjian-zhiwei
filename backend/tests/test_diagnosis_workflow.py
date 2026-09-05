@@ -5,9 +5,7 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import select
 
-from app.ai.clients import DisabledEmbeddingClient
 from app.ai.diagnosis_graph import build_diagnosis_graph
-from app.ai.tools import build_read_only_diagnosis_tools
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.diagnosis.workflow_schemas import (
@@ -809,27 +807,6 @@ def test_teacher_scope_fixture_can_link_workflow_device(api_context: dict[str, A
         )
         db.commit()
         assert teacher.id
-
-
-def test_langchain_tool_allowlist_is_read_only(api_context: dict[str, Any]) -> None:
-    with api_context["session_factory"]() as db:
-        tools = build_read_only_diagnosis_tools(
-            db,
-            _settings(),
-            DisabledEmbeddingClient(),
-            include_test_data=True,
-        )
-        names = {item.name for item in tools}
-        assert names == {
-            "get_fault_tree_path",
-            "get_rule_explanation",
-            "search_approved_fault_knowledge",
-        }
-        assert not any(
-            blocked in name
-            for name in names
-            for blocked in ("sql", "shell", "http", "write", "device_control")
-        )
 
 
 def test_production_rejects_in_memory_checkpointing() -> None:

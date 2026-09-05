@@ -31,7 +31,12 @@ knowledge_constraints 只提供实验定义、正常条件、标准故障映射�
 
 
 def build_evidence_registry(state: dict[str, Any]) -> list[dict[str, str]]:
-    """Build the complete evidence allowlist shared by reasoning and validation."""
+    """Use the persisted evidence allowlist supplied by the workflow.
+
+    Current diagnosis runs populate this list from ``diagnosis_evidence``.  The
+    reasoning layer must not mint aliases such as ``device:status`` or raw log
+    IDs, because those values cannot be traced to one immutable evidence row.
+    """
     facts: list[dict[str, str]] = []
 
     def add(evidence_id: str, fact: str, source: str) -> None:
@@ -39,48 +44,11 @@ def build_evidence_registry(state: dict[str, Any]) -> list[dict[str, str]]:
             return
         facts.append({"id": evidence_id, "fact": fact, "source": source})
 
-    device_status = state.get("device_status") or {}
-    if device_status.get("status"):
-        add("device:status", f"设备状态={device_status['status']}", "device")
-    for index, item in enumerate(state.get("evidence") or []):
-        fact = sanitize_text(item.get("fact"), max_chars=100)
-        value = sanitize_text(item.get("observed_value"), max_chars=100)
-        if fact:
-            refs = [str(ref) for ref in item.get("evidence_refs") or [] if ref]
-            add(
-                refs[0] if refs else f"rule:{item.get('rule_id') or 'unknown'}:{index}",
-                f"规则证据:{fact}={value}",
-                "rule_engine",
-            )
-    for item in (state.get("logs") or [])[-20:]:
-        log_id = item.get("id")
-        event_code = sanitize_text(item.get("event_code"), max_chars=100)
-        message = sanitize_text(item.get("message"), max_chars=160)
-        if log_id and (event_code or message):
-            add(f"log:{log_id}", f"日志:{event_code or message}", "device_log")
-    for item in (state.get("sensor_values") or state.get("sensor_data") or [])[-20:]:
-        metric = sanitize_text(item.get("metric_key"), max_chars=100)
-        reading_id = item.get("id")
-        if reading_id and metric:
-            unit = sanitize_text(item.get("unit"), max_chars=30)
-            value = item.get("value")
-            add(
-                f"reading:{reading_id}",
-                f"传感器:{metric}={value if value is not None else 'null'}{unit}",
-                "sensor_reading",
-            )
-    if state.get("historical_failures") is not None:
+    for item in state.get("evidence_registry") or []:
         add(
-            "history:failure_count",
-            f"历史失败次数={int(state.get('historical_failures') or 0)}",
-            "diagnosis_history",
-        )
-    feedback = state.get("student_feedback") or {}
-    if feedback.get("id") and feedback.get("action"):
-        add(
-            f"feedback:{feedback['id']}",
-            f"学生反馈={sanitize_text(feedback['action'], max_chars=50)}",
-            "student_feedback",
+            sanitize_text(item.get("id"), max_chars=100),
+            sanitize_text(item.get("fact"), max_chars=300),
+            sanitize_text(item.get("source"), max_chars=50),
         )
     return facts[:50]
 

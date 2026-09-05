@@ -1,6 +1,6 @@
 # Experiment Package 与证据治理
 
-最后更新：2026-09-04
+最后更新：2026-09-05
 
 ## 目标
 
@@ -81,6 +81,11 @@ draft → pending → approved → published → superseded/revoked
 
 当前完整包为 `dht11_temperature_humidity@2.0.0` 和
 `gpio_led_output@2.0.0`。它们用于证明同一套加载、规则、故障树和证据链可以处理不同实验。
+
+两个包及其案例均为合成测试资料，并明确标记测试数据；没有真实硬件和教师审核时不能作为
+正式实验知识发布。`metadata.compatibility.engine` 当前只保存声明，尚未执行语义版本校验。
+`knowledge/concepts.yaml` 和 `teaching/steps.yaml` 已被校验与存储，但尚未在所有教学路径中
+完整消费。
 
 新增实验时：复制包结构，填写硬件与证据映射，编写规则和故障树，补齐教师审核知识和
 四级提示，至少提供一个正常样例和一个故障样例，运行

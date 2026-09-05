@@ -334,7 +334,9 @@ function formatReviewTime(value: string): string {
       >
         {{ aiStatus.provider_configured ? '按需增强解释' : 'AI 增强未启用' }}
       </el-button>
-      <p class="ai-safety-note">AI 只补充解释，不覆盖确定性规则、证据和故障树结论。</p>
+      <p class="ai-safety-note">
+        此按需接口补充解释；V2 AI 推理也只能在故障树候选和证据白名单内工作。
+      </p>
     </article>
 
     <article v-if="diagnosis" class="panel-card ai-explanation-panel">
@@ -377,7 +379,9 @@ function formatReviewTime(value: string): string {
       >
         {{ workflowActionLabel }}
       </el-button>
-      <p class="ai-safety-note">诊断以设备记录和规则结果为准，AI 只负责整理说明。</p>
+      <p class="ai-safety-note">
+        诊断以设备证据和规则结果为准，AI 只能在故障树候选范围内辅助排序和解释。
+      </p>
     </article>
 
     <article v-if="primaryMatch" class="panel-card evidence-panel">
@@ -404,13 +408,13 @@ function formatReviewTime(value: string): string {
           <div class="cause-copy">
             <div>
               <strong>{{ cause.title }}</strong>
-              <small>置信度 {{ confidenceLabels[cause.confidence] }}</small>
+              <small>证据等级 {{ confidenceLabels[cause.confidence] }}</small>
             </div>
             <div class="score-track">
               <span :style="{ width: `${scorePercent(cause.score)}%` }" />
             </div>
           </div>
-          <b>{{ scorePercent(cause.score) }}%</b>
+          <b>支持分 {{ scorePercent(cause.score) }}/100</b>
         </li>
       </ol>
       <p v-if="rankedCauses.length === 0" class="empty-copy">尚无有证据支持的候选原因。</p>

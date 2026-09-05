@@ -87,7 +87,7 @@ function formatDate(value: string): string {
         <ul v-if="candidates.length">
           <li v-for="candidate in candidates" :key="candidate.cause_id">
             <b>{{ candidate.name }}</b
-            ><em>可能性 {{ scorePercent(candidate.score) }}%</em>
+            ><em>证据支持分 {{ scorePercent(candidate.score) }}/100</em>
           </li>
         </ul>
         <p v-else class="workflow-missing">当前还没有可靠的原因候选。</p>

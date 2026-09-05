@@ -163,10 +163,12 @@ def test_post_reasoning_validation_rejects_unknown_cause_and_evidence() -> None:
             {
                 "cause_id": "invented_damage",
                 "support_level": "high",
-                "used_evidence_ids": ["evidence:not-found"],
+                "used_evidence_ids": ["00000000-0000-0000-0000-000000000099"],
             }
         ],
-        "evidence_registry": [{"id": "device:status"}],
+        "evidence_registry": [
+            {"id": "00000000-0000-0000-0000-000000000001"}
+        ],
         "allowed_verification_actions": [{"text": "核对 GPIO"}],
         "next_verification_action": "直接更换主板",
         "knowledge_constraints": {

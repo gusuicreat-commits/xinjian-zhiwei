@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
+        # Required by immutable historical migrations, not by the MVP diagnosis path.
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: xinjian_ci
@@ -48,6 +49,9 @@ jobs:
           ruff check backend simulator
           pytest backend/tests simulator/tests
           PYTHONPATH=backend python -m app.cli.run_synthetic_evaluation
+          PYTHONPATH=backend python -m app.cli.verify_experiment_packages
+          PYTHONPATH=backend python -m app.cli.verify_structured_knowledge
+          PYTHONPATH=backend python -m app.cli.verify_v2_evidence_workflow
           python scripts/check_version.py
           scripts/security_scan.sh
       - name: Migration checks

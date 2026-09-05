@@ -163,6 +163,43 @@ def _evidence_id_map(runtime: Runtime[DiagnosisGraphContext], diagnosis_id: str)
     return aliases
 
 
+def _persisted_evidence_registry(
+    runtime: Runtime[DiagnosisGraphContext], diagnosis_id: str
+) -> list[dict[str, str]]:
+    """Project persisted evidence rows into the only IDs AI may cite."""
+
+    rows = list(
+        runtime.context.db.scalars(
+            select(DiagnosisEvidence)
+            .where(DiagnosisEvidence.diagnosis_id == diagnosis_id)
+            .order_by(DiagnosisEvidence.created_at, DiagnosisEvidence.id)
+        )
+    )
+    registry: list[dict[str, str]] = []
+    for item in rows[:50]:
+        value = item.normalized_value or {}
+        kind = value.get("kind")
+        if kind == "rule_fact":
+            fact = f"规则证据:{value.get('fact')}={value.get('observed_value')}"
+        elif kind == "observation":
+            fact = (
+                f"传感器:{value.get('metric')}={value.get('value')}"
+                f"{value.get('unit') or ''}"
+            )
+        elif kind == "event":
+            fact = f"事件:{value.get('event_type')}={value.get('status') or 'observed'}"
+        else:
+            fact = f"证据:{item.evidence_type}"
+        registry.append(
+            {
+                "id": item.id,
+                "fact": sanitize_text(fact, max_chars=300),
+                "source": sanitize_text(item.source_type, max_chars=50),
+            }
+        )
+    return registry
+
+
 @observed_node("context_builder")
 def context_builder(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
@@ -441,6 +478,9 @@ def ai_reasoning_node(
     diagnosis = _diagnosis(runtime, state)
     graph_knowledge, _ = _load_graph_knowledge(state, runtime)
     reasoning_state = dict(state)
+    reasoning_state["evidence_registry"] = _persisted_evidence_registry(
+        runtime, diagnosis.id
+    )
     reasoning_state["knowledge_constraints"] = build_reasoning_knowledge_constraints(
         state.get("experiment_context"), graph_knowledge
     )
@@ -536,31 +576,6 @@ def _knowledge_state_reference(item: AIKnowledgeReference) -> dict[str, Any]:
     }
 
 
-def _safe_graph_knowledge(
-    references: list[AIKnowledgeReference], settings: Settings
-) -> list[AIKnowledgeReference]:
-    """Apply the checkpoint/provider text boundary without storing raw chunks."""
-
-    return [
-        item.model_copy(
-            update={
-                "source_title": sanitize_text(item.source_title, max_chars=200),
-                "source_key": sanitize_text(item.source_key, max_chars=200),
-                "source_uri": None,
-                "source_version": sanitize_text(item.source_version, max_chars=100)
-                if item.source_version
-                else None,
-                "locator": _safe_locator(item.locator),
-                "content": sanitize_text(
-                    item.content,
-                    max_chars=settings.ai_knowledge_content_max_chars,
-                ),
-            }
-        )
-        for item in references
-    ]
-
-
 def _load_graph_knowledge(
     state: DiagnosisState,
     runtime: Runtime[DiagnosisGraphContext],
@@ -600,7 +615,9 @@ def _load_graph_knowledge(
         )
         references.append(reference)
         safe_state_refs.append(_knowledge_state_reference(reference))
-    return _safe_graph_knowledge(references, runtime.context.settings), safe_state_refs
+    # Keep trusted JSON intact for deterministic pre/post reasoning checks.
+    # The provider boundary applies its own bounded sanitization later.
+    return references, safe_state_refs
 
 
 @observed_node("knowledge_context")

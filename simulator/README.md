@@ -1,8 +1,8 @@
-# Phase 3 设备模拟器
+# 设备模拟器
 
 本目录只生成明确标记为 `is_test_data=true` 的测试数据，用于在没有真实硬件时验证设备 API。模拟器不绑定具体 ESP32、传感器型号、字段或生产配置。
 
-P1 起，场景每个周期使用设备协议 V1 批量上传当次日志、读数和心跳。批次携带稳定
+场景每个周期使用设备协议 V1 批量上传当次日志、读数和心跳。批次携带稳定
 `requestId`、启动 ID 和递增序列号；网络错误、超时、408/425/429/5xx 会复用同一请求
 执行有限指数退避，协议或认证类 4xx 不重试。旧单条客户端方法只为兼容测试保留。
 
@@ -30,7 +30,7 @@ export XINJIAN_DEVICE_TOKEN=TODO_LOCAL_SECRET
 
 ## 场景
 
-P2 版本化场景命令：
+版本化场景命令：
 
 ```bash
 xinjian-simulator list
@@ -54,8 +54,8 @@ xinjian-simulator cleanup <test-run-uuid>
 - `multi-device-classroom`：要求显式提供三组测试设备凭据，不自动创建虚构设备。
 
 场景规范位于 `scenario_specs/`，运行报告位于 Git 忽略的 `.simulator-runs/`。每个运行
-都通过 UUID 标记服务端批次，可定向清理且不会影响其他数据。完整说明见
-`docs/simulator-design.md`。
+都通过 UUID 标记服务端批次，可定向清理且不会影响其他数据。统一测试边界和验收方式见
+`../docs/evaluation.md`。
 
 ## 测试
 

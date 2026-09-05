@@ -606,9 +606,6 @@ onBeforeUnmount(() => {
                   ><small>已审</small><b>{{ workflowMetrics.reviewed ?? 0 }}</b></span
                 >
                 <span
-                  ><small>旧流程兼容标记</small><b>{{ workflowMetrics.needs_rag_count ?? 0 }}</b></span
-                >
-                <span
                   ><small>修订率</small><b>{{ percent(workflowMetrics.edit_rate ?? 0) }}</b></span
                 >
                 <span

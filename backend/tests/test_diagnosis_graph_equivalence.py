@@ -134,6 +134,12 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
             ]
             assert graph_refs
             assert set(graph_refs).issubset(persisted_evidence_ids)
+        if direct_facts:
+            registry_ids = {
+                item["id"] for item in checkpoint.values.get("evidence_registry", [])
+            }
+            assert registry_ids
+            assert registry_ids.issubset(persisted_evidence_ids)
         assert [item["error_type"] for item in direct_facts] == case["expected"]
         assert workflow.rule_engine_version == direct.ruleset_version
         if workflow.final_result:

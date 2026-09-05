@@ -1,4 +1,6 @@
-# 芯鉴知微 API 设计（P1 设备协议 V1）
+# 芯鉴知微 API 设计
+
+最后更新：2026-09-05。本文描述稳定语义；完整字段、枚举和响应 Schema 以运行中的 FastAPI OpenAPI（`/docs`）为准。
 
 ## 通用约定
 
@@ -30,7 +32,7 @@ X-Device-Token: <secret token>
 262144 字节、单设备每分钟 120 个新请求。完整契约、错误码和重试语义见
 `docs/device-protocol.md`。
 
-下列三个单条上传端点继续保留，以兼容 Phase 2 客户端；新模拟器默认使用批量入口。
+下列三个单条上传端点继续保留，以兼容旧客户端；新模拟器默认使用批量入口。
 
 ### DELETE `/device/test-runs/{test_run_id}`
 
@@ -53,7 +55,7 @@ X-Device-Token: <secret token>
 
 返回 `online`、`offline` 或 `never_seen`。离线阈值由 `DEVICE_OFFLINE_AFTER_SECONDS` 配置，默认开发值为 90 秒。
 
-### P4–P11 新增边界
+### 其他接口分组
 
 - `/auth/session`、`/auth/me`、`/auth/classes`：正式用户会话和资源范围。
 - `/experiments/templates`、`/experiments/template-versions/*`：旧模板草稿与发布门禁。
@@ -68,7 +70,7 @@ X-Device-Token: <secret token>
 
 使用路径设备 ID 和 `X-Device-Token` 认证。请求包含 1 至 604800 秒的回看窗口，以及可选的通用实验模板快照 `template_id + metric_ranges`。响应返回持久化结果 ID、规则集版本、输入指纹、按优先级排序的命中规则及证据。
 
-Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的临时接口边界，不表示设备端有权定义生产阈值。相关业务模型确定后应改为服务端加载模板。
+可选模板快照是旧调用兼容边界，不表示设备端有权定义生产阈值。新任务应由服务端锁定已审核发布的实验包版本。
 
 ### POST `/diagnosis/results/{diagnosis_result_id}/guidance`
 
@@ -121,9 +123,9 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 
 送往 Provider 的上下文先经过 `phase9.5-allowlist-v1` 最小化：设备标识匿名化；日志只保留最多 3–10 条相关项；读数和心跳转换为统计摘要；令牌、密钥、Wi-Fi、学生身份、联系方式和自由文本中的敏感片段被删除或遮蔽。知识正文按字符上限截断，原始 Prompt 不写入审计表。
 
-未配置密钥、知识未就绪、预算受限、检索失败、AI 超时或输出校验失败时仍返回 201，并携带 `deterministic_result`；`enhancement_status` 保留兼容状态值，同时通过 `route_path` 明确记录 `cache_hit`、`cache_miss → deepseek_success`、`cache_miss → deepseek_failed → deterministic_fallback` 或跳过原因。成功时仍返回兼容字段 `mode=ai_enhanced` 和严格结构化解释。
+未配置密钥、知识未就绪、预算受限、知识查询失败、AI 超时或输出校验失败时仍返回确定性结果；`enhancement_status` 和 `route_path` 记录缓存、Provider、降级或跳过原因。
 
-结构化策略触发原因通过 `trigger_reason` 返回并写入审计。已知高置信单规则、只读页面刷新、教师统计和普通知识检索不会触发 Provider；低置信、未知异常、多规则、Episode 升级或显式自然语言追问才可能进入缓存和 Provider 路由。知识引用包含来源、版本、定位、审核状态、融合分数和全文/向量/RRF 分项分数。
+结构化策略触发原因通过 `trigger_reason` 返回并写入审计。已知高置信单规则、只读页面刷新和教师统计不会触发 Provider；低置信、未知异常、多规则、Episode 升级或显式自然语言追问才可能进入缓存和 Provider 路由。知识引用记录案例 ID、来源、版本、审核状态和显式字段匹配依据，不包含向量/RRF 分数。
 
 ### `/diagnosis-workflows/*`
 
@@ -135,11 +137,11 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 - `GET /diagnosis-workflows/{diagnosis_id}`：设备凭据和实验会话归属同时一致才可读取。
 - `GET /diagnosis-workflows/review-queue/pending`：教师 Bearer + `intervention.manage`；教师按班级范围过滤，管理员可查全部。
 - `GET /diagnosis-workflows/review-queue/recent`：同权限查看最近 50 条已审核流程及追加式审核历史。
-- `GET /diagnosis-workflows/metrics/summary`：同范围聚合流程状态、RAG、恢复、节点耗时、AI Token/成本和学生解决率。
+- `GET /diagnosis-workflows/metrics/summary`：同范围聚合流程状态、恢复、节点耗时、AI Token/成本和学生解决率。响应内 `needs_rag_count` 是旧 Schema 兼容字段，新流程固定为 0。
 - `POST /diagnosis-workflows/{workflow_id}/review`：提交 `approve/edit/reject`。`edit` 可修订解释文案，不能修改规则证据、证据分和 Level。
 
 响应状态包括 `created/collecting/deterministic_analysis/retrieving/ai_analysis/
-waiting_teacher/completed/rejected/failed`。工作流不替换原有确定性诊断 API；功能关闭或
+waiting_teacher/completed/rejected/failed`；其中 `retrieving` 是旧记录兼容状态，新图使用 `knowledge_context` 结构化匹配。工作流不替换原有确定性诊断 API；功能关闭或
 checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 `node_metrics`、
 `retrieval_audit`、规则/日志引用、故障树候选、知识引用和 `reviews` 用于可观察、可追溯
 展示；不返回知识正文、Prompt、认证信息或密钥。
@@ -238,11 +240,5 @@ pending --formal_approver--> approved
 | 503 | 知识工作区审阅凭据、AI Provider 或诊断工作流基础设施不可用 |
 
 当前继续提供设备凭据保护的学生总览 API，以及审阅令牌保护的知识工作区管理 API；
-教师聚合已迁移到正式 Bearer 账号、班级范围和 RBAC。长期数据库中的正式记录仍为 0，
-也不提供公开设备注册。Phase 9.5 已固定 DeepSeek 官方 API、
-`deepseek-v4-flash` 和非思考模式，但 `AI_ENABLED=false`、密钥为空，因此不代表已经
-配置或调用真实 AI 服务。统一 `AIClient` 仍作为可替换边界。
-
-当前数据库中的 `phase9.synthetic-acceptance` 来源及 `phase9-test-vector` 向量只用于
-自动化验收，默认查询排除；它们不是正式知识或真实 Provider 产物。无真实硬件路线
-P1–P11 已完成，但没有自动生成正式业务数据。
+教师聚合使用正式 Bearer 账号、班级范围和 RBAC。项目不提供公开设备注册。默认
+`AI_ENABLED=false`，是否启用 Provider 由部署方明确配置和审批；统一 `AIClient` 是可替换边界。

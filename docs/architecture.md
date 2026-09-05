@@ -1,6 +1,6 @@
 # 芯鉴知微系统架构
 
-最后更新：2026-09-04
+最后更新：2026-09-05
 
 ## 1. V2 架构目标
 
@@ -21,8 +21,9 @@ V2 在现有 MVP 上增加证据驱动的 Diagnosis Workflow 和版本化 Experi
        |-- LangGraph Diagnosis Workflow
        |     |-- 规则引擎：异常类型 + 确定性证据
        |     |-- 故障树：候选原因 + 证据排序
+       |     |-- Knowledge Context：推理前结构化约束和经验供给
        |     |-- AI 受约束原因排序：候选集内推理 + 证据白名单
-       |     |-- KnowledgeCase 结构化校验与经验补充
+       |     |-- Knowledge Validation：推理后规则、证据、原因与动作校验
        |     |-- 可选 AI 结构化解释
        |     `-- 学生反馈、提示升级与教师介入
        |-- 校验、审计、Checkpoint 与确定性降级
@@ -71,7 +72,7 @@ attempt_count / missing_evidence / next_verification_action
 evidence_conflict / need_teacher_help / diagnosis_status
 ```
 
-状态中还保留 `experiment_record_id`、`experiment_version_id`、`experiment_package_hash`、`state_revision`、工作流 ID、规则版本、故障树版本、输入指纹、节点轨迹和耗时指标，用于版本锁定、幂等执行、审计与恢复。日志和传感器状态进入 Checkpoint 前会被脱敏和限量；完整业务快照仍由现有 `diagnosis_results` 权限边界管理。
+状态中还保留 `experiment_record_id`、`experiment_version_id`、`experiment_package_hash`、`state_revision`、工作流 ID、规则版本、故障树版本、输入指纹、节点轨迹和耗时指标，用于版本锁定、审计与恢复。`state_revision` 是业务审计修订号，不是 Checkpoint 并发锁。日志和传感器状态进入 Checkpoint 前会被脱敏和限量；完整业务快照仍由现有 `diagnosis_results` 权限边界管理。
 
 ## 5. Experiment Package 与证据治理
 
@@ -118,7 +119,7 @@ context_builder
 5. `ai_reasoning` 只能在故障树候选集中排序，输出 `high/medium/low/unknown`、`used_evidence_ids`、缺失证据、冲突和允许的下一验证动作。
 6. `knowledge_validation` 在推理后独立校验实验规范、证据 ID、故障树候选集、规则结果和允许的验证动作；失败时不发布为学生建议并转教师。
 7. `ai_explanation` 把通过校验的推理与知识结果转换成学生可理解的结构化建议。
-8. `feedback_handler` 暂停工作流等待学生反馈；反馈作为新证据恢复同一 LangGraph thread。
+8. `feedback_handler` 暂停工作流等待学生反馈，并恢复同一 LangGraph thread。当前未解决反馈会重跑知识、推理和解释，但不会重新采集设备上下文。
 9. `escalation_handler` 根据尝试次数、异常持续时间、提示等级、未知结论和证据冲突，决定继续推理或请求教师介入。
 
 `teacher_review`、`persist_result` 和 `reject_result` 是审核与持久化基础设施节点，不属于 AI 推理能力。
@@ -174,7 +175,7 @@ AI 优化时不得修改 `experimentType`、`errorType`、`normalState`、`evide
 - 设备令牌和用户密码哈希保存；Provider 密钥只从服务端环境变量读取。
 - AI 前的 allowlist 会匿名化设备、聚合读数、截取相关日志并删除身份、令牌和密钥。
 - AI 输出不能修改错误类型、规则证据或故障树分数。
-- AI 推理与解释按首次运行及反馈轮次分别审计，`call_stage` 包含反馈 ID，保留每轮输入输出。
+- AI 推理与解释按首次运行及反馈轮次分别审计，`call_stage` 包含反馈 ID，保存受控输入投影、结构化输出和验证结果。
 - 学生确认产生的案例先进入 `knowledge_case_drafts`；未经过教师审核不会被诊断主链匹配。
 - V1 数据表和对外 API 保留；新运行记录使用 `graph_version=langgraph-v2`，历史记录仍可审计。
 - 未绑定 Experiment Package 的旧调用继续走原 Experiment Definition 兼容路径；新任务可在 `experiment_assignments.experiment_version_id` 锁定发布版本。
@@ -193,4 +194,4 @@ knowledge/
 
 扩展时不改变 `KnowledgeCase`、规则引擎、故障树和 AI 输出契约；向量只是可重建的检索索引，不是诊断事实源。
 
-运行拓扑与部署边界另见 [运行架构](runtime-architecture.md)；AI 输入、输出与校验详见 [V2 AI 诊断设计](ai-diagnosis-design.md)。
+具体开发约束见 [开发准则](development-guidelines.md)；AI 输入、输出与校验详见 [V2 AI 诊断设计](ai-diagnosis-design.md)。

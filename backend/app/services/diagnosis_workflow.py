@@ -412,7 +412,10 @@ def start_workflow(
         embedding_version=None,
         node_trace=[],
         error_messages=[],
-        is_test_data=device.device_type in {"test-fixture", "generic-test-fixture"},
+        is_test_data=(
+            device.device_type in {"test-fixture", "generic-test-fixture"}
+            or bool(package_runtime and package_runtime.version.is_test_data)
+        ),
     )
     db.add(workflow)
     db.commit()

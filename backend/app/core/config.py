@@ -187,7 +187,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_positive_phase9_limit(cls, value: int) -> int:
         if value < 1:
-            raise ValueError("Phase 9 limits must be positive")
+            raise ValueError("AI runtime limits must be positive")
         return value
 
     @field_validator("ai_max_log_items")
@@ -274,9 +274,9 @@ class Settings(BaseSettings):
         if self.ai_base_url != "https://api.deepseek.com":
             raise ValueError("DeepSeek production base URL must be https://api.deepseek.com")
         if self.ai_model != "deepseek-v4-flash":
-            raise ValueError("Phase 9.5 production model must be deepseek-v4-flash")
+            raise ValueError("production AI model must be deepseek-v4-flash")
         if self.ai_thinking_enabled:
-            raise ValueError("Phase 9.5 DeepSeek profile requires non-thinking mode")
+            raise ValueError("the production DeepSeek profile requires non-thinking mode")
         if self.ai_transport != "openai-compatible":
             raise ValueError("DeepSeek production profile requires openai-compatible transport")
         return self

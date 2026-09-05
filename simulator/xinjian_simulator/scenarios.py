@@ -69,7 +69,7 @@ class NormalScenario:
     def next_actions(self, config: SimulationConfig, now: datetime) -> list[UploadAction]:
         return [
             _heartbeat(config, now, self.name),
-            _log(now, "info", "TEST_NORMAL_CYCLE", "Phase 3 normal test cycle", self.name),
+            _log(now, "info", "TEST_NORMAL_CYCLE", "Normal simulator test cycle", self.name),
             _reading(
                 config,
                 now,
@@ -99,7 +99,7 @@ class ReadFailureScenario:
                 now,
                 "error",
                 "SENSOR_READ_FAILED",
-                "Phase 3 simulated sensor read failure",
+                "Simulated sensor read failure",
                 self.name,
             ),
         ]
@@ -121,7 +121,7 @@ class OfflineScenario:
                 now,
                 "warning",
                 "TEST_HEARTBEAT_SUSPENDED",
-                "Phase 3 simulator will now stop sending heartbeats",
+                "Simulator will now stop sending heartbeats",
                 self.name,
             ),
         ]
@@ -137,7 +137,7 @@ class OutOfRangeScenario:
                 now,
                 "warning",
                 "VALUE_OUT_OF_RANGE",
-                "Phase 3 simulated out-of-range values",
+                "Simulated out-of-range values",
                 self.name,
             ),
             _reading(
@@ -169,7 +169,7 @@ class ValueStuckScenario:
                 now,
                 "warning",
                 "TEST_VALUE_STUCK_SAMPLE",
-                "Phase 3 repeated-value sample",
+                "Repeated-value simulator sample",
                 self.name,
             ),
             _reading(

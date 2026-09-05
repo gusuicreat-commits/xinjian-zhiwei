@@ -2,7 +2,9 @@ name: xinjian-zhiwei
 
 services:
   postgres:
-    image: postgres:16
+    # The immutable historical migrations create the vector extension.
+    # Keep this image for clean-database upgrades; the MVP performs no vector retrieval.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}

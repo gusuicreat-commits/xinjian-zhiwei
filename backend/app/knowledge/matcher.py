@@ -63,6 +63,8 @@ def _rank_knowledge_cases(
     )
     ranked: list[MatchedKnowledgeCase] = []
     for case in rows:
+        if case.error_type not in error_types:
+            continue
         matched_on = ["error_type"]
         score = 0.6
         case_experiment = case.experiment_type.lower()

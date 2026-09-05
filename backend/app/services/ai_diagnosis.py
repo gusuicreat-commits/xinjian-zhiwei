@@ -348,7 +348,7 @@ def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanation
     )
     knowledge = [AIKnowledgeReference.model_validate(item) for item in record.knowledge_references]
     if record.status == "succeeded":
-        notice = "AI 仅补充解释；确定性规则、证据和故障树结果保持不变。"
+        notice = "此接口仅补充解释；确定性规则、证据和故障树结果保持不变。"
     elif record.status == "failed":
         notice = "AI 调用或输出校验失败，当前展示规则诊断结果。"
     elif record.error_code == "AI_NOT_CONFIGURED":
@@ -867,7 +867,7 @@ def explain_diagnosis(
         explanation,
         knowledge,
         settings,
-        "AI 仅补充解释；错误类型、规则证据和故障树结果仍以确定性诊断为准。",
+        "此接口仅补充解释；错误类型、规则证据和故障树结果仍以确定性诊断为准。",
         enhancement_status=enhancement_status,
         trigger_reason=policy.reason,
         route=route,

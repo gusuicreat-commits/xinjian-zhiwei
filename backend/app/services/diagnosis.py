@@ -113,16 +113,6 @@ def build_diagnosis_context(
         definition=definition,
     )
     if package_runtime:
-        error_code_mapping = {
-            str(item.source.value): item.evidence_type
-            for item in package_runtime.bundle.hardware.evidence_mapping
-            if item.source.type == "device_error_code"
-        }
-        normalized.events = [
-            item.model_copy(update={"type": error_code_mapping.get(item.type, item.type)})
-            for item in normalized.events
-        ]
-    if package_runtime:
         error_code_types = {
             str(item.source.value): item.evidence_type
             for item in package_runtime.bundle.hardware.evidence_mapping
@@ -147,6 +137,9 @@ def build_diagnosis_context(
         experiment_package_hash=(package_runtime.version.package_hash if package_runtime else None),
         experiment_package_schema_version=(
             package_runtime.version.schema_version if package_runtime else None
+        ),
+        experiment_package_is_test_data=(
+            package_runtime.version.is_test_data if package_runtime else False
         ),
         experiment_definition_hash=definition_hash,
         device=DeviceDescriptor(
@@ -264,7 +257,8 @@ def save_diagnosis_result(
         experiment_version_id=context.experiment_version_id,
         experiment_definition_hash=context.experiment_definition_hash,
         knowledge_scope=context.knowledge_scope.model_dump(mode="json"),
-        is_test_data=bool(sources) and all(item.is_test_data for item in sources),
+        is_test_data=context.experiment_package_is_test_data
+        or any(item.is_test_data for item in sources),
         created_at=utc_now(),
     )
     db.add(record)

@@ -27,17 +27,6 @@ class AIClient(Protocol):
     def complete_json(self, *, system_prompt: str, user_prompt: str) -> AICompletion: ...
 
 
-class EmbeddingClient(Protocol):
-    """Deprecated type-only contract retained for historical test/evaluation imports."""
-
-    provider: str
-    model: str
-    dimensions: int
-    configured: bool
-
-    def embed(self, text: str) -> list[float]: ...
-
-
 class DisabledAIClient:
     provider = "unconfigured"
     model = "unconfigured"
@@ -46,19 +35,6 @@ class DisabledAIClient:
     def complete_json(self, *, system_prompt: str, user_prompt: str) -> AICompletion:
         del system_prompt, user_prompt
         raise AIProviderError("AI Provider is not configured")
-
-
-class DisabledEmbeddingClient:
-    """Deprecated compatibility sentinel; the MVP has no embedding implementation."""
-
-    provider = "unconfigured"
-    model = "unconfigured"
-    dimensions = 0
-    configured = False
-
-    def embed(self, text: str) -> list[float]:
-        del text
-        raise AIProviderError("Embedding Provider is not configured")
 
 
 class OpenAICompatibleClient:

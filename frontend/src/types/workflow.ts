@@ -112,6 +112,7 @@ export interface WorkflowNodeMetric {
   status: 'succeeded' | 'failed'
 }
 
+// Compatibility shape for historical workflow records; V2 matches structured knowledge.
 export interface WorkflowRetrievalAudit {
   query?: string | null
   top_k?: number
@@ -132,10 +133,12 @@ export interface DiagnosisWorkflowRecord {
   current_node: string | null
   evidence_score: number | null
   guidance_level: number | null
+  // Historical API field. Newly created V2 workflows always return false.
   needs_rag: boolean
   needs_teacher: boolean
   rule_engine_version: string | null
   fault_tree_version: string | null
+  // Historical API field. V2 does not create embeddings and returns null.
   embedding_version: string | null
   model_id: string | null
   node_trace: string[]
@@ -162,6 +165,7 @@ export interface DiagnosisWorkflowMetrics {
   reviewed: number
   edit_rate: number
   reject_rate: number
+  // Historical API metric, retained for old records and not shown as a V2 capability.
   needs_rag_count: number
   resume_count: number
   average_node_duration_ms: number | null

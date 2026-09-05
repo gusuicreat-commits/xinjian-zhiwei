@@ -61,7 +61,7 @@ export const useStudentSessionStore = defineStore('student-session', () => {
       credentials.value = scopedCredentials
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(scopedCredentials))
     } catch {
-      errorMessage.value = '设备凭据无效，或后端尚未部署 Phase 6 接口。'
+      errorMessage.value = '设备凭据无效，或学生会话接口当前不可用。'
       throw new Error(errorMessage.value)
     } finally {
       loading.value = false

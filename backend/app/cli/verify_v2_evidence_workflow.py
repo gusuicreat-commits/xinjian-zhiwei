@@ -225,10 +225,14 @@ def main() -> None:
                 {
                     "cause_id": "gpio_config",
                     "support_level": "medium",
-                    "used_evidence_ids": ["device:status"],
+                    "used_evidence_ids": [
+                        "00000000-0000-0000-0000-000000000001"
+                    ],
                 }
             ],
-            "evidence_registry": [{"id": "device:status"}],
+            "evidence_registry": [
+                {"id": "00000000-0000-0000-0000-000000000001"}
+            ],
             "allowed_verification_actions": [{"text": "核对 GPIO"}],
             "next_verification_action": "核对 GPIO",
             "knowledge_constraints": {"teacher_confirmed_cases": []},

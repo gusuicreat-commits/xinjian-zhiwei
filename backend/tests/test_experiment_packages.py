@@ -198,6 +198,7 @@ def test_diagnosis_persists_package_binding_and_normalized_evidence(
                 "experiment_record_id": experiment.id,
                 "experiment_version_id": version.id,
                 "experiment_package_hash": version.package_hash,
+                "experiment_package_is_test_data": version.is_test_data,
             }
         )
         device = db.scalar(select(Device).limit(1))
@@ -208,6 +209,7 @@ def test_diagnosis_persists_package_binding_and_normalized_evidence(
         )
 
         assert result.experiment_version_id == version.id
+        assert result.is_test_data is True
         assert evidence
         assert all(item.experiment_version_id == version.id for item in evidence)
         assert any(item.normalized_value["kind"] == "rule_fact" for item in evidence)

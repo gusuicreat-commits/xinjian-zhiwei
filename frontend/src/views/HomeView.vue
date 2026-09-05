@@ -60,7 +60,7 @@ onMounted(() => {
         </el-alert>
       </el-card>
 
-      <p class="phase-note">Phase 5 · 证据排序与分层提示</p>
+      <p class="phase-note">V2 · 证据驱动诊断工作流</p>
     </section>
   </main>
 </template>
