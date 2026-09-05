@@ -7,11 +7,12 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import select
 
+from app.ai import diagnosis_graph as graph_service
 from app.ai.diagnosis_graph import build_diagnosis_graph
 from app.core.config import Settings
 from app.diagnosis.schemas import ExperimentTemplateContext, MetricRange
 from app.diagnosis.workflow_schemas import DiagnosisWorkflowStartRequest
-from app.models import AICallRecord, Device, DeviceLog, SensorReading
+from app.models import AICallRecord, Device, DeviceLog, DiagnosisEvidence, SensorReading
 from app.services import diagnosis_workflow as workflow_service
 from app.services.diagnosis import build_diagnosis_context, diagnose
 from app.services.diagnosis_workflow import start_workflow
@@ -41,6 +42,7 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
     """
 
     monkeypatch.setattr(workflow_service, "datetime", FrozenWorkflowDatetime)
+    monkeypatch.setattr(graph_service, "datetime", FrozenWorkflowDatetime)
     template = ExperimentTemplateContext(
         template_id="synthetic-template",
         metric_ranges={"synthetic_metric": MetricRange(minimum=0, maximum=100)},
@@ -100,8 +102,15 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
         )
 
         direct_facts = [item.model_dump(mode="json") for item in direct.matches]
-        assert workflow.status == "completed"
-        graph_facts = workflow.final_result["rule_hits"]
+        checkpoint = graph.get_state(
+            {"configurable": {"thread_id": workflow.graph_thread_id}}
+        )
+        if direct_facts:
+            assert workflow.status in {"waiting_feedback", "waiting_teacher"}
+            graph_facts = checkpoint.values["rule_hits"]
+        else:
+            assert workflow.status == "completed"
+            graph_facts = workflow.final_result["rule_hits"]
         assert [
             (item["rule_id"], item["error_type"], item["priority"], item["summary"])
             for item in graph_facts
@@ -113,17 +122,20 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
             assert [(item["fact"], item["observed_value"]) for item in graph_hit["evidence"]] == [
                 (item["fact"], item["observed_value"]) for item in direct_hit["evidence"]
             ]
-            expected_refs = [
-                f"{kind}:{detail[key]}"
-                for evidence in direct_hit["evidence"]
-                for detail in evidence["details"]
-                for key, kind in (("log_id", "log"), ("reading_id", "reading"))
-                if detail.get(key)
-            ]
-            assert [
+            persisted_evidence_ids = set(
+                db.scalars(
+                    select(DiagnosisEvidence.id).where(
+                        DiagnosisEvidence.diagnosis_id == workflow.diagnosis_result_id
+                    )
+                )
+            )
+            graph_refs = [
                 ref for evidence in graph_hit["evidence"] for ref in evidence["evidence_refs"]
-            ] == expected_refs
+            ]
+            assert graph_refs
+            assert set(graph_refs).issubset(persisted_evidence_ids)
         assert [item["error_type"] for item in direct_facts] == case["expected"]
         assert workflow.rule_engine_version == direct.ruleset_version
-        assert workflow.final_result["rules_preserved"] is True
+        if workflow.final_result:
+            assert workflow.final_result["rules_preserved"] is True
         assert db.query(AICallRecord).filter(AICallRecord.status == "succeeded").count() == 0

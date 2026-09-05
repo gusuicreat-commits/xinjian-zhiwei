@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, ForeignKeyConstraint, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -10,7 +10,15 @@ from app.models.base import UuidPrimaryKeyMixin, utc_now
 
 class DiagnosisResult(UuidPrimaryKeyMixin, Base):
     __tablename__ = "diagnosis_results"
-    __table_args__ = (Index("ix_diagnosis_results_device_created", "device_id", "created_at"),)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["experiment_version_id", "experiment_record_id"],
+            ["experiment_versions.id", "experiment_versions.experiment_id"],
+            name="fk_diagnosis_results_experiment_version_scope",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_diagnosis_results_device_created", "device_id", "created_at"),
+    )
 
     device_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
@@ -24,6 +32,10 @@ class DiagnosisResult(UuidPrimaryKeyMixin, Base):
     context_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     experiment_id: Mapped[Optional[str]] = mapped_column(String(100), index=True)
     experiment_version: Mapped[Optional[str]] = mapped_column(String(50))
+    experiment_record_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("experiments.id", ondelete="RESTRICT")
+    )
+    experiment_version_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     experiment_definition_hash: Mapped[Optional[str]] = mapped_column(String(64))
     knowledge_scope: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     deterministic_core: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)

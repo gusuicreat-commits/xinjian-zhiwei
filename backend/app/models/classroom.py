@@ -119,6 +119,10 @@ class ExperimentAssignment(UuidPrimaryKeyMixin, TimestampMixin, Base):
         String(36),
         ForeignKey("experiment_template_versions.id", ondelete="RESTRICT"),
     )
+    experiment_version_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey("experiment_versions.id", ondelete="RESTRICT"),
+    )
     rule_artifact_id: Mapped[Optional[str]] = mapped_column(
         String(36),
         ForeignKey("diagnostic_artifacts.id", ondelete="RESTRICT"),

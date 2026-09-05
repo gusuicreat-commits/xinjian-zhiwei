@@ -1,0 +1,57 @@
+version: "2.0.0"
+trees:
+  - id: dht11-read-failure-v2
+    title: DHT11 连续读取失败
+    status: approved
+    continuity_window_seconds: 3600
+    trigger:
+      - &root
+        fact: diagnosis_error_count
+        operator: gte
+        value: 1
+        weight: 20
+        description: 规则已确认连续读取失败
+        params: {error_type: SENSOR_READ_FAILED}
+    escalation:
+      - {level: 1, min_failure_count: 1, min_duration_seconds: 0}
+      - {level: 2, min_failure_count: 3, min_duration_seconds: 300}
+      - {level: 3, min_failure_count: 6, min_duration_seconds: 900}
+      - {level: 4, min_failure_count: 10, min_duration_seconds: 1800}
+    causes:
+      - id: wiring.data_pin_mismatch
+        title: 数据线接错或接触不良
+        evidence:
+          - <<: *root
+          - fact: event_type_count
+            operator: gte
+            value: 5
+            weight: 60
+            description: 连续失败支持优先检查物理连接
+            params: {event_type: sensor.read_failed, component_id: dht11}
+        hints:
+          1: 先观察传感器供电和数据线是否松动。
+          2: 断电后按接线表核对 VCC、GND 和 GPIO4。
+          3: 用万用表确认供电，再只运行最小读取程序。
+          4: 保留接线照片和日志，请教师协助检查。
+      - id: software.gpio_mismatch
+        title: 程序中的 GPIO 或传感器类型配置错误
+        evidence:
+          - <<: *root
+            weight: 35
+            description: 读取失败也可能来自软件配置不一致
+        hints:
+          1: 检查代码里的传感器引脚。
+          2: 确认代码使用 GPIO4 且类型为 DHT11。
+          3: 核对初始化顺序和至少 2 秒的采样间隔。
+          4: 提交代码片段和失败日志，请教师复核。
+      - id: hardware.sensor_failure
+        title: 传感器本体异常
+        evidence:
+          - <<: *root
+            weight: 20
+            description: 排除接线和配置后才考虑器件异常
+        hints:
+          1: 暂时不要直接判定传感器损坏。
+          2: 先完成接线和软件配置核对。
+          3: 使用已知正常的同型号传感器做对照测试。
+          4: 由教师确认后再更换器件。

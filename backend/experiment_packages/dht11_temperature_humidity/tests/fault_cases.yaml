@@ -1,0 +1,6 @@
+cases:
+  - name: 连续失败触发读取异常
+    facts: {event_type_count: 20}
+    expected:
+      error_type: SENSOR_READ_FAILED
+      candidate_causes: [wiring.data_pin_mismatch, software.gpio_mismatch]

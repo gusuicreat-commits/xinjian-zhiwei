@@ -24,7 +24,9 @@ def _payload(*, content: str = "合成知识") -> AIDiagnosisInput:
                 "evidence": [{"fact": "log_event_count", "observed_value": 1}],
             }
         ],
-        fault_tree_guidance=[],
+        fault_tree_guidance=[
+            {"ranked_causes": [{"cause_id": "synthetic", "title": "合成候选"}]}
+        ],
         knowledge=[
             AIKnowledgeReference(
                 chunk_id="kb-synthetic-1",
@@ -89,7 +91,7 @@ def test_prompt_marks_rag_and_user_content_as_untrusted_data() -> None:
                     }
                 ]
             },
-            "knowledge",
+            "cause|knowledge",
         ),
     ],
 )

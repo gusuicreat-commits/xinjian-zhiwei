@@ -7,7 +7,6 @@ from typing import Any
 from app.ai.clients import (
     AICompletion,
     AIProviderError,
-    DisabledEmbeddingClient,
     OpenAICompatibleClient,
 )
 from app.core.config import Settings
@@ -224,7 +223,6 @@ def test_deterministic_diagnosis_is_complete_for_known_online_failure(
             diagnosis,
             _ai_settings(),
             ai_clients=[("local", fake)],
-            embedding_client=DisabledEmbeddingClient(),
         )
         assert decision.status == "skipped"
         assert decision.trigger_reason == "DETERMINISTIC_RESULT_SUFFICIENT"
@@ -293,7 +291,6 @@ def test_local_route_success_and_local_failure_falls_back_without_500(
             diagnosis,
             _ai_settings(),
             ai_clients=[("local", valid)],
-            embedding_client=DisabledEmbeddingClient(),
         )
         assert success.enhancement_status == "local_success"
         assert success.route == "local"
@@ -321,7 +318,6 @@ def test_local_route_success_and_local_failure_falls_back_without_500(
             diagnosis,
             _ai_settings(ai_prompt_version="phase9-timeout-case"),
             ai_clients=[("local", timeout)],
-            embedding_client=DisabledEmbeddingClient(),
             user_question="使用不同指纹验证本地超时降级",
         )
         assert failed.enhancement_status == "failed_fallback"
@@ -347,7 +343,6 @@ def test_local_failure_can_route_to_cloud_mock(api_context: dict[str, Any]) -> N
             diagnosis,
             _ai_settings(),
             ai_clients=[("local", local), ("cloud", cloud)],
-            embedding_client=DisabledEmbeddingClient(),
         )
         assert result.enhancement_status == "cloud_success"
         record = db.get(AICallRecord, result.call_record_id)
@@ -371,7 +366,6 @@ def test_invalid_json_retries_then_fails_closed(api_context: dict[str, Any]) -> 
             diagnosis,
             _ai_settings(ai_max_retries=1),
             ai_clients=[("local", invalid)],
-            embedding_client=DisabledEmbeddingClient(),
         )
         assert result.status == "failed"
         assert invalid.calls == 2
@@ -398,7 +392,6 @@ def test_input_and_per_call_budget_limits_are_audited(
             diagnosis,
             _ai_settings(ai_input_token_limit=1),
             ai_clients=[("local", fake)],
-            embedding_client=DisabledEmbeddingClient(),
         )
         assert token_limited.status == "skipped"
         assert fake.calls == 0
@@ -417,7 +410,6 @@ def test_input_and_per_call_budget_limits_are_audited(
                 ai_max_cost_per_call=0,
             ),
             ai_clients=[("local", fake)],
-            embedding_client=DisabledEmbeddingClient(),
             user_question="使用不同指纹验证单次预算",
         )
         assert budget_limited.status == "skipped"
@@ -442,7 +434,6 @@ def test_episode_hourly_and_daily_limits_degrade_without_blocking_template(
             diagnosis,
             _ai_settings(ai_calls_per_device_hour=1),
             ai_clients=[("local", fake)],
-            embedding_client=DisabledEmbeddingClient(),
         )
         assert first.status == "succeeded"
         hourly = explain_diagnosis(
@@ -451,7 +442,6 @@ def test_episode_hourly_and_daily_limits_degrade_without_blocking_template(
             diagnosis,
             _ai_settings(ai_calls_per_device_hour=1),
             ai_clients=[("local", fake)],
-            embedding_client=DisabledEmbeddingClient(),
             user_question="不同问题绕过缓存并验证小时限流",
         )
         assert hourly.status == "skipped"
@@ -470,7 +460,6 @@ def test_episode_hourly_and_daily_limits_degrade_without_blocking_template(
                 ai_daily_budget=0,
             ),
             ai_clients=[("local", fake)],
-            embedding_client=DisabledEmbeddingClient(),
             user_question="不同问题验证每日预算",
         )
         daily_record = db.get(AICallRecord, daily.call_record_id)
@@ -486,7 +475,6 @@ def test_episode_hourly_and_daily_limits_degrade_without_blocking_template(
                 ai_calls_per_episode=1,
             ),
             ai_clients=[("local", fake)],
-            embedding_client=DisabledEmbeddingClient(),
             user_question="不同问题验证 Episode 限流",
         )
         episode_record = db.get(AICallRecord, episode.call_record_id)

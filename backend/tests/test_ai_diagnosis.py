@@ -203,8 +203,10 @@ def test_graph_supplied_knowledge_is_reused_without_second_retrieval(
         allowed_evidence = f"{evidence_item['fact']}: {evidence_item['observed_value']}"
         knowledge = AIKnowledgeReference(
             chunk_id="graph-kb-chunk",
+            case_id="graph-kb-chunk",
             source_key="graph-kb-source",
             source_title="合成图检索来源",
+            source_type="structured_case",
             source_uri=None,
             content="仅用于确认图节点检索结果被复用。",
             similarity=1.0,
@@ -215,13 +217,7 @@ def test_graph_supplied_knowledge_is_reused_without_second_retrieval(
                 "error_type": primary["error_type"],
                 "summary": "复用图检索证据。",
                 "evidence": [allowed_evidence],
-                "possible_causes": [
-                    {
-                        "cause": "合成候选",
-                        "confidence": 0.5,
-                        "knowledge_chunk_ids": ["graph-kb-chunk"],
-                    }
-                ],
+                "possible_causes": [],
                 "steps": ["继续核验。"],
                 "hint_level": 1,
                 "need_teacher_help": False,

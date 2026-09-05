@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -30,6 +31,12 @@ class DiagnosisWorkflowRun(UuidPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "diagnosis_workflow_runs"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["experiment_version_id", "experiment_record_id"],
+            ["experiment_versions.id", "experiment_versions.experiment_id"],
+            name="fk_diagnosis_workflow_runs_experiment_version_scope",
+            ondelete="RESTRICT",
+        ),
         CheckConstraint(
             "graph_thread_id = 'diagnosis:' || id",
             name="ck_diagnosis_workflow_thread_matches_diagnosis",
@@ -52,6 +59,10 @@ class DiagnosisWorkflowRun(UuidPrimaryKeyMixin, TimestampMixin, Base):
     experiment_session_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("experiment_sessions.id", ondelete="RESTRICT"), nullable=False
     )
+    experiment_record_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("experiments.id", ondelete="RESTRICT")
+    )
+    experiment_version_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
     diagnosis_result_id: Mapped[Optional[str]] = mapped_column(
         String(36),
         ForeignKey("diagnosis_results.id", ondelete="CASCADE"),
@@ -74,6 +85,7 @@ class DiagnosisWorkflowRun(UuidPrimaryKeyMixin, TimestampMixin, Base):
     node_metrics: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     retrieval_audit: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     resume_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    state_revision: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     review_request: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     final_result: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     error_messages: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)

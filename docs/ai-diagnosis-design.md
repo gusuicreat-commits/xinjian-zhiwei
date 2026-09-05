@@ -1,6 +1,6 @@
 # V2 AI 诊断工作流设计
 
-最后更新：2026-09-02
+最后更新：2026-09-04
 
 ## 1. V2 结论
 
@@ -29,6 +29,8 @@ class DiagnosisState(TypedDict, total=False):
     sensor_data: list[dict]
     sensor_values: list[dict]
     experiment_context: dict
+    experiment_version_id: str | None
+    experiment_package_hash: str | None
     error_type: str | None
     evidence: list[dict]
     possible_causes: list[dict]
@@ -44,7 +46,7 @@ class DiagnosisState(TypedDict, total=False):
     diagnosis_status: str
 ```
 
-内部还保存工作流归属、版本、指纹、节点轨迹、耗时、确定性结果和审核状态。V1 字段别名暂时保留，以兼容已有数据库记录和 API。
+内部还保存工作流归属、实验包版本、状态修订号、指纹、节点轨迹、耗时、确定性结果和审核状态。V1 字段别名暂时保留，以兼容已有数据库记录和 API。
 
 ## 3. LangGraph 诊断主链
 
@@ -84,6 +86,7 @@ AI 完全关闭、超时或输出不合法时，状态图仍使用规则、故�
 - 从 `DiagnosisContext` 读取状态、日志、读数和实验预期。
 - 输出错误类型、规则 ID、观测值与证据引用。
 - 它是异常类型的唯一判定者，AI 不得新增或改写。
+- 规则来自本次诊断绑定的已发布 Experiment Package；旧调用仍可使用原文件定义兼容路径。
 
 ### 故障树
 
@@ -129,7 +132,7 @@ AI 完全关闭、超时或输出不合法时，状态图仍使用规则、故�
       "cause_id": "gpio_config",
       "cause": "GPIO 配置错误",
       "support_level": "high",
-      "used_evidence_ids": ["device:status", "log:log_01"],
+      "used_evidence_ids": ["8f6...证据UUID", "b31...证据UUID"],
       "reason": "设备在线但读取持续失败，现有证据更符合配置问题。"
     }
   ],
@@ -156,9 +159,21 @@ AI 完全关闭、超时或输出不合法时，状态图仍使用规则、故�
 
 当前 Python API 内部使用 snake_case，并可附带 `summary` 和 `limitations`；这两个字段不改变上述核心契约。
 
-后端使用错误类型白名单、候选原因 ID 白名单、证据白名单和案例 ID 白名单验证输出。最终 `hint_level` 与 `need_teacher_help` 由 `escalation_handler` 的确定性结果覆盖生成内容，因此 AI 不能改变规则结论或升级决策。
+后端使用错误类型白名单、候选原因 ID 白名单、已落库证据 ID 白名单和案例 ID 白名单验证输出。最终 `hint_level` 与 `need_teacher_help` 由 `escalation_handler` 的确定性结果覆盖生成内容，因此 AI 不能改变规则结论或升级决策。
 
-## 6. 知识案例模型
+## 6. 实验包约束
+
+AI 不读取任意目录或执行实验包代码。实验包只允许 YAML/JSON 数据和系统固定的规则 DSL。进入诊断前，服务端必须完成：
+
+1. 严格 Schema 校验，未知字段直接拒绝；
+2. 硬件、规则、故障树原因、证据类型和案例之间的跨引用校验；
+3. 包内正常/故障样例测试；
+4. SHA-256 完整性校验；
+5. 管理员审核发布。
+
+每次诊断固定保存 `experiment_id + experiment_version_id + package_hash`。AI 看到的是这一固定版本产生的设备事实、规则结果、候选原因和知识上下文，不能跨实验或跨版本拼接结论。
+
+## 7. 知识案例模型
 
 ```json
 {
@@ -179,9 +194,9 @@ AI 完全关闭、超时或输出不合法时，状态图仍使用规则、故�
 
 产品层简写 `experiment / causes / steps` 分别映射到数据库字段 `experiment_type / possible_causes / solution_steps`，不另建第二套知识模型。
 
-源文件位于 `backend/knowledge/cases/`，由同步命令校验后写入 `knowledge_cases` 表。诊断代码不包含实验经验常量。当前五个初始案例均为 `pending`，须经教师确认才能进入正式匹配。
+新实验的案例放在各自实验包的 `knowledge/cases.yaml`。整包发布后，诊断按锁定的 `experiment_version_id` 从 PostgreSQL 包快照取得案例，推理后再从该可信快照重新装载并校验 ID。旧 `backend/knowledge/cases/` 和 `knowledge_cases` 表继续服务未包化的兼容请求。诊断代码不包含实验经验常量；两类案例都必须通过四重审核门槛才能匹配。
 
-## 7. AI 辅助案例沉淀
+## 8. AI 辅助案例沉淀
 
 案例不是由 AI 自动生成并直接发布。当前闭环为：
 
@@ -195,7 +210,7 @@ AI 完全关闭、超时或输出不合法时，状态图仍使用规则、故�
 
 该流程保证 AI 只能整理表达，不能创造未经学生确认、规则记录或教师审核的事实。
 
-## 8. 失败、反馈与审计
+## 9. 失败、反馈与审计
 
 - 没有案例匹配时仍返回规则与故障树结果。
 - AI 未配置、超时、限流、预算不足或结构校验失败时，降级为确定性说明。
@@ -205,14 +220,14 @@ AI 完全关闭、超时或输出不合法时，状态图仍使用规则、故�
 - 学生反馈继续写入现有 `diagnosis_feedback`，同时恢复 `waiting_feedback` 的 LangGraph checkpoint；未解决会继续同一诊断而不是重建自由 Agent。
 - `ai_call_records.call_stage` 区分首次和各反馈轮次的 `reasoning/explanation`，分别保存 Prompt 版本、输入快照、结构化输出、校验状态和降级原因。
 
-## 9. 保持工程简洁
+## 10. 保持工程简洁
 
 - 单一状态图，不引入多智能体。
 - 节点顺序由代码声明，不允许模型自主规划。
 - AI Provider 使用现有轻量客户端，不叠加复杂 LangChain Agent 封装。
 - 第一阶段没有 RAG 分支、Embedding 调用或向量数据库依赖。
 
-## 10. 未来 RAG 扩展路线
+## 11. 未来 RAG 扩展路线
 
 RAG 只在知识规模、查询类型和召回评测证明有必要时增加：
 

@@ -87,8 +87,8 @@ def test_empty_knowledge_status_is_explicit(api_context: dict[str, Any]) -> None
     assert payload["framework_ready"] is True
     assert payload["content_available"] is False
     assert payload["source_count"] == 0
-    assert payload["embedding_provider_configured"] is False
-    assert "尚未导入" in payload["notice"]
+    assert payload["matching_mode"] == "structured"
+    assert "尚未" in payload["notice"]
 
 
 def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -> None:
@@ -136,7 +136,7 @@ def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -
     assert response.json()["detail"]["code"] == "KNOWLEDGE_AUTHORIZATION_REQUIRED"
 
 
-def test_test_knowledge_import_review_embedding_and_search_are_traceable(
+def test_test_knowledge_import_and_review_are_traceable_without_rag(
     api_context: dict[str, Any],
 ) -> None:
     allow_review_access()
@@ -186,58 +186,23 @@ def test_test_knowledge_import_review_embedding_and_search_are_traceable(
 
     approve_test_document(api_context, document["id"], "phase8-test")
 
-    embedding_items = [
-        {"chunk_id": chunk["id"], "vector": [1.0, index + 0.5, 0.25]}
-        for index, chunk in enumerate(document["chunks"])
-    ]
     embedding = client.post(
         f"/api/v1/knowledge/documents/{document['id']}/embeddings",
-        json={
-            "provider": "phase8-test-provider",
-            "model": "phase8-test-model",
-            "items": embedding_items,
-            "is_test_data": True,
-        },
+        json={},
     )
-    assert embedding.status_code == 200
-    assert embedding.json()["stored_count"] == len(document["chunks"])
-    assert embedding.json()["dimensions"] == 3
-
-    hidden_test_search = client.post(
-        "/api/v1/knowledge/search",
-        json={
-            "query_embedding": [1.0, 0.5, 0.25],
-            "provider": "phase8-test-provider",
-            "model": "phase8-test-model",
-        },
-    )
-    visible_test_search = client.post(
-        "/api/v1/knowledge/search",
-        json={
-            "query_embedding": [1.0, 0.5, 0.25],
-            "provider": "phase8-test-provider",
-            "model": "phase8-test-model",
-            "include_test_data": True,
-        },
-    )
-    assert hidden_test_search.status_code == 200
-    assert hidden_test_search.json()["results"] == []
-    assert visible_test_search.status_code == 200
-    result = visible_test_search.json()["results"][0]
-    assert result["source_key"] == "phase8-test-source"
-    assert result["source_uri"] == "test://phase8/source"
-    assert result["source_version"] == "test-v1"
-    assert result["is_test_data"] is True
+    search = client.post("/api/v1/knowledge/search", json={})
+    assert embedding.status_code == 404
+    assert search.status_code == 404
 
     status_payload = client.get("/api/v1/knowledge/status").json()
     assert status_payload["source_count"] == 1
     assert status_payload["document_count"] == 1
     assert status_payload["approved_chunk_count"] == len(document["chunks"])
-    assert status_payload["embedding_count"] == len(document["chunks"])
+    assert status_payload["matching_mode"] == "structured"
     assert status_payload["content_available"] is False
 
 
-def test_real_embeddings_are_rejected_until_provider_is_configured(
+def test_embedding_endpoint_is_not_part_of_the_mvp(
     api_context: dict[str, Any],
 ) -> None:
     allow_review_access()
@@ -273,8 +238,7 @@ def test_real_embeddings_are_rejected_until_provider_is_configured(
         },
     )
 
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "EMBEDDING_PROVIDER_NOT_CONFIGURED"
+    assert response.status_code == 404
 
 
 def test_ordinary_teacher_cannot_impersonate_knowledge_reviewer(

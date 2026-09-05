@@ -1,0 +1,11 @@
+version: "2.0.0"
+rules:
+  - id: led-output-expectation-v2
+    error_type: GPIO_EXPECTATION_FAILED
+    priority: 90
+    summary: LED 的实际输出状态与实验要求不一致
+    conditions:
+      - fact: expected_behavior_violation_count
+        operator: gte
+        value: 1
+        params: {behavior_id: led_output_high}

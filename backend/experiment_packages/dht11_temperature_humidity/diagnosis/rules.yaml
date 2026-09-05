@@ -1,0 +1,11 @@
+version: "2.0.0"
+rules:
+  - id: dht11-read-failed-v2
+    error_type: SENSOR_READ_FAILED
+    priority: 95
+    summary: DHT11 在诊断窗口内连续读取失败
+    conditions:
+      - fact: event_type_count
+        operator: gte
+        value: 5
+        params: {event_type: sensor.read_failed, component_id: dht11}

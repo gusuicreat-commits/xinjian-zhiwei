@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal, Union
+from typing import Any, Literal, Optional, Union
 
 from pydantic import Field, field_validator, model_validator
 
@@ -50,7 +50,7 @@ class FaultTreeDefinition(StrictModel):
     causes: list[CauseDefinition] = Field(min_length=2)
     escalation: list[EscalationLevel] = Field(min_length=4, max_length=4)
     source_id: str = "legacy"
-    source_path: str | None = None
+    source_path: Optional[str] = None
     source_version: str = "1"
     scope: ArtifactScope = Field(default_factory=ArtifactScope)
 

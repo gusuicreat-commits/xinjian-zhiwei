@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
@@ -27,10 +26,10 @@ from app.knowledge.validation import (
 from app.models.base import utc_now
 from app.models.classroom import ExperimentSession
 from app.models.device import Device
+from app.models.diagnosis_evidence import DiagnosisEvidence
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.diagnosis_workflow import DiagnosisWorkflowReview, DiagnosisWorkflowRun
 from app.models.guidance_history import GuidanceHistory
-from app.models.knowledge import KnowledgeCase
 from app.services.ai_diagnosis import _match_structured_knowledge, explain_diagnosis
 from app.services.diagnosis import (
     build_diagnosis_context,
@@ -142,6 +141,28 @@ def _guidance(
     )
 
 
+def _evidence_id_map(runtime: Runtime[DiagnosisGraphContext], diagnosis_id: str) -> dict[str, str]:
+    rows = list(
+        runtime.context.db.scalars(
+            select(DiagnosisEvidence).where(DiagnosisEvidence.diagnosis_id == diagnosis_id)
+        )
+    )
+    aliases: dict[str, str] = {}
+    source_prefix = {
+        "device_log": "log",
+        "sensor_reading": "reading",
+        "device_heartbeat": "heartbeat",
+    }
+    for item in rows:
+        prefix = source_prefix.get(item.source_type, item.source_type)
+        aliases[f"{prefix}:{item.source_ref}"] = item.id
+        aliases[item.source_ref] = item.id
+        normalized_id = item.normalized_value.get("normalized_id")
+        if normalized_id:
+            aliases[str(normalized_id)] = item.id
+    return aliases
+
+
 @observed_node("context_builder")
 def context_builder(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
@@ -158,6 +179,7 @@ def context_builder(
         ),
         experiment_id=state.get("experiment_id"),
         experiment_version=state.get("experiment_version"),
+        experiment_version_id=state.get("experiment_version_id"),
     )
     last_seen_at = context.last_seen_at
     if last_seen_at is None:
@@ -189,11 +211,7 @@ def context_builder(
     ]
     experiment_type = (
         context.experiment_id
-        or (
-            context.experiment_template.template_id
-            if context.experiment_template
-            else None
-        )
+        or (context.experiment_template.template_id if context.experiment_template else None)
         or (context.readings[-1].sensor_type if context.readings else None)
     )
     return {
@@ -219,6 +237,10 @@ def context_builder(
             "experiment_id": context.experiment_id,
             "experiment_version": context.experiment_version,
             "definition_hash": context.experiment_definition_hash,
+            "experiment_record_id": context.experiment_record_id,
+            "experiment_version_id": context.experiment_version_id,
+            "package_hash": context.experiment_package_hash,
+            "package_schema_version": context.experiment_package_schema_version,
             "template": (
                 context.experiment_template.model_dump(mode="json")
                 if context.experiment_template
@@ -241,6 +263,9 @@ def context_builder(
                 "metric_keys": sorted({item.metric_key for item in context.readings}),
             },
         },
+        "experiment_record_id": context.experiment_record_id,
+        "experiment_version_id": context.experiment_version_id,
+        "experiment_package_hash": context.experiment_package_hash,
         "status": "deterministic_analysis",
         "diagnosis_status": "deterministic_analysis",
         "historical_failures": 0,
@@ -270,6 +295,7 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
             ),
             experiment_id=state.get("experiment_id"),
             experiment_version=state.get("experiment_version"),
+            experiment_version_id=state.get("experiment_version_id"),
         )
         outcome = diagnose(context)
         record = save_diagnosis_result(
@@ -295,6 +321,25 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
                 "matches": record.matched_rules,
             }
         )
+    evidence_ids = _evidence_id_map(runtime, record.id)
+
+    def evidence_refs(evidence: Any, rule_id: str, index: int) -> list[str]:
+        direct = list(
+            dict.fromkeys(
+                evidence_ids[reference]
+                for detail in evidence.details
+                for reference in (
+                    f"log:{detail['log_id']}" if detail.get("log_id") else None,
+                    (f"reading:{detail['reading_id']}" if detail.get("reading_id") else None),
+                    str(detail.get("event_id") or "") or None,
+                    str(detail.get("source_ref") or "") or None,
+                )
+                if reference in evidence_ids
+            )
+        )
+        rule_ref = evidence_ids.get(f"rule:{rule_id}:{index}")
+        return direct or ([rule_ref] if rule_ref else [])
+
     rule_hits = [
         {
             "rule_id": item.rule_id,
@@ -305,14 +350,9 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
                 {
                     "fact": evidence.fact,
                     "observed_value": evidence.observed_value,
-                    "evidence_refs": [
-                        f"{kind}:{detail[key]}"
-                        for detail in evidence.details
-                        for key, kind in (("log_id", "log"), ("reading_id", "reading"))
-                        if detail.get(key)
-                    ],
+                    "evidence_refs": evidence_refs(evidence, item.rule_id, index),
                 }
-                for evidence in item.evidence
+                for index, evidence in enumerate(item.evidence)
             ],
         }
         for item in outcome.matches
@@ -321,9 +361,7 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
         "diagnosis_result_id": record.id,
         "error_type": rule_hits[0]["error_type"] if rule_hits else None,
         "evidence": [
-            {"rule_id": hit["rule_id"], **item}
-            for hit in rule_hits
-            for item in hit["evidence"]
+            {"rule_id": hit["rule_id"], **item} for hit in rule_hits for item in hit["evidence"]
         ],
         "rule_hits": rule_hits,
         "rule_engine_version": outcome.ruleset_version,
@@ -338,6 +376,7 @@ def fault_tree_analyzer(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
 ) -> dict[str, Any]:
     diagnosis = _diagnosis(runtime, state)
+    evidence_ids = _evidence_id_map(runtime, diagnosis.id)
     guidance = generate_guidance(runtime.context.db, runtime.context.device, diagnosis)
     core = build_diagnosis_core(diagnosis, guidance)
     deterministic = render_deterministic_explanation(core)
@@ -353,13 +392,13 @@ def fault_tree_analyzer(
                     "name": str(cause.get("title", "")),
                     "score": float(cause.get("score", 0.0)) / 100.0,
                     "evidence_refs": [
-                        f"{kind}:{detail[key]}"
+                        evidence_ids[f"{kind}:{detail[key]}"]
                         for evidence in cause.get("evidence", [])
                         for detail in evidence.get("details", [])
                         for key, kind in (("log_id", "log"), ("reading_id", "reading"))
-                        if detail.get(key)
+                        if detail.get(key) and f"{kind}:{detail[key]}" in evidence_ids
                     ]
-                    or [f"rule:{item.fault_tree_id}:{cause.get('cause_id', '')}"],
+                    or list(dict.fromkeys(evidence_ids.values()))[:1],
                 }
             )
     candidates.sort(key=lambda item: (-item["score"], item["cause_id"]))
@@ -424,9 +463,7 @@ def ai_reasoning_node(
         "reasoned_causes": reasoned_causes,
         "possible_causes": reasoned_causes,
         "reasoning_status": (
-            result.conclusion
-            if mode == "ai" or result.conclusion == "unknown"
-            else "fallback"
+            result.conclusion if mode == "ai" or result.conclusion == "unknown" else "fallback"
         ),
         "reasoning_summary": result.summary,
         "reasoning_mode": mode,
@@ -536,60 +573,30 @@ def _load_graph_knowledge(
     chunk_ids = [str(item["chunk_id"]) for item in requested]
     if not chunk_ids:
         return [], []
-    rows = list(
-        runtime.context.db.scalars(
-            select(KnowledgeCase).where(
-                KnowledgeCase.id.in_(chunk_ids),
-                KnowledgeCase.review_status == "approved",
-                KnowledgeCase.root_cause_status == "confirmed",
-                KnowledgeCase.facts_locked.is_(True),
-                KnowledgeCase.quality_check_passed.is_(True),
-            )
-        )
+    diagnosis = _diagnosis(runtime, state)
+    trusted_references = _match_structured_knowledge(
+        runtime.context.db,
+        diagnosis,
+        _guidance(runtime, state),
+        runtime.context.settings,
     )
-    by_id = {item.id: item for item in rows}
+    by_id = {item.chunk_id: item for item in trusted_references}
     references: list[AIKnowledgeReference] = []
     safe_state_refs: list[dict[str, Any]] = []
     for state_item in requested:
-        case = by_id.get(str(state_item["chunk_id"]))
-        if case is None:
+        trusted = by_id.get(str(state_item["chunk_id"]))
+        if trusted is None:
             continue
         metadata = state_item.get("metadata") or {}
-        reference = AIKnowledgeReference(
-            chunk_id=case.id,
-            source_key=case.source_ref,
-            source_title=f"{case.experiment_type}: {case.symptom}",
-            source_type="structured_case",
-            source_uri=None,
-            source_version=case.version,
-            locator={"case_id": case.id},
-            content=json.dumps(
-                {
-                    "caseId": case.id,
-                    "experimentType": case.experiment_type,
-                    "errorType": case.error_type,
-                    "symptom": case.symptom,
-                    "normalState": case.normal_state,
-                    "evidence": case.evidence,
-                    "possibleCauses": case.possible_causes,
-                    "solutionSteps": case.solution_steps,
-                    "teacherNotes": case.teacher_notes,
-                    "rootCause": {
-                        "value": case.root_cause_value,
-                        "status": case.root_cause_status,
-                    },
+        reference = trusted.model_copy(
+            update={
+                "similarity": float(state_item.get("score") or 0.0),
+                "retrieval_scores": {
+                    key: float(value)
+                    for key, value in (metadata.get("retrieval_scores") or {}).items()
+                    if key in _RETRIEVAL_SCORE_KEYS and isinstance(value, (int, float))
                 },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ),
-            similarity=float(state_item.get("score") or 0.0),
-            review_status="approved",
-            retrieval_scores={
-                key: float(value)
-                for key, value in (metadata.get("retrieval_scores") or {}).items()
-                if key in _RETRIEVAL_SCORE_KEYS and isinstance(value, (int, float))
-            },
-            is_test_data=case.is_test_data,
+            }
         )
         references.append(reference)
         safe_state_refs.append(_knowledge_state_reference(reference))
@@ -820,8 +827,7 @@ def escalation_handler(
         feedback_action == "request_teacher_help"
         or hint_level >= 4
         or attempt_count >= runtime.context.settings.diagnosis_teacher_max_attempts
-        or anomaly_duration
-        >= runtime.context.settings.diagnosis_teacher_duration_seconds
+        or anomaly_duration >= runtime.context.settings.diagnosis_teacher_duration_seconds
         or score < runtime.context.settings.diagnosis_teacher_review_score
         or ai_conflicts_with_rules
         or evidence_conflict
@@ -933,9 +939,7 @@ def _approved_result(state: DiagnosisState) -> dict[str, Any]:
     }
     base["knowledge_validation"] = state.get("knowledge_validation") or {}
     base["teacher_reviewed"] = bool(review)
-    base["candidate_causes"] = state.get(
-        "possible_causes", state.get("fault_tree_candidates", [])
-    )
+    base["candidate_causes"] = state.get("possible_causes", state.get("fault_tree_candidates", []))
     base["knowledge_references"] = [
         {
             "chunk_id": item.get("chunk_id"),
@@ -1047,9 +1051,7 @@ def build_diagnosis_graph(checkpointer: Any):
     builder.add_edge("fault_tree_analyzer", "knowledge_context")
     builder.add_edge("knowledge_context", "ai_reasoning")
     builder.add_edge("ai_reasoning", "knowledge_validation")
-    builder.add_conditional_edges(
-        "knowledge_validation", route_after_knowledge_validation
-    )
+    builder.add_conditional_edges("knowledge_validation", route_after_knowledge_validation)
     builder.add_conditional_edges("ai_explanation", route_after_explanation)
     builder.add_edge("feedback_handler", "escalation_handler")
     builder.add_conditional_edges("escalation_handler", route_after_escalation)

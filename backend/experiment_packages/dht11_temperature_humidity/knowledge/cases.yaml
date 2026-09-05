@@ -1,0 +1,27 @@
+cases:
+  - id: dht11.sensor-read-failed.confirmed.v2
+    experimentType: dht11_temperature_humidity
+    errorType: SENSOR_READ_FAILED
+    symptom: 设备在线，但 DHT11 连续读取失败且没有有效温湿度值。
+    normalState: {temperature: 可持续读取, humidity: 可持续读取}
+    evidence:
+      - {evidenceType: sensor.read_failed, description: 连续出现标准读取失败事件}
+    possibleCauses:
+      - wiring.data_pin_mismatch
+      - software.gpio_mismatch
+      - hardware.sensor_failure
+    solutionSteps:
+      - 断电后核对 VCC、GND 和 GPIO4 数据线。
+      - 核对代码中的 GPIO、DHT11 类型和采样间隔。
+      - 仍失败时用已知正常传感器做对照测试。
+    teacherNotes: 只有排除接线和配置后，才能把器件异常作为主要结论。
+    rootCauseValue: wiring.data_pin_mismatch
+    rootCauseStatus: confirmed
+    confirmedBy: teacher-team
+    confirmedAt: "2026-09-04T00:00:00Z"
+    sourceType: teacher_confirmed_case
+    factsLocked: true
+    qualityCheckPassed: true
+    reviewStatus: approved
+    sourceRef: experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml
+    version: "2.0.0"

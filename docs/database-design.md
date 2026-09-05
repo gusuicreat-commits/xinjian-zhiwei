@@ -1,10 +1,10 @@
-# 芯鉴知微数据库设计（1.0.0）
+# 芯鉴知微数据库设计（V2）
 
 ## 迁移基线
 
-- 数据库：PostgreSQL 16 + pgvector。
+- 数据库：PostgreSQL 16。历史 pgvector 结构仅为兼容保留，MVP 运行链不使用向量检索。
 - 迁移工具：Alembic。
-- 目标版本：`20260818_0021`。
+- 目标版本：`20260904_0026`。
 - 后端启动时先执行 `alembic upgrade head`，成功后才启动 API。
 
 ## 表结构
@@ -39,6 +39,23 @@ P2 的可空 `test_run_id` 只标记合成场景运行并建立索引，用于�
 保存评估时间、规则集版本与哈希、规范化输入指纹、命中规则、证据、完整上下文快照、
 `DiagnosisCore`、确定性解释、AI 增强状态和测试数据标记。新诊断可同时保存实验稳定 ID、
 实验版本、定义 SHA-256 与 Knowledge Scope；旧诊断这些字段保持为空。
+
+### `experiments`、`experiment_versions` 与 `experiment_package_artifacts`
+
+`experiments` 保存稳定实验身份。`experiment_versions` 保存通过校验的完整实验包快照、
+Manifest、包哈希、兼容范围、审核状态和当前版本标记；`experiment + version` 以及包哈希
+均不可重复。`experiment_package_artifacts` 为包内硬件、规则、故障树、知识、教学和测试
+文件建立可查询索引，但运行时真相仍是对应版本的不可变完整快照。
+
+已发布版本不允许修改；发布新版本只把旧版本标记为 `superseded`，历史诊断仍绑定并可
+读取旧版本。`experiment_assignments`、`diagnosis_results` 和
+`diagnosis_workflow_runs` 可通过 `experiment_version_id` 锁定同一版本。
+
+### `diagnosis_evidence`
+
+保存每次诊断的标准化事件、观测和规则事实。`raw_payload` 保留来源数据，
+`normalized_value` 保存通用引擎读取的标准结构，两者不混写。每条证据有稳定 UUID、来源
+类型、来源记录 ID 和时间，并绑定诊断与实验版本；AI 只能引用本次诊断实际存在的证据 ID。
 
 ### `diagnosis_episodes`
 
@@ -152,6 +169,7 @@ PostgreSQL saver 的 `.setup()` 独立管理，不在 Alembic 中重复定义。
 - `20260901_0023` 将 AI 调用幂等键扩展为 `workflow_run_id + call_stage`，支持原因推理与解释分别审计。
 - `20260901_0024` 增加事实绑定的 `knowledge_case_drafts`，只有教师审核后才能发布为正式案例。
 - `20260902_0025` 增加根因状态、事实锁定、真实解决记录、AI 表达审计和反馈轮次调用阶段；正式案例必须教师确认根因。
+- `20260904_0026` 增加版本化 Experiment Package、任务/诊断/工作流版本绑定、工作流状态修订号和标准证据表；所有旧关联均为可空，不删除或猜测回填历史数据。
 
 用户、班级和实验模板通用框架已经建立，但正式用户、班级、任务与模板内容仍待人工
 录入和审核。知识库与 AI 审计表已经建立；仅有测试记录和禁用真实 Provider 只代表

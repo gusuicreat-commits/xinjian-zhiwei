@@ -18,13 +18,17 @@ from app.models.device import Device
 from app.models.device_heartbeat import DeviceHeartbeat
 from app.models.device_log import DeviceLog
 from app.models.diagnosis_episode import DiagnosisEpisode
+from app.models.diagnosis_evidence import DiagnosisEvidence
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.diagnosis_workflow import DiagnosisWorkflowReview, DiagnosisWorkflowRun
 from app.models.experiment import (
     DiagnosticArtifact,
+    Experiment,
+    ExperimentPackageArtifact,
     ExperimentTemplate,
     ExperimentTemplateVersion,
+    ExperimentVersion,
 )
 from app.models.guidance_history import GuidanceHistory
 from app.models.ingestion_request import IngestionRequest
@@ -52,15 +56,19 @@ __all__ = [
     "DeviceHeartbeat",
     "DeviceLog",
     "DiagnosisFeedback",
+    "DiagnosisEvidence",
     "DiagnosisResult",
     "DiagnosisWorkflowReview",
     "DiagnosisWorkflowRun",
     "DiagnosticArtifact",
     "Enrollment",
+    "Experiment",
     "ExperimentAssignment",
+    "ExperimentPackageArtifact",
     "ExperimentSession",
     "ExperimentTemplate",
     "ExperimentTemplateVersion",
+    "ExperimentVersion",
     "DiagnosisEpisode",
     "GuidanceHistory",
     "IngestionRequest",

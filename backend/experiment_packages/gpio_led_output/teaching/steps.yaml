@@ -1,0 +1,12 @@
+steps:
+  - {step_id: connect, title: 连接 LED 回路, expected_state: LED 极性、电阻和公共地连接正确}
+  - {step_id: configure, title: 配置 GPIO2, expected_state: 引脚为输出模式且高电平有效}
+  - {step_id: observe, title: 执行亮灭程序, expected_state: LED 随程序切换状态}
+expected_behaviors:
+  - id: led_output_high
+    description: 执行点亮操作后 GPIO2 应输出高电平
+    kind: state_equals
+    component_id: status_led
+    interface_id: led_gpio
+    metric: level
+    expected: 1

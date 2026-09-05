@@ -1,0 +1,29 @@
+hardware:
+  family: esp32
+  board_model: esp32-devkit
+  components:
+    - {id: status_led, kind: digital_output, model: led}
+interfaces:
+  - id: led_gpio
+    type: gpio
+    component_ids: [status_led]
+    pins: {output: 2}
+    parameters: {mode: output, active_level: 1}
+connections:
+  - {component: status_led, signal: ANODE, target: GPIO2}
+evidence_mapping:
+  - source: {type: sensor_reading, value: level}
+    evidence_type: led.output_level
+normalization:
+  adapter: mapping
+  mappings:
+    - id: gpio-level-sample
+      match: {pin: 2}
+      output: observation
+      component_id: status_led
+      interface_id: led_gpio
+      metric: level
+      value_field: level
+      timestamp_field: timestamp
+      default_status: normal
+required_parameters: {output_pin: 2, active_level: 1}

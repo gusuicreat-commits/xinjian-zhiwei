@@ -1,0 +1,5 @@
+schema_version: "1.0"
+experiment: {code: gpio_led_output, name: LED 数字输出实验, category: actuator, locale: zh-CN}
+package: {version: 2.0.0, status: draft}
+compatibility: {engine: ">=2.0,<3.0", platforms: [esp32]}
+maintainer: {organization: 芯鉴知微项目组, author: 项目教师组}

@@ -56,7 +56,8 @@ X-Device-Token: <secret token>
 ### P4–P11 新增边界
 
 - `/auth/session`、`/auth/me`、`/auth/classes`：正式用户会话和资源范围。
-- `/experiments/templates`、`/experiments/template-versions/*`：模板草稿与发布门禁。
+- `/experiments/templates`、`/experiments/template-versions/*`：旧模板草稿与发布门禁。
+- `/experiments/packages/*`、`/experiments/package-versions/*`：实验包校验、导入、版本查询和发布门禁。
 - `/knowledge/sources/{id}/documents/file`、`/knowledge/documents/{id}/workspace`、
   `/knowledge/chunks/*`：文件导入与草稿分块工作区。
 - `/teacher-workflow/*`：处置动作、时间线、课堂消息和 CSV 报告。
@@ -72,6 +73,32 @@ Phase 4 尚未建立实验模板和用户权限模型，模板快照是显式的
 ### POST `/diagnosis/results/{diagnosis_result_id}/guidance`
 
 使用设备 ID 和设备令牌认证。根据已保存的诊断上下文运行 YAML 故障树并保存原因排序、证据、提示等级和提示文本。同一诊断结果与同一故障树存在唯一约束，重复调用返回已有历史，不重复增加失败次数。
+
+### GET `/diagnosis/results/{diagnosis_result_id}/evidence`
+
+设备凭据只能读取属于本设备诊断的标准化证据。响应包含证据 UUID、类型、来源类型、来源
+记录 ID、标准化值和时间，不返回 `raw_payload`。AI 推理引用的证据 ID 必须来自这个集合。
+
+## Experiment Package 接口
+
+### POST `/experiments/packages/validate`
+
+接收以包内路径为键的 10 份结构化文档，只执行严格 Schema、跨引用、包内样例和哈希
+检查，不写数据库。需要 `assignment.manage` 权限。
+
+### POST `/experiments/packages/import`
+
+通过校验后创建 `draft` 实验版本和工件索引。服务端重新生成 Manifest；相同
+`experiment + version` 不允许覆盖。需要 `assignment.manage` 权限。
+
+### GET `/experiments/package-versions`
+
+返回实验身份、版本、兼容范围、包哈希、校验报告、状态和当前版本标记。
+
+### POST `/experiments/package-versions/{version_id}/status`
+
+管理员按 `draft → pending → approved → published` 发布，或将已发布版本标记为
+`revoked/superseded`。发布新版本不会修改旧版本内容。
 
 ### GET `/diagnosis/devices/{device_id}/guidance`
 
@@ -194,13 +221,8 @@ pending --formal_approver--> approved
 来源未记录 `authorization_scope` 时不能批准。状态同步到文档的全部知识块，并追加不可
 覆盖的审核历史。
 
-### POST `/knowledge/documents/{document_id}/embeddings`
-
-保存外部适配器生成的向量。文档必须先审核通过；同一请求中的维度必须一致。配置了 Provider/模型/维度后请求必须完全匹配；未配置时只允许 `is_test_data=true` 的测试向量，正式向量返回 503。
-
-### POST `/knowledge/search`
-
-请求显式携带查询向量、Provider、模型和限制条件。只检索审核通过且维度匹配的知识块，默认排除来源、文档或向量任一层标记为测试的数据。响应包含来源、版本、URI、文档、知识块定位、相似度和测试标记。
+第一阶段不提供 Embedding 写入或向量搜索 API。历史向量表如仍存在，只作为旧版本兼容
+数据，不进入当前诊断链路。未来启用 RAG 时必须新增独立版本化接口和验收门禁。
 
 ## 状态码
 
@@ -210,10 +232,10 @@ pending --formal_approver--> approved
 | 201 | 上传内容已保存 |
 | 401 | 设备不存在、已停用或令牌无效 |
 | 404 | 诊断结果不存在或不属于当前设备 |
-| 409 | 来源重复、授权缺失、文档未审核或 Embedding 配置不一致 |
+| 409 | 资源重复、非法状态流转、实验包版本已存在或审核条件不满足 |
 | 413 | 提取文本超过配置的最大字符数 |
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
-| 503 | 知识工作区审阅凭据或正式 Embedding Provider 尚未配置 |
+| 503 | 知识工作区审阅凭据、AI Provider 或诊断工作流基础设施不可用 |
 
 当前继续提供设备凭据保护的学生总览 API，以及审阅令牌保护的知识工作区管理 API；
 教师聚合已迁移到正式 Bearer 账号、班级范围和 RBAC。长期数据库中的正式记录仍为 0，

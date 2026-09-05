@@ -1,0 +1,6 @@
+cases:
+  - name: 输出状态不一致时触发异常
+    facts: {expected_behavior_violation_count:led_output_high: 1}
+    expected:
+      error_type: GPIO_EXPECTATION_FAILED
+      candidate_causes: [software.output_configuration, wiring.led_polarity]

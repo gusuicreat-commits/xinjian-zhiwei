@@ -10,7 +10,6 @@ from pydantic import ValidationError
 from app.ai.clients import (
     AICompletion,
     AIProviderError,
-    DisabledEmbeddingClient,
     OpenAICompatibleClient,
     build_ai_client,
 )
@@ -306,7 +305,6 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
             diagnosis,
             settings,
             ai_client=mock,
-            embedding_client=DisabledEmbeddingClient(),
             user_question="请解释这个故障。",
         )
         second = explain_diagnosis(
@@ -315,7 +313,6 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
             diagnosis,
             settings,
             ai_client=mock,
-            embedding_client=DisabledEmbeddingClient(),
             user_question="请解释这个故障。",
         )
         assert first.status == "succeeded"
@@ -332,7 +329,6 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
             diagnosis,
             settings,
             ai_client=timeout,
-            embedding_client=DisabledEmbeddingClient(),
             user_question="这是另一个不会命中缓存的问题。",
         )
         assert failed.status == "failed"
@@ -350,7 +346,6 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
             diagnosis,
             settings,
             ai_client=invalid_json,
-            embedding_client=DisabledEmbeddingClient(),
             user_question="这是专门验证非法 JSON 降级的不同问题。",
         )
         assert invalid.status == "failed"
@@ -423,14 +418,9 @@ def test_formal_knowledge_governance_and_rag_status_filter(
             current = db.get(KnowledgeDocument, document.id)
             assert current is not None
             current_status = current.review_status
-            result = hybrid_retrieve(
-                db,
-                "SENSOR_READ_FAILED",
-                settings,
-                DisabledEmbeddingClient(),
-                include_test_data=False,
-            )
-            assert bool(result.references) is (current_status == "approved")
+            assert current_status == decision
+            with pytest.raises(RuntimeError, match="outside the MVP"):
+                hybrid_retrieve()
 
         stored = db.get(KnowledgeDocument, document.id)
         assert stored is not None
@@ -445,14 +435,8 @@ def test_formal_knowledge_governance_and_rag_status_filter(
             for chunk in stored.chunks:
                 chunk.review_status = status
             db.commit()
-            result = hybrid_retrieve(
-                db,
-                "SENSOR_READ_FAILED",
-                settings,
-                DisabledEmbeddingClient(),
-                include_test_data=False,
-            )
-            assert result.references == []
+            with pytest.raises(RuntimeError, match="outside the MVP"):
+                hybrid_retrieve()
 
         ai_draft = import_text_document(
             db,

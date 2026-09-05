@@ -13,9 +13,16 @@ from app.diagnosis.fault_tree_schemas import (
     GuidanceRunResponse,
     InterventionItem,
 )
-from app.diagnosis.schemas import DiagnosisMatch, DiagnosisRunRequest, DiagnosisRunResponse
+from app.diagnosis.schemas import (
+    DiagnosisEvidenceResponse,
+    DiagnosisMatch,
+    DiagnosisRunRequest,
+    DiagnosisRunResponse,
+)
+from app.experiment_packages.loader import ExperimentPackageLoadError
 from app.experiments.loader import ExperimentDefinitionLoadError
 from app.models.device import Device
+from app.models.diagnosis_evidence import DiagnosisEvidence
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 from app.services.ai_diagnosis import explain_diagnosis, get_ai_status
@@ -73,8 +80,9 @@ def run_device_diagnosis(
             experiment_template=payload.experiment_template,
             experiment_id=payload.experiment_id,
             experiment_version=payload.experiment_version,
+            experiment_version_id=payload.experiment_version_id,
         )
-    except ExperimentDefinitionLoadError as exc:
+    except (ExperimentDefinitionLoadError, ExperimentPackageLoadError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
@@ -121,6 +129,7 @@ def run_device_diagnosis(
         ),
         experiment_id=record.experiment_id,
         experiment_version=record.experiment_version,
+        experiment_version_id=record.experiment_version_id,
         knowledge_scope=record.knowledge_scope,
     )
 
@@ -144,6 +153,41 @@ def run_guidance(
     return GuidanceRunResponse(
         items=[_guidance_response(record, device.device_key) for record in records]
     )
+
+
+@router.get(
+    "/results/{diagnosis_result_id}/evidence",
+    response_model=list[DiagnosisEvidenceResponse],
+)
+def get_diagnosis_evidence(
+    diagnosis_result_id: str,
+    device: AuthenticatedDevice,
+    db: DatabaseSession,
+) -> list[DiagnosisEvidenceResponse]:
+    diagnosis_result = db.get(DiagnosisResult, diagnosis_result_id)
+    if diagnosis_result is None or diagnosis_result.device_id != device.id:
+        raise HTTPException(status_code=404, detail="diagnosis not found")
+    rows = list(
+        db.scalars(
+            select(DiagnosisEvidence)
+            .where(DiagnosisEvidence.diagnosis_id == diagnosis_result_id)
+            .order_by(DiagnosisEvidence.occurred_at, DiagnosisEvidence.id)
+        )
+    )
+    return [
+        DiagnosisEvidenceResponse(
+            id=item.id,
+            diagnosis_id=item.diagnosis_id,
+            experiment_version_id=item.experiment_version_id,
+            evidence_type=item.evidence_type,
+            source_type=item.source_type,
+            source_ref=item.source_ref,
+            normalized_value=item.normalized_value,
+            occurred_at=item.occurred_at,
+            created_at=item.created_at,
+        )
+        for item in rows
+    ]
 
 
 @router.get("/ai/status", response_model=AIStatusResponse)

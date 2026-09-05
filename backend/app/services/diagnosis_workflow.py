@@ -28,6 +28,7 @@ from app.models.classroom import (
 from app.models.device import Device
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_workflow import DiagnosisWorkflowRun
+from app.services.experiment_packages import load_experiment_package_runtime
 
 
 class WorkflowConflict(ValueError):
@@ -213,9 +214,7 @@ def _public_knowledge_reference(item: dict[str, Any]) -> dict[str, Any]:
     locator = metadata.get("locator") if isinstance(metadata.get("locator"), dict) else {}
     return {
         "chunk_id": sanitize_text(item.get("chunk_id"), max_chars=100),
-        "case_id": sanitize_text(
-            item.get("case_id") or item.get("chunk_id"), max_chars=100
-        ),
+        "case_id": sanitize_text(item.get("case_id") or item.get("chunk_id"), max_chars=100),
         "source_id": sanitize_text(item.get("source_id"), max_chars=200),
         "title": sanitize_text(item.get("title"), max_chars=200),
         "score": float(item.get("score") or 0.0),
@@ -262,14 +261,19 @@ def _sync_business_record(
 ) -> DiagnosisWorkflowRun:
     trace = list(state.get("node_trace") or [])
     workflow.diagnosis_result_id = state.get("diagnosis_result_id") or workflow.diagnosis_result_id
+    workflow.experiment_record_id = (
+        state.get("experiment_record_id") or workflow.experiment_record_id
+    )
+    workflow.experiment_version_id = (
+        state.get("experiment_version_id") or workflow.experiment_version_id
+    )
+    workflow.state_revision = int(workflow.state_revision or 0) + 1
     workflow.status = state.get("diagnosis_status") or state.get("status") or workflow.status
     workflow.current_node = trace[-1] if trace else workflow.current_node
     workflow.evidence_score = state.get("evidence_score")
     workflow.guidance_level = state.get("hint_level", state.get("guidance_level"))
     workflow.needs_rag = False
-    workflow.needs_teacher = bool(
-        state.get("need_teacher_help", state.get("needs_teacher", False))
-    )
+    workflow.needs_teacher = bool(state.get("need_teacher_help", state.get("needs_teacher", False)))
     workflow.rule_engine_version = state.get("rule_engine_version")
     workflow.fault_tree_version = state.get("fault_tree_version")
     workflow.model_id = state.get("model_id")
@@ -362,14 +366,36 @@ def start_workflow(
     payload: DiagnosisWorkflowStartRequest,
     experiment_session: ExperimentSession | None = None,
 ) -> DiagnosisWorkflowRun:
-    if payload.experiment_id:
-        # Fail before creating a workflow business record. The graph will reload
-        # the same immutable version when it builds its context.
-        load_experiment_definition(payload.experiment_id, payload.experiment_version)
     experiment_session = experiment_session or find_active_experiment_session(db, device)
     if experiment_session is None:
         raise WorkflowConflict("device has no active student experiment session")
     resolved_session = resolve_experiment_session(db, device, experiment_session.id)
+    assignment = db.get(ExperimentAssignment, resolved_session.experiment_assignment_id)
+    if assignment is None:
+        raise WorkflowScopeViolation("experiment assignment no longer exists")
+    package_version_id = payload.experiment_version_id or assignment.experiment_version_id
+    if (
+        payload.experiment_version_id
+        and assignment.experiment_version_id
+        and payload.experiment_version_id != assignment.experiment_version_id
+    ):
+        raise WorkflowScopeViolation("requested package version differs from the assignment")
+    package_runtime = None
+    if package_version_id:
+        package_runtime = load_experiment_package_runtime(db, package_version_id)
+        if (
+            payload.experiment_id
+            and payload.experiment_id != package_runtime.definition.experiment.id
+        ):
+            raise WorkflowScopeViolation("requested experiment differs from the package version")
+        if (
+            payload.experiment_version
+            and payload.experiment_version != package_runtime.definition.experiment.version
+        ):
+            raise WorkflowScopeViolation("requested experiment version differs from the package")
+    elif payload.experiment_id:
+        # Compatibility path for the existing filesystem definitions.
+        load_experiment_definition(payload.experiment_id, payload.experiment_version)
     workflow_id = new_uuid()
     workflow = DiagnosisWorkflowRun(
         id=workflow_id,
@@ -380,6 +406,8 @@ def start_workflow(
         graph_version=settings.diagnosis_graph_version,
         status="created",
         current_node=None,
+        experiment_record_id=(package_runtime.experiment.id if package_runtime else None),
+        experiment_version_id=(package_runtime.version.id if package_runtime else None),
         question=payload.question,
         embedding_version=None,
         node_trace=[],
@@ -391,7 +419,9 @@ def start_workflow(
     db.refresh(workflow)
     initial_state: DiagnosisState = {
         "device_status": {},
-        "experiment_type": payload.experiment_id,
+        "experiment_type": (
+            package_runtime.definition.experiment.id if package_runtime else payload.experiment_id
+        ),
         "logs": [],
         "sensor_data": [],
         "sensor_values": [],
@@ -427,8 +457,19 @@ def start_workflow(
             if payload.experiment_template
             else None
         ),
-        "experiment_id": payload.experiment_id,
-        "experiment_version": payload.experiment_version,
+        "experiment_id": (
+            package_runtime.definition.experiment.id if package_runtime else payload.experiment_id
+        ),
+        "experiment_version": (
+            package_runtime.definition.experiment.version
+            if package_runtime
+            else payload.experiment_version
+        ),
+        "experiment_record_id": (package_runtime.experiment.id if package_runtime else None),
+        "experiment_version_id": (package_runtime.version.id if package_runtime else None),
+        "experiment_package_hash": (
+            package_runtime.version.package_hash if package_runtime else None
+        ),
         # A workflow question is untrusted free text.  Keep only the redacted form
         # in checkpoint state; the original business input remains in the access-
         # controlled workflow row when it is needed for audit/support.
@@ -716,6 +757,8 @@ def serialize_workflow(
         device_id=workflow.device.device_key,
         student_user_id=workflow.student_user_id,
         experiment_session_id=workflow.experiment_session_id,
+        experiment_version_id=workflow.experiment_version_id,
+        state_revision=workflow.state_revision,
         graph_thread_id=workflow.graph_thread_id,
         graph_version=workflow.graph_version,
         status=workflow.status,

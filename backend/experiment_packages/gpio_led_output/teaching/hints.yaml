@@ -1,0 +1,7 @@
+hints:
+  - cause_id: software.output_configuration
+    levels: {1: 检查程序引脚。, 2: 核对 GPIO2 和输出模式。, 3: 运行最小亮灭程序。, 4: 提交代码和电平记录。}
+  - cause_id: wiring.led_polarity
+    levels: {1: 检查 LED 回路。, 2: 断电核对极性和公共地。, 3: 逐段测量回路。, 4: 停止通电并请求教师检查。}
+  - cause_id: hardware.led_failure
+    levels: {1: 暂不判定器件损坏。, 2: 先排除配置和接线。, 3: 做已知正常器件对照。, 4: 由教师确认更换。}

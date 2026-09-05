@@ -1,0 +1,7 @@
+concepts:
+  - concept_id: dht11.minimum_interval
+    description: DHT11 两次读取之间至少等待 2 秒，过快采样可能导致失败。
+    references: [hardware.yaml, teaching/steps.yaml]
+  - concept_id: dht11.single_bus
+    description: 数据引脚、供电和公共地共同构成单总线读取的必要条件。
+    references: [hardware.yaml]

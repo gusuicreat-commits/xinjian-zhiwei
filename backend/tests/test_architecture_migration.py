@@ -206,6 +206,7 @@ def test_existing_fastapi_flow_accepts_definition_reference_and_persists_scope(
 ) -> None:
     client = api_context["client"]
     headers = api_context["headers"]
+    observed_at = datetime.now(timezone.utc)
     reading = client.post(
         "/api/v1/device/readings",
         headers=headers,
@@ -213,7 +214,7 @@ def test_existing_fastapi_flow_accepts_definition_reference_and_persists_scope(
             "sensor_type": "status_led",
             "metric_key": "level",
             "value": 0,
-            "observed_at": NOW.isoformat(),
+            "observed_at": observed_at.isoformat(),
             "is_test_data": True,
         },
     )

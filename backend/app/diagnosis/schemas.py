@@ -156,6 +156,10 @@ class DiagnosisContext(StrictModel):
     experiment_template: Optional[ExperimentTemplateContext] = None
     experiment_id: Optional[str] = None
     experiment_version: Optional[str] = None
+    experiment_record_id: Optional[str] = None
+    experiment_version_id: Optional[str] = None
+    experiment_package_hash: Optional[str] = None
+    experiment_package_schema_version: Optional[str] = None
     experiment_definition_hash: Optional[str] = None
     device: Optional[DeviceDescriptor] = None
     components: list[ComponentDefinition] = Field(default_factory=list)
@@ -168,6 +172,8 @@ class DiagnosisContext(StrictModel):
         default_factory=DiagnosticArtifactSelection
     )
     knowledge_scope: KnowledgeScope = Field(default_factory=KnowledgeScope)
+    package_rule_document: Optional[dict[str, Any]] = None
+    package_fault_tree_document: Optional[dict[str, Any]] = None
     inference_state: DiagnosisInferenceState = Field(default_factory=DiagnosisInferenceState)
     troubleshooting_history: list[TroubleshootingAction] = Field(default_factory=list)
     current_hint_level: Literal[1, 2, 3, 4] = 1
@@ -250,6 +256,7 @@ class DiagnosisRunRequest(StrictModel):
     experiment_template: Optional[ExperimentTemplateContext] = None
     experiment_id: Optional[str] = Field(default=None, min_length=1, max_length=100)
     experiment_version: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    experiment_version_id: Optional[str] = Field(default=None, min_length=1, max_length=36)
 
     @model_validator(mode="after")
     def validate_experiment_reference(self) -> "DiagnosisRunRequest":
@@ -273,4 +280,17 @@ class DiagnosisRunResponse(StrictModel):
     episode: Optional[dict[str, Any]] = None
     experiment_id: Optional[str] = None
     experiment_version: Optional[str] = None
+    experiment_version_id: Optional[str] = None
     knowledge_scope: Optional[dict[str, Any]] = None
+
+
+class DiagnosisEvidenceResponse(StrictModel):
+    id: str
+    diagnosis_id: str
+    experiment_version_id: Optional[str] = None
+    evidence_type: str
+    source_type: str
+    source_ref: str
+    normalized_value: dict[str, Any]
+    occurred_at: datetime
+    created_at: datetime

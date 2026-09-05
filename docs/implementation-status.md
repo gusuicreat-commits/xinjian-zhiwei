@@ -1,14 +1,14 @@
 # 芯鉴知微实现状态
 
-最后更新：2026-09-02
+最后更新：2026-09-04
 
 诊断图版本：`langgraph-v2`
 
-数据库迁移 Head：`20260902_0025`
+数据库迁移 Head：`20260904_0026`
 
 ## 总体结论
 
-当前架构已经升级为“证据驱动诊断工作流 + 规则诊断 + 故障树 + 受约束 AI 推理 + 结构化知识校验 + AI 解释”。V2 复用现有设备采集、确定性诊断、知识治理、AI 降级和教师审核，没有引入 RAG、多智能体或 Agent 自主规划。
+当前架构已经升级为“通用诊断引擎 + 版本化实验包 + 标准证据层 + 证据驱动诊断工作流”。V2 复用现有设备采集、确定性诊断、知识治理、AI 降级和教师审核，没有引入 RAG、多智能体或 Agent 自主规划。
 
 当前仍不是经过真实硬件数据验证的专业故障诊断产品。真实设备数据、正式硬件参数、正式课程资料和生产 AI 调用仍需项目方提供或批准。
 
@@ -18,6 +18,10 @@
 | --- | --- | --- |
 | `DiagnosisContext` | 保留 | 仍是日志、心跳、读数、实验定义与设备信息的统一输入 |
 | `DiagnosisState` | 已升级 | 保存一次诊断的上下文、规则、原因、知识、反馈、提示与状态 |
+| Experiment Package | 已新增 | 数据化封装硬件、规则、故障树、知识、教学步骤、提示和测试 |
+| 实验包版本发布 | 已新增 | PostgreSQL 保存不可覆盖快照，支持校验、导入、审核、发布和旧版本重放 |
+| 诊断版本锁定 | 已新增 | 任务、工作流和诊断结果可绑定同一 `experiment_version_id` |
+| 标准证据表 | 已新增 | 原始载荷与标准化值分开保存，规则和 AI 使用可追溯证据 ID |
 | LangGraph | 已升级至 V2 | 负责节点顺序、状态流转、条件分支、Checkpoint 和审核暂停恢复 |
 | 规则引擎 | 保留 | 负责异常类型和确定性证据，AI 不得覆盖 |
 | 故障树 | 保留 | 负责候选原因、证据排序、分级提示和教师介入 |
@@ -52,13 +56,32 @@ context_builder
       └─ request_teacher_help → teacher_review
 ```
 
-`knowledge_context` 在推理前供给已审核的实验定义、正常条件、故障映射和教师确认案例。`ai_reasoning` 不能扩展故障树原因空间；非法输出自动回退确定性排序。`knowledge_validation` 在推理后独立检查实验规范、证据 ID、候选集、规则结果和允许动作；它不是 RAG 分支。没有已审核案例时记录 `validated_without_case`，但不阻断诊断。
+`knowledge_context` 在推理前供给已审核的实验定义、正常条件、故障映射和教师确认案例。对已绑定实验包的诊断，案例只从该版本的 PostgreSQL 包快照读取；推理后还会从这份可信快照重新装载，防止状态中的案例内容或 ID 被篡改。`ai_reasoning` 不能扩展故障树原因空间；非法输出自动回退确定性排序。`knowledge_validation` 在推理后独立检查实验规范、证据 ID、候选集、规则结果和允许动作；它不是 RAG 分支。没有已审核案例时记录 `validated_without_case`，但不阻断诊断。
+
+## 实验包落地状态
+
+已新增 `backend/experiment_packages/`，首批有两个完整包：
+
+1. `dht11_temperature_humidity@2.0.0`；
+2. `gpio_led_output@2.0.0`。
+
+两个包都包含元数据、硬件连接、证据映射、规则、故障树、概念、教师确认案例、教学步骤、四级提示、正常样例和故障样例。它们通过同一个通用加载器、规则引擎和诊断接口运行，没有为 DHT11 或 LED 新增专用 Python 判断函数。
+
+实验包接口已增加：
+
+- `POST /api/v1/experiments/packages/validate`：只校验，不写数据库；
+- `POST /api/v1/experiments/packages/import`：校验后导入不可覆盖的草稿版本；
+- `GET /api/v1/experiments/package-versions`：查看版本和校验结果；
+- `POST /api/v1/experiments/package-versions/{id}/status`：管理员审核、发布或撤销；
+- `GET /api/v1/diagnosis/results/{id}/evidence`：查看本次诊断的标准化证据和来源。
+
+`20260904_0026` 是纯增量迁移：新增实验、实验版本、实验包工件和标准证据表，并给任务、诊断结果、工作流增加可空的版本关联；没有删除旧表、回填猜测数据或中断旧接口。
 
 ## DiagnosisState 状态
 
 V2 核心状态字段已落地，并增加 `attempt_count`、`missing_evidence`、`next_verification_action`、`evidence_conflict`、`evidence_registry` 和 `allowed_verification_actions`。推理使用离散支持等级，不把模型分数解释成统计概率。
 
-已有 ID、规则/故障树版本、输入指纹、节点轨迹、耗时和 V1 兼容字段继续保留。新字段通过 LangGraph Checkpoint 管理，不要求为每个字段新增数据库列，避免不必要的表结构重构。
+已有 ID、规则/故障树版本、输入指纹、节点轨迹、耗时和 V1 兼容字段继续保留。数据库增加包版本关联和 `state_revision`；其余细粒度过程字段继续由 LangGraph Checkpoint 管理，避免无必要地扩表。
 
 ## 结构化知识状态
 
@@ -125,12 +148,14 @@ python -m app.cli.sync_knowledge_cases
 
 ## 验证状态
 
-| 检查 | 2026-09-03 结果 |
+| 检查 | 2026-09-04 结果 |
 | --- | --- |
 | 后端 Ruff | 通过 |
 | Python 语法编译 | `backend/app` 与迁移脚本通过 |
 | Docker 后端镜像 | 使用 Python 3.12 与锁定依赖构建通过 |
-| 迁移 Head | `20260902_0025 (head)` |
+| 迁移 Head | `20260904_0026 (head)` |
+| 实验包校验 | DHT11、LED 各 9 项 Schema、引用和包内样例检查通过 |
+| 实验包定向测试 | 5/5 通过：双包同引擎、版本不可覆盖、数据库运行时、管理 API、标准证据落库与包内案例供给 |
 | V2 状态图验收 | 9 个核心节点与 23 个核心状态字段通过；推理前知识供给、推理后独立校验、未解决反馈续诊、证据 ID、`unknown` 回退和无 RAG 分支均通过 |
 | 结构化知识验收 | 5 个外置案例加载通过；精确匹配命中实验类型、错误类型和证据 |
 | 案例沉淀闭环 | unknown 根因草稿、AI 表达字段防篡改、教师根因/修复动作确认和正式案例四重门槛通过 |
@@ -139,6 +164,7 @@ python -m app.cli.sync_knowledge_cases
 | 前端 ESLint | 通过 |
 | 前端 Vitest | 5 个文件、26 个测试全部通过 |
 | V2 后端定向测试 | 31 个推理、AI 案例整理、知识双阶段校验、结构化匹配与 LangGraph 工作流测试通过 |
-| PostgreSQL 全量迁移 | 在独立临时数据库从初始版本升级至 `20260902_0025` 通过，临时数据库已删除 |
+| 后端全量 pytest | 184 通过，1 跳过 |
+| PostgreSQL 全量迁移 | 在独立临时数据库从初始版本升级至 `20260904_0026` 通过，`alembic check` 无模型差异，临时数据库已删除 |
 
-本地历史 `backend/.venv` 仍是 Python 3.9 且没有 LangGraph，不符合当前 Python 3.10+ 要求，因此后端运行验证使用 Python 3.12 容器。生产镜像不安装 pytest，不在该镜像中声称执行全量后端 pytest；使用专用验收命令、约束单元测试和生产同源确定性评测覆盖主链变更。已取消的向量召回指标不再列入 V2 验收。
+本地历史 `backend/.venv` 仍是 Python 3.9 且没有 LangGraph，不符合当前 Python 3.10+ 要求，因此全量 pytest 使用独立 Python 3.13 临时环境，PostgreSQL 迁移使用项目 Python 3.12 容器验证。已取消的向量召回指标不再列入 V2 验收。

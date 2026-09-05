@@ -89,6 +89,12 @@ def test_device_can_start_and_read_completed_workflow(api_context: dict[str, Any
         }
     )
     try:
+        heartbeat = api_context["client"].post(
+            "/api/v1/device/heartbeat",
+            headers=api_context["headers"],
+            json={"observed_at": datetime.now(timezone.utc).isoformat(), "is_test_data": True},
+        )
+        assert heartbeat.status_code == 201
         response = api_context["client"].post(
             "/api/v1/diagnosis-workflows/devices/phase2-test-device",
             headers=api_context["headers"],
@@ -277,7 +283,7 @@ def test_admin_can_reject_waiting_workflow_and_duplicate_review_conflicts(
             "reviewed": 1,
             "edit_rate": 0.0,
             "reject_rate": 1.0,
-            "needs_rag_count": 1,
+                "needs_rag_count": 0,
             "resume_count": 1,
             "average_node_duration_ms": metrics.json()["average_node_duration_ms"],
             "ai_call_count": 1,

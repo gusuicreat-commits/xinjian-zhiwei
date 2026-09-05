@@ -72,3 +72,37 @@ def load_fault_trees(
     tree_set = FaultTreeSet.model_validate(payload)
     canonical = json.dumps(tree_set.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     return tree_set, hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def load_fault_trees_from_document(
+    document: dict,
+    *,
+    context: DiagnosisContext,
+) -> tuple[FaultTreeSet, str]:
+    """Compile one immutable experiment-package fault-tree document."""
+
+    source_id = str(document.get("source_id") or "package.fault_tree")
+    scope = ArtifactScope.model_validate(document.get("scope") or {})
+    if not _scope_matches(scope, context):
+        raise ValueError(
+            f"package fault-tree source {source_id} is outside experiment "
+            f"{context.experiment_id} scope"
+        )
+    version = str(document.get("version") or "")
+    payload = {
+        "version": version,
+        "source_versions": {source_id: version},
+        "trees": [
+            {
+                **tree,
+                "source_id": source_id,
+                "source_path": "experiment_package/diagnosis/fault_tree.yaml",
+                "source_version": version,
+                "scope": scope.model_dump(mode="json"),
+            }
+            for tree in document.get("trees", [])
+        ],
+    }
+    tree_set = FaultTreeSet.model_validate(payload)
+    canonical = json.dumps(tree_set.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return tree_set, hashlib.sha256(canonical.encode()).hexdigest()

@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.diagnosis.loader import load_rules
+from app.diagnosis.loader import load_rules, load_rules_from_document
 from app.diagnosis.matcher import evaluate_rules
 from app.diagnosis.normalization import normalize_legacy_context, normalize_raw_device_data
 from app.diagnosis.schemas import (
@@ -17,14 +17,17 @@ from app.diagnosis.schemas import (
     ExperimentTemplateContext,
     RawDeviceRecord,
 )
+from app.experiment_packages.loader import ExperimentPackageLoadError
 from app.experiments.loader import experiment_definition_hash, load_experiment_definition
 from app.experiments.schemas import ExperimentDefinition
 from app.models.base import utc_now
 from app.models.device import Device
 from app.models.device_heartbeat import DeviceHeartbeat
 from app.models.device_log import DeviceLog
+from app.models.diagnosis_evidence import DiagnosisEvidence
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.sensor_reading import SensorReading
+from app.services.experiment_packages import load_experiment_package_runtime
 
 
 def build_diagnosis_context(
@@ -36,10 +39,20 @@ def build_diagnosis_context(
     experiment_template: Optional[ExperimentTemplateContext] = None,
     experiment_id: Optional[str] = None,
     experiment_version: Optional[str] = None,
+    experiment_version_id: Optional[str] = None,
 ) -> DiagnosisContext:
     definition: ExperimentDefinition | None = None
     definition_hash: str | None = None
-    if experiment_id is not None:
+    package_runtime = None
+    if experiment_version_id is not None:
+        package_runtime = load_experiment_package_runtime(db, experiment_version_id)
+        definition = package_runtime.definition
+        definition_hash = experiment_definition_hash(definition)
+        if experiment_id is not None and experiment_id != definition.experiment.id:
+            raise ExperimentPackageLoadError("experiment id does not match package version")
+        if experiment_version is not None and experiment_version != definition.experiment.version:
+            raise ExperimentPackageLoadError("experiment version does not match package version")
+    elif experiment_id is not None:
         definition, definition_hash = load_experiment_definition(experiment_id, experiment_version)
     reference = evaluated_at or datetime.now(timezone.utc)
     since = reference - timedelta(seconds=lookback_seconds)
@@ -99,6 +112,26 @@ def build_diagnosis_context(
         readings=context_readings,
         definition=definition,
     )
+    if package_runtime:
+        error_code_mapping = {
+            str(item.source.value): item.evidence_type
+            for item in package_runtime.bundle.hardware.evidence_mapping
+            if item.source.type == "device_error_code"
+        }
+        normalized.events = [
+            item.model_copy(update={"type": error_code_mapping.get(item.type, item.type)})
+            for item in normalized.events
+        ]
+    if package_runtime:
+        error_code_types = {
+            str(item.source.value): item.evidence_type
+            for item in package_runtime.bundle.hardware.evidence_mapping
+            if item.source.type == "device_error_code"
+        }
+        normalized.events = [
+            item.model_copy(update={"type": error_code_types.get(item.type, item.type)})
+            for item in normalized.events
+        ]
     return DiagnosisContext(
         device_id=device.device_key,
         evaluated_at=reference,
@@ -109,6 +142,12 @@ def build_diagnosis_context(
         experiment_template=experiment_template,
         experiment_id=definition.experiment.id if definition else None,
         experiment_version=definition.experiment.version if definition else None,
+        experiment_record_id=(package_runtime.experiment.id if package_runtime else None),
+        experiment_version_id=(package_runtime.version.id if package_runtime else None),
+        experiment_package_hash=(package_runtime.version.package_hash if package_runtime else None),
+        experiment_package_schema_version=(
+            package_runtime.version.schema_version if package_runtime else None
+        ),
         experiment_definition_hash=definition_hash,
         device=DeviceDescriptor(
             id=device.device_key,
@@ -125,6 +164,10 @@ def build_diagnosis_context(
         expected_behaviors=definition.expected_behaviors if definition else [],
         artifact_selection=definition.diagnostics if definition else {},
         knowledge_scope=definition.knowledge_scope if definition else {},
+        package_rule_document=(package_runtime.rule_document if package_runtime else None),
+        package_fault_tree_document=(
+            package_runtime.fault_tree_document if package_runtime else None
+        ),
     )
 
 
@@ -172,7 +215,13 @@ def build_raw_diagnosis_context(
 
 
 def diagnose(context: DiagnosisContext) -> DiagnosisOutcome:
-    ruleset, ruleset_hash = load_rules(context=context if context.experiment_id else None)
+    if context.package_rule_document:
+        ruleset, ruleset_hash = load_rules_from_document(
+            context.package_rule_document,
+            context=context,
+        )
+    else:
+        ruleset, ruleset_hash = load_rules(context=context if context.experiment_id else None)
     outcome = evaluate_rules(context, ruleset, ruleset_hash)
     context.inference_state.rule_hits = [item.model_dump(mode="json") for item in outcome.matches]
     context.inference_state.evidence = [
@@ -211,12 +260,86 @@ def save_diagnosis_result(
         context_snapshot=context.model_dump(mode="json"),
         experiment_id=context.experiment_id,
         experiment_version=context.experiment_version,
+        experiment_record_id=context.experiment_record_id,
+        experiment_version_id=context.experiment_version_id,
         experiment_definition_hash=context.experiment_definition_hash,
         knowledge_scope=context.knowledge_scope.model_dump(mode="json"),
         is_test_data=bool(sources) and all(item.is_test_data for item in sources),
         created_at=utc_now(),
     )
     db.add(record)
+    db.flush()
+    evidence_rows = [
+        DiagnosisEvidence(
+            diagnosis_id=record.id,
+            experiment_record_id=context.experiment_record_id,
+            experiment_version_id=context.experiment_version_id,
+            evidence_type=f"observation.{item.metric}"[:100],
+            source_type=item.source[:50],
+            source_ref=item.source_ref[:200],
+            normalized_value={
+                "kind": "observation",
+                "normalized_id": item.id,
+                "component_id": item.component_id,
+                "interface_id": item.interface_id,
+                "metric": item.metric,
+                "value": item.value,
+                "unit": item.unit,
+                "status": item.status,
+            },
+            raw_payload=item.raw_payload,
+            occurred_at=item.observed_at,
+        )
+        for item in context.observations
+    ] + [
+        DiagnosisEvidence(
+            diagnosis_id=record.id,
+            experiment_record_id=context.experiment_record_id,
+            experiment_version_id=context.experiment_version_id,
+            evidence_type=item.type[:100],
+            source_type=item.source[:50],
+            source_ref=item.source_ref[:200],
+            normalized_value={
+                "kind": "event",
+                "normalized_id": item.id,
+                "component_id": item.component_id,
+                "interface_id": item.interface_id,
+                "event_type": item.type,
+                "status": item.status,
+            },
+            raw_payload=item.raw_payload,
+            occurred_at=item.occurred_at,
+        )
+        for item in context.events
+    ]
+    evidence_rows.extend(
+        DiagnosisEvidence(
+            diagnosis_id=record.id,
+            experiment_record_id=context.experiment_record_id,
+            experiment_version_id=context.experiment_version_id,
+            evidence_type=f"rule.{evidence.fact}"[:100],
+            source_type="rule_engine",
+            source_ref=f"rule:{match.rule_id}:{index}"[:200],
+            normalized_value={
+                "kind": "rule_fact",
+                "rule_id": match.rule_id,
+                "error_type": match.error_type,
+                "fact": evidence.fact,
+                "observed_value": evidence.observed_value,
+                "details": evidence.details,
+            },
+            raw_payload={},
+            occurred_at=context.evaluated_at,
+        )
+        for match in outcome.matches
+        for index, evidence in enumerate(match.evidence)
+    )
+    seen: set[tuple[str, str, str]] = set()
+    for evidence in evidence_rows:
+        key = (evidence.evidence_type, evidence.source_type, evidence.source_ref)
+        if key not in seen:
+            db.add(evidence)
+            seen.add(key)
     if commit:
         db.commit()
         db.refresh(record)

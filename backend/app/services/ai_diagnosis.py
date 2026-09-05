@@ -25,7 +25,7 @@ from app.ai.schemas import (
     AIStructuredExplanation,
 )
 from app.core.config import Settings
-from app.knowledge.matcher import match_knowledge_cases
+from app.knowledge.matcher import match_knowledge_case_definitions, match_knowledge_cases
 from app.models.ai_call_record import AICallRecord
 from app.models.ai_explanation_cache import AIExplanationCache
 from app.models.device import Device
@@ -33,6 +33,7 @@ from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 from app.services.diagnosis_episode import upsert_episode
+from app.services.experiment_packages import load_experiment_package_runtime
 from app.services.lightweight_diagnosis import (
     budget_allowed,
     build_diagnosis_core,
@@ -95,7 +96,16 @@ def _match_structured_knowledge(
 ) -> list[AIKnowledgeReference]:
     """Adapt deterministic structured-case matches for the governed AI input."""
 
-    cases = match_knowledge_cases(db, record, guidance, limit=settings.ai_knowledge_limit)
+    if record.experiment_version_id:
+        package_runtime = load_experiment_package_runtime(db, record.experiment_version_id)
+        cases = match_knowledge_case_definitions(
+            record,
+            guidance,
+            package_runtime.bundle.cases.cases,
+            limit=settings.ai_knowledge_limit,
+        )
+    else:
+        cases = match_knowledge_cases(db, record, guidance, limit=settings.ai_knowledge_limit)
     return [
         AIKnowledgeReference(
             chunk_id=item.case_id,
@@ -162,8 +172,7 @@ def _validate_explanation(raw_content: str, payload: AIDiagnosisInput) -> AIStru
         raise ValueError("AI explanation introduced a cause outside constrained reasoning")
     support_rank = {"unknown": 0, "low": 1, "medium": 2, "high": 3}
     if allowed_cause_support and any(
-        support_rank[item.support_level]
-        > support_rank[allowed_cause_support[item.cause]]
+        support_rank[item.support_level] > support_rank[allowed_cause_support[item.cause]]
         for item in explanation.possible_causes
     ):
         raise ValueError("AI explanation increased a constrained support level")

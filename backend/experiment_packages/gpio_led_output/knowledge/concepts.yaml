@@ -1,0 +1,7 @@
+concepts:
+  - concept_id: led.polarity
+    description: LED 有极性，必须与限流电阻和公共地组成正确回路。
+    references: [hardware.yaml]
+  - concept_id: gpio.output_level
+    description: GPIO 必须配置为输出，且有效电平需与实验板电路一致。
+    references: [hardware.yaml, teaching/steps.yaml]

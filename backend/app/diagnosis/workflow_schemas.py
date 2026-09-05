@@ -93,6 +93,9 @@ class DiagnosisState(TypedDict, total=False):
     experiment_template: dict[str, Any] | None
     experiment_id: str | None
     experiment_version: str | None
+    experiment_record_id: str | None
+    experiment_version_id: str | None
+    experiment_package_hash: str | None
     question: str | None
     lookback_seconds: int
     evaluated_at: str
@@ -124,6 +127,7 @@ class DiagnosisWorkflowStartRequest(StrictModel):
     experiment_template: ExperimentTemplateContext | None = None
     experiment_id: str | None = Field(default=None, min_length=1, max_length=100)
     experiment_version: str | None = Field(default=None, min_length=1, max_length=50)
+    experiment_version_id: str | None = Field(default=None, min_length=1, max_length=36)
     question: str | None = Field(default=None, min_length=1, max_length=2000)
 
     @model_validator(mode="after")
@@ -192,6 +196,8 @@ class DiagnosisWorkflowResponse(StrictModel):
     device_id: str
     student_user_id: str
     experiment_session_id: str
+    experiment_version_id: str | None
+    state_revision: int
     graph_thread_id: str
     graph_version: str
     status: DiagnosisWorkflowStatus

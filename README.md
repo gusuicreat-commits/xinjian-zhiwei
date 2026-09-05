@@ -27,6 +27,10 @@
 - 统一 `DiagnosisContext` 从日志、心跳、读数和可选实验模板构造确定性输入。
 - 版本化 Experiment Definition、统一 Observation/Event Normalizer、Expected Behavior 和
   common/interface/component/experiment 作用域规则与故障树已接入；新增实验默认是配置任务。
+- 新增版本化 Experiment Package：把硬件、证据映射、规则、故障树、知识、教学步骤和
+  包内测试一起交付；PostgreSQL 中已审核发布的固定版本是运行时真相。
+- DHT11 与 LED 两个完整示例包已由同一通用引擎验证；诊断结果和工作流可锁定具体包版本。
+- 标准证据表分开保存原始载荷和标准化值，AI 原因排序只能引用本次诊断已落库的证据 ID。
 - YAML 示例规则和占位故障树生成可追溯证据、候选原因和 Level 1–4 提示。
 - 合成基线包含 30 个确定性诊断和 6 个禁止性陈述测试；结构化案例匹配另行验收。
 - AI 通过统一客户端、严格 Schema、缓存、预算、审计和确定性降级隔离 Provider。
@@ -111,7 +115,7 @@ docker compose ps
 - PostgreSQL：只在 Compose 内部网络暴露，不映射宿主机端口。
 
 后端启动前自动执行 `alembic upgrade head`。当前唯一迁移 Head 为
-`20260902_0025`。生产 LangGraph 使用 PostgreSQL checkpoint，并在部署步骤单独运行
+`20260904_0026`。生产 LangGraph 使用 PostgreSQL checkpoint，并在部署步骤单独运行
 `python -m app.cli.setup_diagnosis_checkpoints`；开发/测试默认使用内存 saver。
 
 ### 登录凭据与三个诊断地址
@@ -177,6 +181,13 @@ docker compose exec -T backend alembic check
 PYTHONPATH=backend backend/.venv/bin/python -m app.cli.run_synthetic_evaluation
 ```
 
+实验包严格校验：
+
+```bash
+cd backend
+python -m app.cli.verify_experiment_packages
+```
+
 备份与隔离恢复演练：
 
 ```bash
@@ -235,6 +246,7 @@ docker compose exec backend python -m app.cli.reset_demo \
 - [合成评测](docs/evaluation.md)
 - [系统架构](docs/architecture.md)
 - [可迁移实验诊断框架与新增实验指南](docs/experiment-diagnostic-framework.md)
+- [Experiment Package 与证据治理](docs/experiment-package-design.md)
 - [API 设计](docs/api-design.md)
 - [数据库设计](docs/database-design.md)
 - [规则诊断](docs/diagnosis-rules.md)

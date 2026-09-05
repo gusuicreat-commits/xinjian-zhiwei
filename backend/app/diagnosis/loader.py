@@ -93,3 +93,36 @@ def load_rules(
     ruleset = RuleSet.model_validate(payload)
     canonical = json.dumps(ruleset.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     return ruleset, hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def load_rules_from_document(
+    document: dict,
+    *,
+    context: DiagnosisContext,
+) -> tuple[RuleSet, str]:
+    """Compile one immutable experiment-package rule document."""
+
+    source_id = str(document.get("source_id") or "package.rules")
+    scope = ArtifactScope.model_validate(document.get("scope") or {})
+    if not _scope_matches(scope, context):
+        raise ValueError(
+            f"package rule source {source_id} is outside experiment {context.experiment_id} scope"
+        )
+    version = str(document.get("version") or "")
+    payload = {
+        "version": version,
+        "source_versions": {source_id: version},
+        "rules": [
+            {
+                **rule,
+                "source_id": source_id,
+                "source_path": "experiment_package/diagnosis/rules.yaml",
+                "source_version": version,
+                "scope": scope.model_dump(mode="json"),
+            }
+            for rule in document.get("rules", [])
+        ],
+    }
+    ruleset = RuleSet.model_validate(payload)
+    canonical = json.dumps(ruleset.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return ruleset, hashlib.sha256(canonical.encode()).hexdigest()

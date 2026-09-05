@@ -1,0 +1,37 @@
+hardware:
+  family: esp32
+  board_model: esp32-devkit
+  components:
+    - {id: dht11, kind: temperature_humidity_sensor, model: dht11}
+interfaces:
+  - id: dht11_gpio
+    type: gpio
+    component_ids: [dht11]
+    pins: {data: 4}
+    parameters: {mode: input_pullup, minimum_interval_ms: 2000}
+connections:
+  - {component: dht11, signal: DATA, target: GPIO4}
+evidence_mapping:
+  - source: {type: device_error_code, value: DHT11_READ_FAILED}
+    evidence_type: sensor.read_failed
+normalization:
+  adapter: mapping
+  mappings:
+    - id: dht11-read-failed
+      match: {error_code: DHT11_READ_FAILED}
+      output: event
+      component_id: dht11
+      interface_id: dht11_gpio
+      event_type: sensor.read_failed
+      timestamp_field: timestamp
+      default_status: error
+    - id: dht11-reading
+      match: {sensor: dht11}
+      output: observation
+      component_id: dht11
+      interface_id: dht11_gpio
+      metric_field: metric
+      value_field: value
+      timestamp_field: timestamp
+      default_status: normal
+required_parameters: {data_pin: 4, sensor_type: DHT11, minimum_interval_ms: 2000}

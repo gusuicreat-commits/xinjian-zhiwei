@@ -1,31 +1,19 @@
 import json
 from datetime import datetime, timezone
 
-from app.ai.clients import AICompletion, DisabledEmbeddingClient
+import pytest
+
+from app.ai.clients import AICompletion
 from app.core.config import Settings
 from app.diagnosis.lightweight_schemas import DiagnosisCore
 from app.models import (
-    AICallRecord,
     AIExplanationCache,
     Device,
     DiagnosisEpisode,
     DiagnosisResult,
 )
-from app.schemas.knowledge import (
-    KnowledgeEmbeddingItem,
-    KnowledgeEmbeddingUpsertRequest,
-    KnowledgeReviewRequest,
-    KnowledgeSourceCreate,
-    KnowledgeTextImportRequest,
-)
 from app.services.ai_diagnosis import explain_diagnosis
 from app.services.hybrid_retrieval import hybrid_retrieve
-from app.services.knowledge import (
-    create_source,
-    import_text_document,
-    review_document,
-    upsert_embeddings,
-)
 from app.services.lightweight_diagnosis import decide_ai_policy, explanation_fingerprint
 
 
@@ -42,17 +30,6 @@ class CountingAI:
         del system_prompt, user_prompt
         self.calls += 1
         return AICompletion(content=json.dumps(self.content, ensure_ascii=False))
-
-
-class FixtureEmbedding:
-    provider = "phase9-test-vector"
-    model = "fixture-v1"
-    dimensions = 4
-    configured = True
-
-    def embed(self, text: str) -> list[float]:
-        del text
-        return [1.0, 0.0, 0.0, 0.0]
 
 
 def _diagnose_failure(api_context: dict) -> str:
@@ -187,110 +164,9 @@ def test_policy_and_fingerprint_are_deterministic() -> None:
     )
 
 
-def test_hybrid_retrieval_works_without_embeddings(api_context: dict) -> None:
-    settings = Settings()
-    with api_context["session_factory"]() as db:
-        source = create_source(
-            db,
-            KnowledgeSourceCreate(
-                source_key="phase9-test-source",
-                source_type="test-manual",
-                title="Phase 9 test source",
-                version="test-v1",
-                authorization_scope="test-only",
-                is_test_data=True,
-            ),
-        )
-        document = import_text_document(
-            db,
-            source.id,
-            KnowledgeTextImportRequest(
-                title="test document",
-                content="SENSOR_READ_FAILED connection inspection procedure",
-                metadata={"error_code": "SENSOR_READ_FAILED"},
-                organizer_ref="phase9-test-organizer",
-                is_test_data=True,
-            ),
-            settings,
-        )
-        for decision, reviewer_role, reviewer_ref in (
-            ("pending", "organizer", "phase9-test-organizer"),
-            ("approved", "formal_approver", "phase9-test-formal-approver"),
-        ):
-            review_document(
-                db,
-                document.id,
-                KnowledgeReviewRequest(
-                    decision=decision,
-                    reviewer_role=reviewer_role,
-                    reviewer_ref=reviewer_ref,
-                ),
-            )
-        replay = import_text_document(
-            db,
-            source.id,
-            KnowledgeTextImportRequest(
-                title="test document",
-                content="SENSOR_READ_FAILED connection inspection procedure",
-                metadata={"error_code": "SENSOR_READ_FAILED"},
-                organizer_ref="phase9-test-organizer",
-                is_test_data=True,
-            ),
-            settings,
-        )
-        assert replay.idempotent_replay is True
-        upsert_embeddings(
-            db,
-            document.id,
-            KnowledgeEmbeddingUpsertRequest(
-                provider="phase9-test-vector",
-                model="fixture-v1",
-                items=[
-                    KnowledgeEmbeddingItem(
-                        chunk_id=document.chunks[0].id,
-                        vector=[1.0, 0.0, 0.0, 0.0],
-                    )
-                ],
-                is_test_data=True,
-            ),
-            settings,
-        )
-        pending = import_text_document(
-            db,
-            source.id,
-            KnowledgeTextImportRequest(
-                title="pending document",
-                content="SENSOR_READ_FAILED pending content must never be retrieved",
-                metadata={"error_code": "SENSOR_READ_FAILED"},
-                is_test_data=True,
-            ),
-            settings,
-        )
-        assert pending.review_status == "draft"
-        excluded = hybrid_retrieve(
-            db,
-            "SENSOR_READ_FAILED connection",
-            settings,
-            FixtureEmbedding(),
-            include_test_data=False,
-        )
-        assert excluded.references == []
-        result = hybrid_retrieve(
-            db,
-            "SENSOR_READ_FAILED connection",
-            settings,
-            FixtureEmbedding(),
-            include_test_data=True,
-            metadata_filters={"error_code": "SENSOR_READ_FAILED"},
-        )
-        assert result.lexical_used is True
-        assert result.vector_used is True
-        assert len(result.references) == 1
-        reference = result.references[0]
-        assert reference.source_version == "test-v1"
-        assert reference.review_status == "approved"
-        assert set(reference.retrieval_scores) == {"lexical", "vector", "rrf"}
-        assert db.query(AICallRecord).count() == 0
+def test_hybrid_retrieval_is_disabled_for_the_mvp() -> None:
+    with pytest.raises(RuntimeError, match="outside the MVP"):
+        hybrid_retrieve()
 
 
 def test_ai_explanation_cache_prevents_duplicate_provider_call(
@@ -330,7 +206,6 @@ def test_ai_explanation_cache_prevents_duplicate_provider_call(
             diagnosis,
             settings,
             ai_client=fake,
-            embedding_client=DisabledEmbeddingClient(),
         )
         second = explain_diagnosis(
             db,
@@ -338,7 +213,6 @@ def test_ai_explanation_cache_prevents_duplicate_provider_call(
             diagnosis,
             settings,
             ai_client=fake,
-            embedding_client=DisabledEmbeddingClient(),
         )
         assert first.enhancement_status == "cloud_success"
         assert second.enhancement_status == "cache_hit"

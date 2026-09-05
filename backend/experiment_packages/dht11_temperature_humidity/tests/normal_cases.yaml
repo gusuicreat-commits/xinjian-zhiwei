@@ -1,0 +1,4 @@
+cases:
+  - name: 正常读取不应报错
+    facts: {event_type_count: 0}
+    expected: {error_type: null, candidate_causes: []}

@@ -5,7 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.diagnosis.fault_tree import evaluate_fault_tree
-from app.diagnosis.fault_tree_loader import load_fault_trees
+from app.diagnosis.fault_tree_loader import (
+    load_fault_trees,
+    load_fault_trees_from_document,
+)
 from app.diagnosis.fault_tree_schemas import FaultTreeEvaluation
 from app.diagnosis.schemas import DiagnosisContext, DiagnosisOutcome
 from app.models.base import utc_now
@@ -56,7 +59,13 @@ def generate_guidance(
         return list(existing)
 
     context, diagnosis = _restore_diagnosis(diagnosis_result)
-    tree_set, tree_hash = load_fault_trees(context=context if context.experiment_id else None)
+    if context.package_fault_tree_document:
+        tree_set, tree_hash = load_fault_trees_from_document(
+            context.package_fault_tree_document,
+            context=context,
+        )
+    else:
+        tree_set, tree_hash = load_fault_trees(context=context if context.experiment_id else None)
     records = []
     evaluated_at = _aware(diagnosis_result.evaluated_at)
     for tree in sorted(tree_set.trees, key=lambda item: item.id):
