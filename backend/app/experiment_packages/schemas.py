@@ -10,6 +10,7 @@ from app.experiments.schemas import (
     HardwareDefinition,
     InterfaceDefinition,
     NormalizationDefinition,
+    RuntimeExpectations,
 )
 from app.schemas.knowledge_case import KnowledgeCaseDefinition
 
@@ -73,6 +74,7 @@ class PackageHardware(StrictModel):
     evidence_mapping: list[EvidenceMapping] = Field(default_factory=list)
     normalization: NormalizationDefinition = Field(default_factory=NormalizationDefinition)
     required_parameters: dict[str, Any] = Field(default_factory=dict)
+    runtime_expectations: RuntimeExpectations | None = None
 
     @model_validator(mode="after")
     def validate_hardware_references(self) -> PackageHardware:

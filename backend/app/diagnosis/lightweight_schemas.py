@@ -9,6 +9,7 @@ from app.diagnosis.schemas import StrictModel
 class DiagnosisCore(StrictModel):
     diagnosis_result_id: str
     primary_error_code: Optional[str]
+    normal_assessment: dict[str, Any] = Field(default_factory=dict)
     summary: str
     confidence: float = Field(ge=0, le=1)
     evidence: list[str] = Field(default_factory=list)

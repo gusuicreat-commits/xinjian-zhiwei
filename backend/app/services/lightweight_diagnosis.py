@@ -64,6 +64,12 @@ def build_diagnosis_core(
         if matches
         else "当前数据未命中已配置的确定性诊断规则。"
     )
+    normal_assessment = (diagnosis.context_snapshot or {}).get("normal_assessment") or {}
+    normal_status = normal_assessment.get("status", "unknown")
+    if not matches:
+        summary = ("当前上报数据满足已配置的心跳、周期、字段与无异常条件；不证明硬件已验证。"
+                   if normal_status == "normal" else
+                   "正常条件未全部满足，状态待核验；没有异常规则命中不代表正常。")
     evidence = []
     for match in matches:
         for item in match.get("evidence", []):
@@ -114,6 +120,7 @@ def build_diagnosis_core(
         rule_ids=[str(item.get("rule_id")) for item in matches if item.get("rule_id")],
         knowledge_chunk_ids=knowledge_chunk_ids or [],
         limitations=limitations,
+        normal_assessment=normal_assessment,
     )
 
 

@@ -1,28 +1,42 @@
 cases:
-  - id: dht11.sensor-read-failed.confirmed.v2
-    experimentType: dht11_temperature_humidity
-    errorType: SENSOR_READ_FAILED
-    symptom: 设备在线，但 DHT11 连续读取失败且没有有效温湿度值。
-    normalState: {temperature: 可持续读取, humidity: 可持续读取}
-    evidence:
-      - {evidenceType: sensor.read_failed, description: 连续出现标准读取失败事件}
-    possibleCauses:
-      - wiring.data_pin_mismatch
-      - software.gpio_mismatch
-      - hardware.sensor_failure
-    solutionSteps:
-      - 断电后核对 VCC、GND 和 GPIO4 数据线。
-      - 核对代码中的 GPIO、DHT11 类型和采样间隔。
-      - 仍失败时用已知正常传感器做对照测试。
-    teacherNotes: 只有排除接线和配置后，才能把器件异常作为主要结论。
-    rootCauseValue: wiring.data_pin_mismatch
-    rootCauseStatus: confirmed
-    confirmedBy: teacher-team
-    confirmedAt: "2026-09-04T00:00:00Z"
-    sourceType: teacher_confirmed_case
-    factsLocked: true
-    qualityCheckPassed: true
-    reviewStatus: approved
-    sourceRef: experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml
-    version: "2.0.0"
-    isTestData: true
+- id: dht11.sensor-read-failed.test-data.v2_0_2
+  experimentType: dht11_temperature_humidity
+  errorType: SENSOR_READ_FAILED
+  symptom: 测试数据：窗口内累计出现读取失败事件，不能推断连续失败、无读数或具体根因。
+  normalState:
+    requirements:
+    - 心跳在配置时限内
+    - 温度和湿度均有效且按已配置周期到达
+    - 无异常规则命中
+    verification_status: unverified
+  evidence:
+  - evidenceType: sensor.read_failed
+    description: 窗口内累计出现标准读取失败事件，不代表连续失败
+  possibleCauses:
+  - wiring.data_pin_mismatch
+  - software.gpio_mismatch
+  - hardware.sensor_failure
+  solutionSteps:
+  - 断电后核对 VCC、GND 和 示例 GPIO4（pending_hardware） 数据线。
+  - 核对代码中的 GPIO、DHT11 类型和采样间隔。
+  - 仍失败时用已知正常传感器做对照测试。
+  teacherNotes: null
+  rootCauseValue: null
+  rootCauseStatus: unknown
+  confirmedBy: null
+  confirmedAt: null
+  sourceType: test_data
+  factsLocked: false
+  qualityCheckPassed: false
+  reviewStatus: draft
+  sourceRef: experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml
+  version: 2.0.2
+  isTestData: true
+  facts:
+    verification_status: unverified
+    hardware_status: pending_hardware
+    source_type: test_data
+    note: 合成示例，不是真实教师经验或学生案例。
+    teacher_status: pending_teacher
+    student_case_status: pending_teacher
+    course_status: pending_course_confirmation

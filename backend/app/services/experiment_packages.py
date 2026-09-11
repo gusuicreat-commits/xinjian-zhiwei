@@ -65,6 +65,7 @@ def import_experiment_package(
     # omitted optional field from producing one hash at import and another at runtime.
     snapshot = package_documents(bundle)
     bundle, report = load_experiment_package_payload(snapshot)
+    is_test_data = is_test_data or any(case.is_test_data for case in bundle.cases.cases)
     identity = bundle.metadata.experiment
     experiment = db.scalar(select(Experiment).where(Experiment.code == identity.code))
     if experiment is None:

@@ -6,6 +6,7 @@ from operator import eq, ge, gt, le, lt
 from typing import Any, Callable, Optional
 
 from app.diagnosis.expected_behavior import compare_expected_behaviors
+from app.diagnosis.runtime_health import assess_runtime_health
 from app.diagnosis.schemas import (
     DiagnosisContext,
     DiagnosisMatch,
@@ -131,11 +132,32 @@ def _expected_behavior_violation_count(
     )
 
 
+def _failure_count_in_window(context: DiagnosisContext, params: dict[str, Any]) -> FactResult:
+    result = _event_type_count(context, params)
+    return FactResult(result.value, [*result.details, {
+        "failure_count_in_window": result.value,
+        "consecutive_failure_count": None,
+        "verification_status": "pending_hardware",
+        "note": "No verified per-attempt success/failure sequence; consecutive count is unknown.",
+    }])
+
+
+def _runtime_health_failure(context: DiagnosisContext, params: dict[str, Any]) -> FactResult:
+    names = {"data_fresh", "data_periodic"} if params.get("check") == "data_delivery" else {
+        params.get("check")
+    }
+    details = [item for item in assess_runtime_health(context)["checks"]
+               if item["check"] in names and item["status"] == "violated"]
+    return FactResult(float(len(details)), details)
+
+
 FACTS: dict[str, Callable[[DiagnosisContext, dict[str, Any]], FactResult]] = {
     "log_event_count": _log_event_count,
     "seconds_since_last_seen": _seconds_since_last_seen,
     "out_of_range_count": _out_of_range_count,
     "event_type_count": _event_type_count,
+    "failure_count_in_window": _failure_count_in_window,
+    "runtime_health_failure": _runtime_health_failure,
     "expected_behavior_violation_count": _expected_behavior_violation_count,
 }
 OPERATORS = {"eq": eq, "gte": ge, "gt": gt, "lte": le, "lt": lt}
@@ -175,6 +197,22 @@ def evaluate_rules(
                     scope=rule.scope,
                 )
             )
+    context.normal_assessment = assess_runtime_health(context)
+    context.normal_assessment["checks"].append({
+        "check": "no_anomaly_rules", "status": "violated" if matches else "satisfied",
+    })
+    if context.runtime_expectations is not None:
+        context.normal_assessment["checks"].extend(
+            {"check": "expected_behavior", "behavior_id": c.behavior_id, "status": c.status}
+            for c in compare_expected_behaviors(context)
+        )
+        statuses = {c["status"] for c in context.normal_assessment["checks"]}
+        context.normal_assessment["status"] = (
+            "abnormal" if "violated" in statuses else
+            "unknown" if "unknown" in statuses else "normal"
+        )
+    elif matches:
+        context.normal_assessment["status"] = "abnormal"
     canonical_context = json.dumps(
         context.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
     )

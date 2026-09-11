@@ -1,7 +1,29 @@
 concepts:
-  - concept_id: led.polarity
-    description: LED 有极性，必须与限流电阻和公共地组成正确回路。
-    references: [hardware.yaml]
-  - concept_id: gpio.output_level
-    description: GPIO 必须配置为输出，且有效电平需与实验板电路一致。
-    references: [hardware.yaml, teaching/steps.yaml]
+- concept_id: led.polarity
+  description: LED 有极性，必须与限流电阻和公共地组成正确回路。
+  references:
+  - hardware.yaml
+- concept_id: gpio.output_level
+  description: GPIO 必须配置为输出，且有效电平需与实验板电路一致。
+  references:
+  - hardware.yaml
+  - teaching/steps.yaml
+- concept_id: gpio.command_high
+  description: GPIO_COMMAND_HIGH：observation.gpio_command_level=1 仅是设备报告的 HIGH 命令；要求
+    measurement_source=command。
+  references:
+  - hardware.yaml
+- concept_id: gpio.actual_level_high
+  description: GPIO_ACTUAL_LEVEL_HIGH：observation.gpio_actual_level=1 是设备报告的电气测量；要求
+    measurement_source=electrical_measurement，实际采集方法 pending_hardware。
+  references:
+  - hardware.yaml
+- concept_id: led.physically_on
+  description: LED_PHYSICALLY_ON：observation.led_physically_on=1 需要 optical_observation
+    来源；目前没有光学检测，保持 pending_hardware。
+  references:
+  - hardware.yaml
+- concept_id: gpio.unverified_level
+  description: observation.level 的真实来源未知，level=1 不能推出上述任一已确认物理状态，更不能写成 LED 已亮。
+  references:
+  - hardware.yaml

@@ -16,7 +16,7 @@ from app.core.config import Settings
 from app.models.ai_call_record import AICallRecord
 from app.models.diagnosis_result import DiagnosisResult
 
-REASONING_PROMPT_VERSION = "evidence-reasoning-v2"
+REASONING_PROMPT_VERSION = "evidence-reasoning-v2.1"
 REASONING_SYSTEM_PROMPT = """你是受约束的嵌入式实验原因排序器。
 error_type 是规则引擎已经确定的事实，不得修改。
 只能使用 candidate_causes 中已有的 cause_id，不得创造新故障。
@@ -26,6 +26,9 @@ knowledge_constraints 只提供实验定义、正常条件、标准故障映射�
 不得将历史案例直接当作本次根因。
 使用 high、medium、low、unknown 表示证据支持等级，不得把它表述为统计概率。
 证据冲突时 conflict=true，且不得给出 high；资料不足时 conclusion 必须为 unknown。
+GPIO_COMMAND_HIGH、GPIO_ACTUAL_LEVEL_HIGH、LED_PHYSICALLY_ON 是不同事实；
+命令或来源未验证的 level=1 不能证明实际电平或发光。status=unknown 的观测不能用作已确认事实。
+failure_count_in_window 不是 consecutive_failure_count；窗口累计失败不能表述为连续失败。
 时间先后不等于因果，不得把候选原因表述为已确认根因。
 只返回符合 JSON Schema 的 JSON。"""
 

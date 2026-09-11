@@ -184,7 +184,7 @@ def _persisted_evidence_registry(
         elif kind == "observation":
             fact = (
                 f"传感器:{value.get('metric')}={value.get('value')}"
-                f"{value.get('unit') or ''}"
+                f"{value.get('unit') or ''};status={value.get('status', 'unknown')}"
             )
         elif kind == "event":
             fact = f"事件:{value.get('event_type')}={value.get('status') or 'observed'}"

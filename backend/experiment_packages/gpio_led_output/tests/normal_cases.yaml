@@ -1,4 +1,7 @@
 cases:
-  - name: 输出满足预期时不应报错
-    facts: {expected_behavior_violation_count:led_output_high: 0}
-    expected: {error_type: null, candidate_causes: []}
+- name: 零预期违背仅表示该规则未命中，不代表正常
+  facts:
+    expected_behavior_violation_count:led_output_high: 0
+  expected:
+    error_type: null
+    candidate_causes: []

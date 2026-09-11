@@ -9,6 +9,7 @@ from app.experiments.schemas import (
     ExpectedBehavior,
     InterfaceDefinition,
     KnowledgeScope,
+    RuntimeExpectations,
 )
 
 
@@ -173,6 +174,8 @@ class DiagnosisContext(StrictModel):
         default_factory=DiagnosticArtifactSelection
     )
     knowledge_scope: KnowledgeScope = Field(default_factory=KnowledgeScope)
+    runtime_expectations: Optional[RuntimeExpectations] = None
+    normal_assessment: dict[str, Any] = Field(default_factory=dict)
     package_rule_document: Optional[dict[str, Any]] = None
     package_fault_tree_document: Optional[dict[str, Any]] = None
     inference_state: DiagnosisInferenceState = Field(default_factory=DiagnosisInferenceState)
@@ -194,6 +197,8 @@ class RuleCondition(StrictModel):
         "seconds_since_last_seen",
         "out_of_range_count",
         "event_type_count",
+        "failure_count_in_window",
+        "runtime_health_failure",
         "expected_behavior_violation_count",
     ]
     operator: Literal["eq", "gte", "gt", "lte", "lt"]

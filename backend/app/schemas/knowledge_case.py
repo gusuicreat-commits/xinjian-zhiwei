@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictKnowledgeCaseModel(BaseModel):
@@ -40,6 +40,17 @@ class KnowledgeCaseDefinition(StrictKnowledgeCaseModel):
     source_ref: str = Field(alias="sourceRef", min_length=1, max_length=500)
     version: str = Field(default="1", min_length=1, max_length=50)
     is_test_data: bool = Field(alias="isTestData", default=False)
+
+
+    @model_validator(mode="after")
+    def reject_test_data_approval(self) -> KnowledgeCaseDefinition:
+        if self.source_type == "test_data" and (
+            not self.is_test_data or self.review_status == "approved"
+            or self.root_cause_status != "unknown" or self.confirmed_by or self.confirmed_at
+            or self.facts_locked or self.quality_check_passed
+        ):
+            raise ValueError("test_data must remain unverified, unapproved and unconfirmed")
+        return self
 
 
 class KnowledgeCaseResponse(StrictKnowledgeCaseModel):

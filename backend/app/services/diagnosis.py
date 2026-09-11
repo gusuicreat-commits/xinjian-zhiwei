@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.diagnosis.loader import load_rules, load_rules_from_document
+from app.diagnosis.loader import include_runtime_health_rules, load_rules, load_rules_from_document
 from app.diagnosis.matcher import evaluate_rules
 from app.diagnosis.normalization import normalize_legacy_context, normalize_raw_device_data
 from app.diagnosis.schemas import (
@@ -155,6 +155,7 @@ def build_diagnosis_context(
         events=normalized.events,
         unknown_raw_data=normalized.unknown_records,
         expected_behaviors=definition.expected_behaviors if definition else [],
+        runtime_expectations=definition.runtime_expectations if definition else None,
         artifact_selection=definition.diagnostics if definition else {},
         knowledge_scope=definition.knowledge_scope if definition else {},
         package_rule_document=(package_runtime.rule_document if package_runtime else None),
@@ -202,6 +203,7 @@ def build_raw_diagnosis_context(
         events=normalized.events,
         unknown_raw_data=normalized.unknown_records,
         expected_behaviors=definition.expected_behaviors,
+        runtime_expectations=definition.runtime_expectations,
         artifact_selection=definition.diagnostics,
         knowledge_scope=definition.knowledge_scope,
     )
@@ -215,6 +217,8 @@ def diagnose(context: DiagnosisContext) -> DiagnosisOutcome:
         )
     else:
         ruleset, ruleset_hash = load_rules(context=context if context.experiment_id else None)
+    if context.runtime_expectations is not None:
+        ruleset, ruleset_hash = include_runtime_health_rules(ruleset)
     outcome = evaluate_rules(context, ruleset, ruleset_hash)
     context.inference_state.rule_hits = [item.model_dump(mode="json") for item in outcome.matches]
     context.inference_state.evidence = [

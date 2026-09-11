@@ -12,6 +12,7 @@ BehaviorKind = Literal[
     "interface_communicates",
     "metric_range",
     "state_equals",
+    "state_matches_command",
     "event_occurs",
 ]
 
@@ -66,6 +67,7 @@ class ExpectedBehavior(StrictExperimentModel):
     interface_id: StableId | None = None
     metric: str | None = Field(default=None, max_length=100)
     expected: str | int | float | bool | None = None
+    command_metric: str | None = None
     minimum: float | None = None
     maximum: float | None = None
     event_type: str | None = Field(default=None, max_length=100)
@@ -88,6 +90,8 @@ class ExpectedBehavior(StrictExperimentModel):
                 and self.minimum > self.maximum
             ):
                 raise ValueError("minimum cannot exceed maximum")
+        if self.kind == "state_matches_command" and (not self.metric or not self.command_metric):
+            raise ValueError("state_matches_command requires metric and command_metric")
         if self.kind == "state_equals" and (self.metric is None or self.expected is None):
             raise ValueError("state_equals requires metric and expected")
         if self.kind == "event_occurs" and self.event_type is None:
@@ -151,12 +155,28 @@ class KnowledgeScope(StrictExperimentModel):
     knowledge_version: str | None = Field(default=None, max_length=50)
 
 
+class RequiredObservation(StrictExperimentModel):
+    component_id: StableId
+    metric: str
+    maximum_age_seconds: float | None = Field(default=None, gt=0, le=604800)
+    allowed_values: list[float] | None = None
+    unit: str | None = None
+
+
+class RuntimeExpectations(StrictExperimentModel):
+    verification_status: Literal["pending_hardware", "hardware_verified"] = "pending_hardware"
+    offline_after_seconds: float = Field(default=90, gt=0, le=604800)
+    heartbeat_maximum_age_seconds: float | None = Field(default=None, gt=0, le=604800)
+    required_observations: list[RequiredObservation] = Field(default_factory=list)
+
+
 class ExperimentDefinition(StrictExperimentModel):
     schema_version: Literal["1"] = "1"
     experiment: ExperimentIdentity
     hardware: HardwareDefinition
     interfaces: list[InterfaceDefinition] = Field(default_factory=list)
     required_parameters: dict[str, Any] = Field(default_factory=dict)
+    runtime_expectations: RuntimeExpectations | None = None
     expected_behaviors: list[ExpectedBehavior] = Field(default_factory=list)
     diagnostics: DiagnosticArtifactSelection = Field(default_factory=DiagnosticArtifactSelection)
     normalization: NormalizationDefinition = Field(default_factory=NormalizationDefinition)
@@ -177,6 +197,14 @@ class ExperimentDefinition(StrictExperimentModel):
                 raise ValueError(
                     f"interface {interface.id} references unknown components: {sorted(missing)}"
                 )
+        if self.runtime_expectations:
+            keys = [
+                (r.component_id, r.metric) for r in self.runtime_expectations.required_observations
+            ]
+            if len(keys) != len(set(keys)):
+                raise ValueError("required observations must be unique")
+            if any(component not in component_ids for component, _ in keys):
+                raise ValueError("required observation references unknown component")
         for behavior in self.expected_behaviors:
             if behavior.component_id and behavior.component_id not in component_ids:
                 raise ValueError(

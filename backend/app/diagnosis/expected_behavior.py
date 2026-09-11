@@ -45,6 +45,31 @@ def compare_expected_behavior(
             status, observed, references = "violated", "communication_failure", _refs(failures)
         elif successes:
             status, observed, references = "satisfied", "communication_success", _refs(successes)
+    elif behavior.kind == "state_matches_command":
+        def command_id(item: Any) -> Any:
+            metadata = item.raw_payload.get("metadata")
+            metadata = metadata if isinstance(metadata, dict) else {}
+            return item.raw_payload.get("command_id") or metadata.get("command_id")
+
+        items = [o for o in context.observations
+                 if o.component_id == behavior.component_id
+                 and o.interface_id == behavior.interface_id and o.status == "normal"]
+        commands = [o for o in items if o.metric == behavior.command_metric]
+        if commands and behavior.within_seconds is not None:
+            command = max(commands, key=lambda o: o.observed_at.timestamp())
+            actuals = [o for o in items if o.metric == behavior.metric
+                       and command_id(command) and command_id(o) == command_id(command)
+                       and o.observed_at >= command.observed_at]
+            if actuals:
+                actual = max(actuals, key=lambda o: o.observed_at.timestamp())
+                elapsed = context.evaluated_at.timestamp() - actual.observed_at.timestamp()
+                delay = actual.observed_at.timestamp() - command.observed_at.timestamp()
+                if (0 <= elapsed <= behavior.within_seconds and delay <= behavior.within_seconds
+                        and type(actual.value) in (int, float) and actual.value in (0, 1)
+                        and type(command.value) in (int, float) and command.value in (0, 1)):
+                    observed = actual.value
+                    status = "satisfied" if actual.value == command.value else "violated"
+                    references = _refs([command, actual])
     elif behavior.kind in {"metric_range", "state_equals"}:
         items = [
             item

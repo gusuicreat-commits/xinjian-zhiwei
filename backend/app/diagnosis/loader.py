@@ -126,3 +126,20 @@ def load_rules_from_document(
     ruleset = RuleSet.model_validate(payload)
     canonical = json.dumps(ruleset.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     return ruleset, hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def include_runtime_health_rules(ruleset: RuleSet) -> tuple[RuleSet, str]:
+    """Version and hash common checks together with the selected package rules."""
+    path = Path(__file__).with_name("base_health_rules.yaml")
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    source = document["source_id"]
+    combined = RuleSet.model_validate({
+        "version": ruleset.version,
+        "source_versions": {**ruleset.source_versions, source: str(document["version"])},
+        "rules": [*[r.model_dump(mode="json") for r in ruleset.rules], *[
+            {**r, "source_id": source, "source_path": path.name,
+             "source_version": str(document["version"])} for r in document["rules"]
+        ]],
+    })
+    canonical = json.dumps(combined.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return combined, hashlib.sha256(canonical.encode()).hexdigest()

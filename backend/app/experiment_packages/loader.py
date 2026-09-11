@@ -148,6 +148,7 @@ def package_to_experiment_definition(bundle: ExperimentPackageBundle) -> Experim
         hardware=bundle.hardware.hardware,
         interfaces=bundle.hardware.interfaces,
         required_parameters=bundle.hardware.required_parameters,
+        runtime_expectations=bundle.hardware.runtime_expectations,
         expected_behaviors=bundle.steps.expected_behaviors,
         diagnostics=DiagnosticArtifactSelection(),
         normalization=bundle.hardware.normalization,
@@ -238,7 +239,18 @@ def validate_experiment_package(bundle: ExperimentPackageBundle) -> PackageValid
     error_types = {item.error_type for item in bundle.rules.rules}
     cause_ids = {cause.id for tree in bundle.fault_trees.trees for cause in tree.causes}
     evidence_types = {item.evidence_type for item in bundle.hardware.evidence_mapping}
+    emitted_types = {
+        f"observation.{m.metric}" if m.output == "observation" else m.event_type
+        for m in bundle.hardware.normalization.mappings
+        if (m.output == "observation" and m.metric) or (m.output == "event" and m.event_type)
+    }
     checks = [
+        PackageCheck(
+            code="evidence.runtime_types",
+            passed=(bundle.hardware.runtime_expectations is None or
+                    evidence_types == emitted_types),
+            message="declared evidence types match emitted observation/event types",
+        ),
         PackageCheck(
             code="schema.valid",
             passed=True,

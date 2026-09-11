@@ -1,11 +1,16 @@
-schema_version: "1.0"
+schema_version: '1.0'
 experiment:
   code: dht11_temperature_humidity
   name: DHT11 温湿度实验
   category: sensor
   locale: zh-CN
-package: {version: 2.0.0, status: draft}
+package:
+  version: 2.0.2
+  status: draft
 compatibility:
-  engine: ">=2.0,<3.0"
-  platforms: [esp32]
-maintainer: {organization: 芯鉴知微项目组, author: 项目教师组}
+  engine: '>=2.0,<3.0'
+  platforms:
+  - esp32
+maintainer:
+  organization: 芯鉴知微项目组
+  author: 项目组（资料未验证，非教师审核）

@@ -139,3 +139,11 @@
 - 新增可选字段时保持旧客户端可用；破坏性字段语义变更必须增加 schema 版本。
 - 真实硬件接入时应新增设备适配配置和契约测试，不改变通用字段含义。
 - 正式固件、GPIO、传感器字段、单位、采样/批量策略和错误码仍为待确认输入。
+
+## 实验包 2.0.1 的证据语义补充（2026-09-09）
+
+DHT11 日志的组件标识可放在 `payload.sensor_snapshot.component_id`，例如 `dht11`；接口标识可放在同层 interface_id，未填时按组件的已声明接口解析。错误码映射仍由版本化实验包控制，当前错误码为未验证示例，不宣称等于真实驱动输出。
+
+LED reading 的 metric_key 使用 level（旧值，来源未知）、gpio_command_level（命令）、gpio_actual_level（电气观测）或 led_physically_on（光学观测）。后三者分别要求 metadata.measurement_source 为 command / electrical_measurement / optical_observation；缺失或不匹配时标准观测 status=unknown。命令与电气观测还需 metadata.command_id 相同，且满足包配置的响应窗口才参与比较。数据契约支持这些语义不代表当前设备已经实现电气/光学检测，真实来源仍 pending_hardware。
+
+不接受把固件变量 level=1 当作 LED 已亮的证明；不得伪造光学来源声明。所有测试报文保持测试标记。

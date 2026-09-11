@@ -1,10 +1,11 @@
 steps:
-  - {step_id: connect, title: 按接线表连接 DHT11, expected_state: VCC、GND、DATA 分别连接正确}
-  - {step_id: configure, title: 配置代码, expected_state: GPIO4、DHT11 类型和 2 秒采样间隔正确}
-  - {step_id: observe, title: 观察串口数据, expected_state: 温度和湿度持续输出}
-expected_behaviors:
-  - id: dht11_communicates
-    description: DHT11 数据接口应持续返回有效读数
-    kind: interface_communicates
-    component_id: dht11
-    interface_id: dht11_gpio
+- step_id: connect
+  title: 按接线表连接 DHT11
+  expected_state: VCC、GND、DATA 分别连接正确
+- step_id: configure
+  title: 配置代码
+  expected_state: 示例 GPIO4（pending_hardware）、DHT11 类型和 采样间隔待硬件确认
+- step_id: observe
+  title: 观察串口数据
+  expected_state: 温度和湿度持续输出
+expected_behaviors: []

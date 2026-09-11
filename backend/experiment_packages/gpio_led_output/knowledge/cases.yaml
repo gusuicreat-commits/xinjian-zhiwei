@@ -1,28 +1,44 @@
 cases:
-  - id: led.output-failed.confirmed.v2
-    experimentType: gpio_led_output
-    errorType: GPIO_EXPECTATION_FAILED
-    symptom: 程序执行点亮操作后，LED 状态没有变化。
-    normalState: {gpio2: 高电平, led: 点亮}
-    evidence:
-      - {evidenceType: led.output_level, description: 观测电平与期望状态不一致}
-    possibleCauses:
-      - software.output_configuration
-      - wiring.led_polarity
-      - hardware.led_failure
-    solutionSteps:
-      - 核对 GPIO2、输出模式与有效电平。
-      - 断电后检查 LED 极性、限流电阻和公共地。
-      - 用最小亮灭程序做对照测试。
-    teacherNotes: 不应只凭 LED 不亮直接判定器件损坏。
-    rootCauseValue: software.output_configuration
-    rootCauseStatus: confirmed
-    confirmedBy: teacher-team
-    confirmedAt: "2026-09-04T00:00:00Z"
-    sourceType: teacher_confirmed_case
-    factsLocked: true
-    qualityCheckPassed: true
-    reviewStatus: approved
-    sourceRef: experiment_packages/gpio_led_output/knowledge/cases.yaml
-    version: "2.0.0"
-    isTestData: true
+- id: led.output-failed.test-data.v2_0_2
+  experimentType: gpio_led_output
+  errorType: GPIO_EXPECTATION_FAILED
+  symptom: 测试数据：同一命令关联的电气观测与目标值不一致；没有 LED 发光观测。
+  normalState:
+    requirements:
+    - 心跳正常
+    - 命令与电气观测按已配置周期到达且字段有效
+    - 无异常规则命中
+    LED_PHYSICALLY_ON: unknown / pending_hardware
+  evidence:
+  - evidenceType: observation.gpio_command_level
+    description: 有来源声明的命令目标值
+  - evidenceType: observation.gpio_actual_level
+    description: 有电气测量来源声明的引脚观测，不代表发光
+  possibleCauses:
+  - software.output_configuration
+  - wiring.led_polarity
+  - hardware.led_failure
+  solutionSteps:
+  - 核对 示例 GPIO2（pending_hardware）、输出模式与有效电平。
+  - 断电后检查 LED 极性、限流电阻和公共地。
+  - 用最小亮灭程序做对照测试。
+  teacherNotes: null
+  rootCauseValue: null
+  rootCauseStatus: unknown
+  confirmedBy: null
+  confirmedAt: null
+  sourceType: test_data
+  factsLocked: false
+  qualityCheckPassed: false
+  reviewStatus: draft
+  sourceRef: experiment_packages/gpio_led_output/knowledge/cases.yaml
+  version: 2.0.2
+  isTestData: true
+  facts:
+    verification_status: unverified
+    hardware_status: pending_hardware
+    source_type: test_data
+    note: 合成示例，不是真实教师经验或学生案例。
+    teacher_status: pending_teacher
+    student_case_status: pending_teacher
+    course_status: pending_course_confirmation

@@ -41,6 +41,25 @@ def _timestamp(value: Any, fallback: datetime) -> datetime:
     return fallback
 
 
+MEASUREMENT_SOURCES = {
+    "gpio_command_level": "command",
+    "gpio_actual_level": "electrical_measurement",
+    "led_physically_on": "optical_observation",
+}
+
+
+def observation_status(metric: str, payload: dict[str, Any], status: str) -> str:
+    if metric == "level":
+        return "unknown"  # Legacy numeric level has no verified measurement semantics.
+    required = MEASUREMENT_SOURCES.get(metric)
+    metadata = payload.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    source = payload.get("measurement_source") or metadata.get("measurement_source")
+    if required and source != required:
+        return "unknown"
+    return status
+
+
 def mapping_adapter(
     records: list[RawDeviceRecord], definition: ExperimentDefinition
 ) -> NormalizationResult:
@@ -120,7 +139,7 @@ def mapping_adapter(
                     interface_id=mapping.interface_id,
                     metric=str(metric),
                     value=value,
-                    status=status,
+                    status=observation_status(str(metric), record.payload, status),
                     observed_at=occurred_at,
                     source=record.source,
                     source_ref=source_ref,
@@ -247,7 +266,7 @@ def normalize_legacy_context(
                 metric=reading.metric_key,
                 value=reading.value,
                 unit=reading.unit,
-                status="normal",
+                status=observation_status(reading.metric_key, reading.raw_payload, "normal"),
                 observed_at=reading.observed_at,
                 source="sensor_reading",
                 source_ref=reading.id,
@@ -267,8 +286,13 @@ def normalize_legacy_context(
             )
         )
     for log in logs:
-        component_id = log.raw_payload.get("component_id") or log.raw_payload.get("component")
-        interface_id = log.raw_payload.get("interface_id") or log.raw_payload.get("interface")
+        snapshot = log.raw_payload.get("sensor_snapshot")
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        component_id = (log.raw_payload.get("component_id") or log.raw_payload.get("component")
+                        or snapshot.get("component_id"))
+        interface_id = (log.raw_payload.get("interface_id") or log.raw_payload.get("interface")
+                        or snapshot.get("interface_id")
+                        or _interface_for_component(component_id, definition))
         if log.event_code:
             events.append(
                 ContextEvent(

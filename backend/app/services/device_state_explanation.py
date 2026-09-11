@@ -184,6 +184,16 @@ def build_device_state_explanation(
         str(matches[0]["error_type"]) if matches and matches[0].get("error_type") else None
     )
     copy = _rule_copy(primary_error, device_status, readings)
+    assessment = (diagnosis.context_snapshot or {}).get("normal_assessment") if diagnosis else None
+    if assessment and not primary_error:
+        copy = {
+            "title": "上报数据满足监测预期"
+            if assessment["status"] == "normal"
+            else "实验状态待核验",
+            "summary": "心跳、数据周期、必需字段与规则结果需共同判断正常状态。",
+            "meaning": "当前状态：" + assessment["status"] + "；上报状态不等于硬件已验证。",
+            "next_step": "核对缺失的观测、周期参数与数据来源。",
+        }
     source = "rule"
     if ai_output:
         summary = ai_output.get("summary")

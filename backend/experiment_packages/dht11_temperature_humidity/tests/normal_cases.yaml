@@ -1,4 +1,7 @@
 cases:
-  - name: 正常读取不应报错
-    facts: {event_type_count: 0}
-    expected: {error_type: null, candidate_causes: []}
+- name: 零累计失败仅表示该异常未命中
+  facts:
+    failure_count_in_window: 0
+  expected:
+    error_type: null
+    candidate_causes: []

@@ -100,8 +100,10 @@ def test_same_engine_diagnoses_two_distinct_experiment_packages() -> None:
         ],
     )
 
-    assert diagnose(dht_context).matches[0].error_type == "SENSOR_READ_FAILED"
-    assert diagnose(led_context).matches[0].error_type == "GPIO_EXPECTATION_FAILED"
+    assert "SENSOR_READ_FAILED" in {m.error_type for m in diagnose(dht_context).matches}
+    # An unverified legacy level cannot establish an electrical or optical mismatch.
+    assert "GPIO_EXPECTATION_FAILED" not in {m.error_type for m in diagnose(led_context).matches}
+    assert led_context.normal_assessment["status"] != "normal"
 
 
 def test_package_versions_are_immutable_and_runtime_is_database_backed(
@@ -214,4 +216,4 @@ def test_diagnosis_persists_package_binding_and_normalized_evidence(
         assert all(item.experiment_version_id == version.id for item in evidence)
         assert any(item.normalized_value["kind"] == "rule_fact" for item in evidence)
         references = _match_structured_knowledge(db, result, [], Settings())
-        assert [item.chunk_id for item in references] == ["dht11.sensor-read-failed.confirmed.v2"]
+        assert references == []  # Unverified test cases must not enter reviewed knowledge.

@@ -2,28 +2,163 @@ hardware:
   family: esp32
   board_model: esp32-devkit
   components:
-    - {id: status_led, kind: digital_output, model: led}
+  - id: status_led
+    kind: digital_output
+    model: led
+    metadata:
+      verification_status: pending_hardware
+      source_type: project_design
+      is_test_data: true
 interfaces:
-  - id: led_gpio
-    type: gpio
-    component_ids: [status_led]
-    pins: {output: 2}
-    parameters: {mode: output, active_level: 1}
+- id: led_gpio
+  type: gpio
+  component_ids:
+  - status_led
+  pins:
+    output: 2
+  parameters:
+    mode: output
+    active_level: 1
+    verification_status: pending_hardware
 connections:
-  - {component: status_led, signal: ANODE, target: GPIO2}
+- component: status_led
+  signal: ANODE
+  target: GPIO2
 evidence_mapping:
-  - source: {type: sensor_reading, value: level}
-    evidence_type: led.output_level
+- source:
+    type: sensor_reading
+    value: level
+  evidence_type: observation.level
+- source:
+    type: sensor_reading
+    value: gpio_command_level
+  evidence_type: observation.gpio_command_level
+- source:
+    type: sensor_reading
+    value: gpio_actual_level
+  evidence_type: observation.gpio_actual_level
+- source:
+    type: sensor_reading
+    value: led_physically_on
+  evidence_type: observation.led_physically_on
 normalization:
   adapter: mapping
   mappings:
-    - id: gpio-level-sample
-      match: {pin: 2}
-      output: observation
-      component_id: status_led
-      interface_id: led_gpio
-      metric: level
-      value_field: level
-      timestamp_field: timestamp
-      default_status: normal
-required_parameters: {output_pin: 2, active_level: 1}
+  - id: gpio-level-sample
+    match:
+      pin: 2
+      metric: null
+    output: observation
+    component_id: status_led
+    interface_id: led_gpio
+    metric: level
+    value_field: level
+    timestamp_field: timestamp
+    default_status: unknown
+  - id: gpio-command-level
+    match:
+      metric: gpio_command_level
+    output: observation
+    component_id: status_led
+    interface_id: led_gpio
+    metric: gpio_command_level
+    value_field: value
+    timestamp_field: timestamp
+    default_status: normal
+  - id: gpio-actual-level
+    match:
+      metric: gpio_actual_level
+    output: observation
+    component_id: status_led
+    interface_id: led_gpio
+    metric: gpio_actual_level
+    value_field: value
+    timestamp_field: timestamp
+    default_status: normal
+  - id: led-physically-on
+    match:
+      metric: led_physically_on
+    output: observation
+    component_id: status_led
+    interface_id: led_gpio
+    metric: led_physically_on
+    value_field: value
+    timestamp_field: timestamp
+    default_status: normal
+required_parameters:
+  output_pin: 2
+  active_level: 1
+  verification_status: pending_hardware
+  notes: 引脚、电路、采样参数为未验证示例；不得当作正式接线或教师经验。
+  consecutive_failure_threshold: null
+  consecutive_failure_status: pending_hardware
+  level_source: pending_hardware
+  LED_PHYSICALLY_ON: pending_hardware
+  truth_status:
+    final_gpio:
+      status: pending_hardware
+      source_type: project_design
+      source_ref: hardware.yaml:interfaces.pins
+      required_confirmation: 实物型号、原理图和接线核验；当前 GPIO 仅是示例
+    heartbeat_period:
+      status: pending_hardware
+      source_type: project_design
+      source_ref: hardware.yaml:runtime_expectations
+      required_confirmation: 实测发送周期与课程容差；90 秒是当前监测时限，不是发送周期
+    reading_period_and_timeout:
+      status: pending_hardware
+      source_type: project_design
+      source_ref: hardware.yaml:runtime_expectations.required_observations
+      required_confirmation: 真实采样周期、时间戳与允许间隔；未确认前 maximum_age_seconds 留空
+    teacher_experience:
+      status: pending_teacher
+      source_type: project_design
+      source_ref: knowledge/cases.yaml:teacherNotes
+      required_confirmation: 教师本人提供可追溯依据并审核；没有材料时保持 null
+    real_student_cases:
+      status: pending_teacher
+      source_type: project_design
+      source_ref: knowledge/cases.yaml:facts
+      required_confirmation: 真实课堂记录、原始证据、实际修复动作和教师审核；不得把合成案例改名充当真实案例
+    teaching_acceptance:
+      status: pending_course_confirmation
+      source_type: project_design
+      source_ref: teaching/steps.yaml
+      required_confirmation: 课程指导书版次、验收要求、允许误差和观察时长
+    teaching_actions_and_escalation:
+      status: pending_teacher
+      source_type: project_design
+      source_ref: teaching/hints.yaml; diagnosis/fault_tree.yaml:escalation
+      required_confirmation: 教师确认排查步骤、测量权限和提示升级门槛
+    level_source:
+      status: pending_hardware
+      source_type: project_design
+      source_ref: hardware.yaml:normalization
+      required_confirmation: 确认固件变量、引脚采样或仪器来源；不能仅凭来源声明完成硬件验证
+    physical_light:
+      status: pending_hardware
+      source_type: project_design
+      source_ref: knowledge/concepts.yaml:led.physically_on
+      required_confirmation: 独立人工/光学观测及采集记录；没有证据时保持 unknown
+    command_response_window:
+      status: pending_hardware
+      source_type: project_design
+      source_ref: teaching/steps.yaml:expected_behaviors[0].within_seconds
+      required_confirmation: 实测命令与电气观测的响应时延；窗口目前留空
+runtime_expectations:
+  verification_status: pending_hardware
+  offline_after_seconds: 90
+  heartbeat_maximum_age_seconds: 90
+  required_observations:
+  - component_id: status_led
+    metric: gpio_command_level
+    maximum_age_seconds: null
+    allowed_values:
+    - 0
+    - 1
+  - component_id: status_led
+    metric: gpio_actual_level
+    maximum_age_seconds: null
+    allowed_values:
+    - 0
+    - 1

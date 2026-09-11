@@ -1,57 +1,70 @@
-version: "2.0.0"
+version: 2.0.2
 trees:
-  - id: led-output-failure-v2
-    title: LED 未按预期点亮
-    status: approved
-    continuity_window_seconds: 3600
-    trigger:
-      - &root
-        fact: diagnosis_error_count
-        operator: gte
-        value: 1
-        weight: 25
-        description: 规则已确认 LED 输出不符合预期
-        params: {error_type: GPIO_EXPECTATION_FAILED}
-    escalation:
-      - {level: 1, min_failure_count: 1, min_duration_seconds: 0}
-      - {level: 2, min_failure_count: 3, min_duration_seconds: 300}
-      - {level: 3, min_failure_count: 6, min_duration_seconds: 900}
-      - {level: 4, min_failure_count: 10, min_duration_seconds: 1800}
-    causes:
-      - id: software.output_configuration
-        title: GPIO 编号、模式或有效电平配置不一致
-        evidence:
-          - <<: *root
-          - fact: expected_behavior_violation_count
-            operator: gte
-            value: 1
-            weight: 60
-            description: 实际电平与实验定义不一致
-            params: {behavior_id: led_output_high}
-        hints:
-          1: 先检查程序使用的 GPIO 编号。
-          2: 核对 GPIO2、OUTPUT 模式和高电平点亮。
-          3: 用最小亮灭程序记录 GPIO 的实际高低电平。
-          4: 提交代码和电平记录，请教师协助。
-      - id: wiring.led_polarity
-        title: LED 极性、限流电阻或公共地连接异常
-        evidence:
-          - <<: *root
-            weight: 30
-            description: 输出异常支持检查 LED 回路
-        hints:
-          1: 检查 LED 和电阻的连接。
-          2: 断电后核对 LED 极性与公共地。
-          3: 逐段测量输出回路并记录结果。
-          4: 停止反复通电并请求教师检查。
-      - id: hardware.led_failure
-        title: LED 器件异常
-        evidence:
-          - <<: *root
-            weight: 15
-            description: 这是排除软件与接线后的候选原因
-        hints:
-          1: 暂不直接认定 LED 损坏。
-          2: 先排除 GPIO 配置和极性问题。
-          3: 用已知正常 LED 做对照测试。
-          4: 由教师确认后更换器件。
+- id: led-output-failure-v2
+  title: GPIO 命令与电气观测不一致
+  status: placeholder
+  continuity_window_seconds: 3600
+  trigger:
+  - fact: diagnosis_error_count
+    operator: gte
+    value: 1
+    weight: 25
+    description: 规则只确认 GPIO 电气观测与命令不一致，不确认 LED 发光状态
+    params: &id001
+      error_type: GPIO_EXPECTATION_FAILED
+  escalation:
+  - level: 1
+    min_failure_count: 1
+    min_duration_seconds: 0
+  - level: 2
+    min_failure_count: 3
+    min_duration_seconds: 300
+  - level: 3
+    min_failure_count: 6
+    min_duration_seconds: 900
+  - level: 4
+    min_failure_count: 10
+    min_duration_seconds: 1800
+  causes:
+  - id: software.output_configuration
+    title: GPIO 编号、模式或有效电平配置不一致
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 仅支持存在异常，不区分根因；unknown / need_verification
+      params: *id001
+    hints:
+      1: 先检查程序使用的 GPIO 编号。
+      2: 核对 示例 GPIO2（pending_hardware）、OUTPUT 模式和有效电平（pending_hardware）。
+      3: 用最小亮灭程序记录 GPIO 的实际高低电平。
+      4: 提交代码和电平记录，请教师协助。
+  - id: wiring.led_polarity
+    title: LED 极性、限流电阻或公共地连接异常
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 仅支持存在异常，不区分根因；unknown / need_verification
+      params: *id001
+    hints:
+      1: 检查 LED 和电阻的连接。
+      2: 断电后核对 LED 极性与公共地。
+      3: 逐段测量输出回路并记录结果。
+      4: 停止反复通电并请求教师检查。
+  - id: hardware.led_failure
+    title: LED 器件异常
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 仅支持存在异常，不区分根因；unknown / need_verification
+      params: *id001
+    hints:
+      1: 暂不直接认定 LED 损坏。
+      2: 先排除 GPIO 配置和极性问题。
+      3: 用已知正常 LED 做对照测试。
+      4: 由教师确认后更换器件。

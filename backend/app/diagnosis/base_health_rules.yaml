@@ -1,0 +1,21 @@
+version: "1"
+source_id: common.runtime_health
+rules:
+  - id: runtime-device-offline-v1
+    error_type: DEVICE_OFFLINE
+    priority: 110
+    summary: 设备未在配置时限内上报；不能区分断电与网络中断
+    conditions:
+      - {fact: runtime_health_failure, operator: gte, value: 1, params: {check: device_online}}
+  - id: runtime-heartbeat-stale-v1
+    error_type: HEARTBEAT_STALE
+    priority: 105
+    summary: 未收到符合时限的心跳，设备实时状态待核验
+    conditions:
+      - {fact: runtime_health_failure, operator: gte, value: 1, params: {check: heartbeat_fresh}}
+  - id: runtime-data-stale-v1
+    error_type: DATA_STALE
+    priority: 100
+    summary: 必需观测缺失、过期或未按配置周期到达，不能据此确定硬件根因
+    conditions:
+      - {fact: runtime_health_failure, operator: gte, value: 1, params: {check: data_delivery}}
