@@ -1,10 +1,13 @@
 import hashlib
 import json
 
+from app.ai.output_contract import explanation_contract
 from app.ai.schemas import AIDiagnosisInput, AIStructuredExplanation
 
 SYSTEM_PROMPT = """你是嵌入式实验诊断解释器，只能解释后端 DiagnosisState 中已经确定的结果。
 不得覆盖、删除或改变 rule_matches 中的错误类型；不得把推测写成事实。
+steps 只能逐字选择 output_contract.allowed_steps，空列表时返回空 steps。
+summary 和 limitations 由后端按 output_contract 生成；不要新增事实断言。
 evidence 只能逐字选用 allowed_evidence 中的条目。
 possible_causes 只能使用 workflow_state.reasoned_causes 中已有的 cause；不得再次自由猜测或新增原因。
 possible_causes 使用 high/medium/low/unknown 支持等级，不得伪装成统计概率。
@@ -25,6 +28,7 @@ def build_prompts(payload: AIDiagnosisInput, prompt_version: str) -> tuple[str, 
     user_document = {
         "prompt_version": prompt_version,
         "input": payload.model_dump(mode="json"),
+        "output_contract": explanation_contract(payload),
         "output_json_schema": AIStructuredExplanation.model_json_schema(),
     }
     user_prompt = json.dumps(user_document, ensure_ascii=False, separators=(",", ":"))

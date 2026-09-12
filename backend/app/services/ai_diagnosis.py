@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,7 @@ from app.ai.clients import (
     build_ai_client,
 )
 from app.ai.context_sanitizer import audit_snapshot, build_safe_ai_input
+from app.ai.output_contract import OUTPUT_CONTRACT_VERSION, explanation_contract
 from app.ai.prompts import build_prompts
 from app.ai.schemas import (
     AIDiagnosisInput,
@@ -184,7 +186,17 @@ def _validate_explanation(raw_content: str, payload: AIDiagnosisInput) -> AIStru
     }
     if not referenced_chunks.issubset(allowed_chunks):
         raise ValueError("AI knowledge references must come from retrieved chunks")
-    return explanation
+    contract = explanation_contract(payload)
+    if any(step not in contract["allowed_steps"] for step in explanation.steps):
+        raise ValueError("AI explanation step must come from the allowed steps")
+    if (
+        any(cause.support_level == "high" for cause in explanation.possible_causes)
+        and not explanation.evidence
+    ):
+        raise ValueError("high support requires evidence in the explanation")
+    return explanation.model_copy(
+        update={"summary": contract["summary"], "limitations": contract["limitations"]}
+    )
 
 
 def _safe_error_summary(error: Exception | None) -> str:
@@ -277,7 +289,10 @@ def _save_record(
         status=status,
         attempt_count=attempt_count,
         duration_ms=duration_ms,
-        input_snapshot=_audit_snapshot(payload),
+        input_snapshot={
+            **_audit_snapshot(payload),
+            "output_contract": explanation_contract(payload),
+        },
         output_json=explanation.model_dump(mode="json") if explanation else None,
         knowledge_references=[item.model_dump(mode="json") for item in knowledge],
         input_tokens=input_tokens,
@@ -343,9 +358,37 @@ def _response(
 
 
 def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanationResponse:
-    explanation = (
-        AIStructuredExplanation.model_validate(record.output_json) if record.output_json else None
-    )
+    explanation = None
+    contract = (record.input_snapshot or {}).get("output_contract") or {}
+    if record.output_json:
+        try:
+            explanation = AIStructuredExplanation.model_validate(record.output_json)
+            if contract.get("version") != OUTPUT_CONTRACT_VERSION or any(
+                step not in contract.get("allowed_steps", []) for step in explanation.steps
+            ):
+                raise ValueError("historical output lacks the current contract")
+            explanation = explanation.model_copy(
+                update={
+                    "summary": contract["summary"],
+                    "limitations": contract["limitations"],
+                }
+            )
+        except (ValueError, KeyError, TypeError):
+            # Preserve the historical audit row but never silently serve it as
+            # a newly validated suggestion. Do not charge/call the provider again.
+            return _response(
+                record,
+                None,
+                [],
+                settings,
+                "历史解释未通过当前输出约束，请查看确定性诊断结果。",
+                enhancement_status="failed_fallback",
+            ).model_copy(
+                update={
+                    "status": "failed",
+                    "mode": "rules_only",
+                }
+            )
     knowledge = [AIKnowledgeReference.model_validate(item) for item in record.knowledge_references]
     if record.status == "succeeded":
         notice = "此接口仅补充解释；确定性规则、证据和故障树结果保持不变。"
@@ -534,6 +577,8 @@ def explain_diagnosis(
         user_question=user_question,
     )
 
+    # Include the actual allowlisted input, not only a configured prompt label.
+    cache_fingerprint = hashlib.sha256(f"{cache_fingerprint}:{prompt_hash}".encode()).hexdigest()
     skip_code: str | None = None
     notice: str | None = None
     if retrieval_error:
@@ -572,9 +617,15 @@ def explain_diagnosis(
         )
     )
     if cached is not None:
+        try:
+            explanation = _validate_explanation(json.dumps(cached.explanation_json), payload)
+        except (ValueError, TypeError):
+            db.delete(cached)  # Rebuildable cache, not an immutable audit record.
+            db.flush()
+            cached = None
+    if cached is not None:
         cached.hit_count += 1
         cached.last_hit_at = now
-        explanation = AIStructuredExplanation.model_validate(cached.explanation_json)
         saved, created = _save_record(
             db,
             diagnosis=diagnosis,

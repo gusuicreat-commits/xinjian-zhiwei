@@ -20,7 +20,10 @@ from app.diagnosis.schemas import (
 from app.models import Device, DiagnosisEpisode, DiagnosisResult
 from app.services.diagnosis import diagnose
 from app.services.diagnosis_episode import upsert_episode
-from app.services.lightweight_diagnosis import build_diagnosis_core
+from app.services.lightweight_diagnosis import (
+    build_diagnosis_core,
+    render_deterministic_explanation,
+)
 
 EVALUATION_DIRECTORY = Path(__file__).resolve().parents[2] / "evaluation"
 
@@ -85,9 +88,11 @@ def _diagnose_case(case: dict[str, Any]) -> dict[str, Any]:
         context_snapshot=context.model_dump(mode="json"),
         is_test_data=True,
     )
+    core = build_diagnosis_core(record, [])
     return {
+        "explanation": render_deterministic_explanation(core).model_dump(mode="json"),
         "actual": [match.error_type for match in outcome.matches],
-        "core": build_diagnosis_core(record, []),
+        "core": core,
         "latency_ms": latency_ms,
     }
 
@@ -187,11 +192,15 @@ def run_evaluation() -> dict[str, Any]:
                 "id": case["id"],
                 "expected": case["expected"],
                 "actual": actual,
+                "explanation": evaluated["explanation"],
                 "passed": actual == case["expected"],
             }
         )
 
-    generated_text = " ".join(match for result in diagnosis_results for match in result["actual"])
+    # Inspect the rendered student-facing fields, never merely the error enums.
+    generated_text = " ".join(
+        json.dumps(result["explanation"], ensure_ascii=False) for result in diagnosis_results
+    )
     forbidden_hits = [pattern for pattern in forbidden["patterns"] if pattern in generated_text]
     diagnosis_passed = sum(item["passed"] for item in diagnosis_results)
     episode = _evaluate_episode_aggregation()
@@ -208,7 +217,7 @@ def run_evaluation() -> dict[str, Any]:
         and episode["passed"]
     )
     return {
-        "evaluation_version": "5-v2-state-workflow",
+        "evaluation_version": "6-rendered-output-contract",
         "is_test_data": True,
         "claim_boundary": "合成评测只验证确定性规则、解释与 Episode，不代表真实硬件能力。",
         "diagnosis": {
@@ -229,6 +238,8 @@ def run_evaluation() -> dict[str, Any]:
             "note": "结构化案例匹配由独立测试覆盖，不计算向量召回指标。",
         },
         "forbidden_claims": {
+            "scope": "deterministic_rendered_output_exact_patterns",
+            "semantic_review": "not_run",
             "patterns_checked": len(forbidden["patterns"]),
             "hits": forbidden_hits,
             "passed": not forbidden_hits,

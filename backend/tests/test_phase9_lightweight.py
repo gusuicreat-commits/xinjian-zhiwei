@@ -193,7 +193,7 @@ def test_ai_explanation_cache_prevents_duplicate_provider_call(
                 "summary": "cached explanation",
                 "evidence": [f"{evidence['fact']}: {evidence['observed_value']}"],
                 "possible_causes": [],
-                "steps": ["generic test step"],
+                "steps": [],  # Route/cache fixture; actions are tested separately.
                 "hint_level": 1,
                 "need_teacher_help": False,
                 "limitations": ["test-only"],

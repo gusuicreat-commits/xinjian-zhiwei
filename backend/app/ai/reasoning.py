@@ -16,11 +16,12 @@ from app.core.config import Settings
 from app.models.ai_call_record import AICallRecord
 from app.models.diagnosis_result import DiagnosisResult
 
-REASONING_PROMPT_VERSION = "evidence-reasoning-v2.1"
+REASONING_PROMPT_VERSION = "evidence-reasoning-v2.2"
 REASONING_SYSTEM_PROMPT = """你是受约束的嵌入式实验原因排序器。
 error_type 是规则引擎已经确定的事实，不得修改。
 只能使用 candidate_causes 中已有的 cause_id，不得创造新故障。
 used_evidence_ids 只能选择 evidence_registry 中已有的 id。
+没有有效证据引用时不得给出 high；status=unknown/invalid 的证据不能支持 high。
 next_verification_action 只能逐字选择 allowed_verification_actions 中的 text。
 knowledge_constraints 只提供实验定义、正常条件、标准故障映射和已确认案例；
 不得将历史案例直接当作本次根因。
@@ -42,16 +43,17 @@ def build_evidence_registry(state: dict[str, Any]) -> list[dict[str, str]]:
     """
     facts: list[dict[str, str]] = []
 
-    def add(evidence_id: str, fact: str, source: str) -> None:
+    def add(evidence_id: str, fact: str, source: str, status: str) -> None:
         if not evidence_id or not fact or any(item["id"] == evidence_id for item in facts):
             return
-        facts.append({"id": evidence_id, "fact": fact, "source": source})
+        facts.append({"id": evidence_id, "fact": fact, "source": source, "status": status})
 
     for item in state.get("evidence_registry") or []:
         add(
             sanitize_text(item.get("id"), max_chars=100),
             sanitize_text(item.get("fact"), max_chars=300),
             sanitize_text(item.get("source"), max_chars=50),
+            sanitize_text(item.get("status") or "observed", max_chars=50),
         )
     return facts[:50]
 
@@ -60,53 +62,46 @@ def _support_level(score: float) -> str:
     return "high" if score >= 0.75 else "medium" if score >= 0.45 else "low"
 
 
-def _fallback_reasoning(
-    state: dict[str, Any], *, limitation: str
-) -> AIReasoningResult:
+def _fallback_reasoning(state: dict[str, Any], *, limitation: str) -> AIReasoningResult:
     candidates = list(state.get("fault_tree_candidates") or [])
     evidence = build_evidence_registry(state)
-    evidence_ids = [item["id"] for item in evidence]
+    evidence_ids = {
+        item["id"] for item in evidence if item.get("status") not in {"unknown", "invalid"}
+    }
     actions = list(state.get("allowed_verification_actions") or [])
-    if not candidates:
-        return AIReasoningResult(
-            error_type=state.get("error_type"),
-            conclusion="unknown",
-            ranked_causes=[],
-            summary="现有证据不足以形成候选原因排序。",
-            limitations=[limitation],
-            missing_evidence=["缺少经过故障树限定的候选原因。"],
-            conflict=bool(state.get("evidence_conflict")),
+    next_action = str(actions[0]["text"]) if actions and actions[0].get("text") else None
+    ranked = []
+    for item in candidates:
+        if not item.get("cause_id"):
+            continue
+        refs = [ref for ref in item.get("evidence_refs") or [] if ref in evidence_ids]
+        # Never attach the first unrelated registry row to manufacture support.
+        if not refs:
+            continue
+        support = _support_level(max(0.0, min(1.0, float(item.get("score") or 0.0))))
+        if state.get("evidence_conflict") and support == "high":
+            support = "medium"
+        ranked.append(
+            AIReasonedCause(
+                cause_id=str(item["cause_id"]),
+                cause=str(item.get("name") or "未知候选原因"),
+                support_level=support,
+                used_evidence_ids=refs,
+                reason="沿用故障树的证据关联；候选原因仍需独立验证。",
+            )
         )
     return AIReasoningResult(
         error_type=state.get("error_type"),
-        conclusion="ranked",
-        ranked_causes=[
-            AIReasonedCause(
-                cause_id=str(item.get("cause_id") or ""),
-                cause=str(item.get("name") or "未知候选原因"),
-                support_level=(
-                    "medium"
-                    if state.get("evidence_conflict")
-                    and _support_level(
-                        max(0.0, min(1.0, float(item.get("score") or 0.0)))
-                    )
-                    == "high"
-                    else _support_level(
-                        max(0.0, min(1.0, float(item.get("score") or 0.0)))
-                    )
-                ),
-                used_evidence_ids=[
-                    ref for ref in item.get("evidence_refs") or [] if ref in evidence_ids
-                ]
-                or evidence_ids[:3],
-                reason="沿用故障树的确定性证据排序，未增加新的故障假设。",
-            )
-            for item in candidates
-            if item.get("cause_id")
-        ],
-        summary="AI 推理不可用，当前沿用故障树候选原因排序。",
+        conclusion="ranked" if ranked else "unknown",
+        ranked_causes=ranked,
+        summary=(
+            "当前沿用故障树候选原因排序，根因尚待验证。"
+            if ranked
+            else "现有证据不足以形成候选原因排序。"
+        ),
         limitations=[limitation],
-        next_verification_action=(str(actions[0].get("text")) if actions else None),
+        missing_evidence=[] if ranked else ["缺少可关联到候选原因的有效证据。"],
+        next_verification_action=next_action,
         conflict=bool(state.get("evidence_conflict")),
     )
 
@@ -130,24 +125,28 @@ def _validate_reasoning(
         raise ValueError("AI reasoning introduced an unknown or duplicate cause")
     allowed = {item["id"] for item in allowed_evidence}
     if any(
-        item not in allowed
-        for cause in result.ranked_causes
-        for item in cause.used_evidence_ids
+        item not in allowed for cause in result.ranked_causes for item in cause.used_evidence_ids
     ):
         raise ValueError("AI reasoning cited evidence outside the allowlist")
+    usable = {
+        item["id"] for item in allowed_evidence if item.get("status") not in {"unknown", "invalid"}
+    }
+    if any(
+        cause.support_level == "high"
+        and (not cause.used_evidence_ids or not set(cause.used_evidence_ids).issubset(usable))
+        for cause in result.ranked_causes
+    ):
+        raise ValueError("high support requires usable evidence references")
     allowed_actions = {
         str(item.get("text"))
         for item in state.get("allowed_verification_actions") or []
         if item.get("text")
     }
-    if (
-        result.next_verification_action
-        and result.next_verification_action not in allowed_actions
-    ):
+    if result.next_verification_action and result.next_verification_action not in allowed_actions:
         raise ValueError("AI reasoning proposed an action outside the allowlist")
-    if result.conflict and any(
-        item.support_level == "high" for item in result.ranked_causes
-    ):
+    if state.get("evidence_conflict") and not result.conflict:
+        raise ValueError("AI reasoning cannot hide input evidence conflict")
+    if result.conflict and any(item.support_level == "high" for item in result.ranked_causes):
         raise ValueError("conflicting evidence cannot support a high ranking")
     if result.conclusion == "unknown" and result.ranked_causes:
         raise ValueError("unknown reasoning cannot contain ranked causes")
@@ -178,9 +177,7 @@ def _reasoning_prompt(
         "output_json_schema": AIReasoningResult.model_json_schema(),
     }
     user_prompt = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    prompt_hash = hashlib.sha256(
-        f"{REASONING_SYSTEM_PROMPT}\n{user_prompt}".encode()
-    ).hexdigest()
+    prompt_hash = hashlib.sha256(f"{REASONING_SYSTEM_PROMPT}\n{user_prompt}".encode()).hexdigest()
     return REASONING_SYSTEM_PROMPT, user_prompt, prompt_hash, evidence
 
 
@@ -217,10 +214,15 @@ def reason_about_causes(
         )
     )
     if existing and existing.output_json:
-        return (
-            AIReasoningResult.model_validate(existing.output_json),
-            "ai" if existing.status == "succeeded" else "deterministic_fallback",
-        )
+        try:
+            replay = _validate_reasoning(
+                json.dumps(existing.output_json), state, build_evidence_registry(state)
+            )
+        except (ValueError, TypeError):
+            return _fallback_reasoning(
+                state, limitation="历史推理不符合当前证据约束。"
+            ), "deterministic_fallback"
+        return replay, "ai" if existing.status == "succeeded" else "deterministic_fallback"
     if not state.get("fault_tree_candidates"):
         return _fallback_reasoning(state, limitation="故障树没有可排序的候选原因。"), (
             "deterministic_fallback"
@@ -305,9 +307,15 @@ def reason_about_causes(
             )
         )
         if replay and replay.output_json:
-            return (
-                AIReasoningResult.model_validate(replay.output_json),
-                "ai" if replay.status == "succeeded" else "deterministic_fallback",
-            )
+            try:
+                checked = _validate_reasoning(
+                    json.dumps(replay.output_json), state, build_evidence_registry(state)
+                )
+            except (ValueError, TypeError):
+                return (
+                    _fallback_reasoning(state, limitation="历史推理不符合当前证据约束。"),
+                    "deterministic_fallback",
+                )
+            return checked, "ai" if replay.status == "succeeded" else "deterministic_fallback"
         raise
     return result, mode

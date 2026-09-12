@@ -24,9 +24,7 @@ def _payload(*, content: str = "合成知识") -> AIDiagnosisInput:
                 "evidence": [{"fact": "log_event_count", "observed_value": 1}],
             }
         ],
-        fault_tree_guidance=[
-            {"ranked_causes": [{"cause_id": "synthetic", "title": "合成候选"}]}
-        ],
+        fault_tree_guidance=[{"ranked_causes": [{"cause_id": "synthetic", "title": "合成候选"}]}],
         knowledge=[
             AIKnowledgeReference(
                 chunk_id="kb-synthetic-1",
@@ -39,6 +37,7 @@ def _payload(*, content: str = "合成知识") -> AIDiagnosisInput:
             )
         ],
         allowed_evidence=[evidence],
+        workflow_state={"allowed_verification_actions": [{"text": "保留证据。"}]},
         is_test_data=True,
     )
 
@@ -109,14 +108,23 @@ def test_structured_output_schema_rejects_every_extra_field() -> None:
         AIStructuredExplanation.model_validate(output)
 
 
-def test_synthetic_structured_output_validity_sample_meets_99_percent() -> None:
-    # A deterministic 100-case schema/grounding corpus makes the 99% release gate
-    # executable without claiming accuracy for a real external model Provider.
-    payload = _payload()
-    valid = 0
-    for index in range(100):
-        output = _valid_output()
-        output["summary"] = f"合成结构化输出样例 {index}。"
-        explanation = _validate_explanation(json.dumps(output, ensure_ascii=False), payload)
-        valid += int(explanation.error_type == "SENSOR_READ_FAILED")
-    assert valid / 100 >= 0.99
+def test_valid_synthetic_output_satisfies_schema_and_allowlists() -> None:
+    explanation = _validate_explanation(json.dumps(_valid_output(), ensure_ascii=False), _payload())
+    assert explanation.error_type == "SENSOR_READ_FAILED"
+    assert explanation.steps == ["保留证据。"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"hint_level": 0},
+        {"hint_level": 5},
+        {"evidence": "not-a-list"},
+        {"possible_causes": [{"cause": "合成候选", "support_level": "certain"}]},
+        {"summary": ""},
+        {"steps": [123]},
+    ],
+)
+def test_invalid_output_shapes_are_rejected(mutation: dict) -> None:
+    with pytest.raises(ValidationError):
+        _validate_explanation(json.dumps({**_valid_output(), **mutation}), _payload())

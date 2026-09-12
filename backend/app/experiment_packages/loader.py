@@ -214,7 +214,7 @@ def _run_package_tests(bundle: ExperimentPackageBundle) -> list[PackageCheck]:
             error_ok = (
                 not matched_errors
                 if case.expected.error_type is None
-                else case.expected.error_type in matched_errors
+                else set(matched_errors) == {case.expected.error_type}
             )
             tree = trees_by_error.get(str(case.expected.error_type))
             known_causes = {item.id for item in tree.causes} if tree else set()

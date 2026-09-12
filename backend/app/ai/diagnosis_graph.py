@@ -195,6 +195,9 @@ def _persisted_evidence_registry(
                 "id": item.id,
                 "fact": sanitize_text(fact, max_chars=300),
                 "source": sanitize_text(item.source_type, max_chars=50),
+                "status": str(value.get("status", "unknown"))
+                if kind == "observation"
+                else "observed",
             }
         )
     return registry
@@ -478,9 +481,7 @@ def ai_reasoning_node(
     diagnosis = _diagnosis(runtime, state)
     graph_knowledge, _ = _load_graph_knowledge(state, runtime)
     reasoning_state = dict(state)
-    reasoning_state["evidence_registry"] = _persisted_evidence_registry(
-        runtime, diagnosis.id
-    )
+    reasoning_state["evidence_registry"] = _persisted_evidence_registry(runtime, diagnosis.id)
     reasoning_state["knowledge_constraints"] = build_reasoning_knowledge_constraints(
         state.get("experiment_context"), graph_knowledge
     )

@@ -1,6 +1,6 @@
 # 测试与评测准则
 
-最后更新：2026-09-05
+最后更新：2026-09-12
 
 ## 1. 评测边界
 
@@ -35,7 +35,7 @@
 - 错误类型精确匹配；
 - 原因 Top-1 / Top-3 与必需排查步骤；
 - 无证据时不得产生高置信结论；
-- 禁止性陈述 0 命中；
+- 对实际渲染的确定性解释做禁止短语扫描，0 命中；该项不等于语义评价；
 - Episode 重复故障按预期聚合；
 - 默认评测不调用真实 AI Provider。
 
@@ -119,3 +119,15 @@ docker compose exec -T backend alembic check
 ## 6. 失败处理
 
 任一强制门禁失败时不得通过删除测试、放宽白名单、降低真实性标记或恢复旧 RAG 逻辑绕过。应先判断是代码回归、测试预期过期、缺少外部资料还是环境故障，再修复根因并记录验证命令和结果。
+
+## 7. 第一阶段评测可信化（2026-09-12）
+
+要求、测试和依据见 [评测要求对应表](evaluation-requirements.md)。本轮采用 ClawEval 的精确校验与证据选择原则，不引入其固定任务目录或模型裁判。
+
+- 合成评测版本为 `6-rendered-output-contract`，每条结果记录实际渲染解释；`forbidden_claims.scope` 指明扫描范围，`semantic_review=not_run`。
+- high 无有效引用、隐藏输入冲突、白名单外步骤会被校验拒绝；无关联证据的降级结论为 unknown。
+- 最终解释摘要/限制由后端生成；缓存和历史重放不绕过当前输出边界。具体兼容行为和未覆盖的推理自由文本见对应表。
+- 包内故障样例检查异常类型集合精确一致；包内正常样例不证明完整运行状态，候选成员校验不证明排序正确。
+- 原 100 次重复结构样例改为明确的合法/非法样例；不报告真实模型输出合格率。
+
+专项回归：`cd backend && python -m pytest tests/test_evaluation_contract.py tests/test_ai_diagnosis.py tests/test_diagnosis_workflow_security.py`。

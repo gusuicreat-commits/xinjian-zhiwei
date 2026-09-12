@@ -81,14 +81,10 @@ def validate_reasoning_against_knowledge(state: dict[str, Any]) -> dict[str, Any
     reasoned = [item for item in state.get("reasoned_causes") or [] if isinstance(item, dict)]
     reasoned_ids = {str(item.get("cause_id")) for item in reasoned if item.get("cause_id")}
     evidence_ids = {
-        str(item.get("id"))
-        for item in state.get("evidence_registry") or []
-        if item.get("id")
+        str(item.get("id")) for item in state.get("evidence_registry") or [] if item.get("id")
     }
     used_evidence_ids = {
-        str(evidence_id)
-        for item in reasoned
-        for evidence_id in item.get("used_evidence_ids") or []
+        str(evidence_id) for item in reasoned for evidence_id in item.get("used_evidence_ids") or []
     }
     allowed_actions = {
         str(item.get("text"))
@@ -117,8 +113,7 @@ def validate_reasoning_against_knowledge(state: dict[str, Any]) -> dict[str, Any
         "verification_action_allowed": not next_action or next_action in allowed_actions,
         "experiment_spec_consistent": not experiment_types
         or all(
-            not item.get("experiment_type")
-            or str(item.get("experiment_type")) in experiment_types
+            not item.get("experiment_type") or str(item.get("experiment_type")) in experiment_types
             for item in cases
             if isinstance(item, dict)
         ),
@@ -130,7 +125,18 @@ def validate_reasoning_against_knowledge(state: dict[str, Any]) -> dict[str, Any
         "conflict_has_no_high_support": not state.get("evidence_conflict")
         or all(item.get("support_level") != "high" for item in reasoned),
     }
+    usable_ids = {
+        str(item.get("id"))
+        for item in state.get("evidence_registry") or []
+        if item.get("status") not in {"unknown", "invalid"}
+    }
+    checks["high_support_has_evidence"] = all(
+        bool(item.get("used_evidence_ids")) and set(item["used_evidence_ids"]).issubset(usable_ids)
+        for item in reasoned
+        if item.get("support_level") == "high"
+    )
     messages = {
+        "high_support_has_evidence": "high 支持等级必须引用有效的本次诊断证据。",
         "error_type_preserved": "AI 输出与规则确定的异常类型冲突。",
         "cause_ids_in_fault_tree": "AI 输出包含故障树候选集合之外的原因。",
         "evidence_ids_exist": "AI 输出引用了不存在的证据 ID。",
@@ -142,11 +148,7 @@ def validate_reasoning_against_knowledge(state: dict[str, Any]) -> dict[str, Any
     violations = [messages[name] for name, passed in checks.items() if not passed]
     return {
         "status": (
-            "rejected"
-            if violations
-            else "validated"
-            if cases
-            else "validated_without_case"
+            "rejected" if violations else "validated" if cases else "validated_without_case"
         ),
         "checks": checks,
         "violations": violations,

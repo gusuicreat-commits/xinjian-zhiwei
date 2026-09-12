@@ -116,7 +116,7 @@ def _structured_output(diagnosis: DiagnosisResult) -> dict[str, Any]:
         "summary": "Mock DeepSeek 只补充自然语言解释。",
         "evidence": [f"{evidence['fact']}: {evidence['observed_value']}"],
         "possible_causes": [],
-        "steps": ["继续执行确定性故障树步骤。"],
+        "steps": [],  # Route/cache fixture; actions are tested separately.
         "hint_level": 1,
         "need_teacher_help": False,
         "limitations": ["这是不调用真实 API 的自动化测试。"],

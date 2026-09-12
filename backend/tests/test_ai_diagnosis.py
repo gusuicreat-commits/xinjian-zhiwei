@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+import pytest
+
 from app.ai.clients import AICompletion
 from app.ai.schemas import AIKnowledgeReference
 from app.core.config import Settings
@@ -111,7 +113,7 @@ def test_injected_provider_returns_validated_structured_explanation(
                 "summary": "仅对确定性测试规则进行结构化解释。",
                 "evidence": [allowed_evidence],
                 "possible_causes": [],
-                "steps": ["继续执行现有故障树中的通用排查步骤。"],
+                "steps": [],  # Route/cache fixture; actions are tested separately.
                 "hint_level": 1,
                 "need_teacher_help": False,
                 "limitations": ["没有正式知识资料，不能给出真实硬件结论。"],
@@ -218,7 +220,7 @@ def test_graph_supplied_knowledge_is_reused_without_second_retrieval(
                 "summary": "复用图检索证据。",
                 "evidence": [allowed_evidence],
                 "possible_causes": [],
-                "steps": ["继续核验。"],
+                "steps": [],  # Route/cache fixture; actions are tested separately.
                 "hint_level": 1,
                 "need_teacher_help": False,
                 "limitations": ["仅为合成复用测试。"],
@@ -271,7 +273,7 @@ def test_workflow_ai_replay_reuses_audit_without_second_provider_call(
                 "summary": "工作流 AI 重放只调用一次 Provider。",
                 "evidence": [f"{evidence_item['fact']}: {evidence_item['observed_value']}"],
                 "possible_causes": [],
-                "steps": ["继续执行确定性排查。"],
+                "steps": [],  # Route/cache fixture; actions are tested separately.
                 "hint_level": 1,
                 "need_teacher_help": False,
                 "limitations": ["仅为合成幂等测试。"],
@@ -325,3 +327,102 @@ def test_workflow_ai_replay_reuses_audit_without_second_provider_call(
         assert first_record.workflow_run_id == workflow.id
         assert first_episode.ai_call_count == first_episode_calls == 1
         assert sum(item.estimated_cost or 0 for item in db.query(AICallRecord)) == first_cost
+
+
+@pytest.mark.parametrize("unlisted_step", [False, True])
+def test_provider_boundary_is_applied_before_response_and_audit(api_context, unlisted_step):
+    """Exercise service + real test DB, not only the private validator."""
+    diagnosis_id = _create_diagnosis(api_context)
+    settings = Settings(
+        _env_file=None, ai_enabled=True, ai_require_knowledge=False, ai_max_retries=0
+    )
+    with api_context["session_factory"]() as db:
+        diagnosis = db.get(DiagnosisResult, diagnosis_id)
+        fake = FakeAIClient(
+            {
+                "error_type": diagnosis.matched_rules[0]["error_type"],
+                "summary": "已确认根因是传感器损坏。",
+                "evidence": [],
+                "possible_causes": [],
+                "steps": ["直接更换主板。"] if unlisted_step else [],
+                "hint_level": 1,
+                "need_teacher_help": False,
+                "limitations": ["真实硬件验证通过"],
+            }
+        )
+        result = explain_diagnosis(db, db.query(Device).one(), diagnosis, settings, ai_client=fake)
+        record = db.get(AICallRecord, result.call_record_id)
+        assert fake.calls == 1
+        if unlisted_step:
+            assert result.status == "failed"
+            assert result.explanation is None
+            assert result.deterministic_result["steps"]
+            assert record.output_json is None
+            assert record.validation_status == "failed"
+        else:
+            assert result.status == "succeeded"
+            assert result.explanation.summary != fake.content["summary"]
+            assert result.explanation.limitations != fake.content["limitations"]
+            assert record.output_json == result.explanation.model_dump(mode="json")
+
+
+def test_old_audit_prose_is_not_served_as_current_validated_output(api_context):
+    from app.services.ai_diagnosis import serialize_ai_call
+
+    record = AICallRecord(
+        id="synthetic-old-audit",
+        diagnosis_result_id="synthetic",
+        status="succeeded",
+        input_snapshot={},
+        knowledge_references=[],
+        output_json={
+            "error_type": "SENSOR_READ_FAILED",
+            "summary": "已确认根因是器件损坏。",
+            "steps": ["直接更换主板。"],
+            "hint_level": 1,
+            "need_teacher_help": False,
+        },
+    )
+    before = dict(record.output_json)
+    result = serialize_ai_call(record, Settings(_env_file=None))
+    assert result.status == "failed" and result.mode == "rules_only"
+    assert result.explanation is None
+    assert record.output_json == before  # Historical audit is not rewritten.
+
+
+def test_invalid_cached_steps_are_revalidated_and_replaced(api_context):
+    from app.models.ai_explanation_cache import AIExplanationCache
+
+    diagnosis_id = _create_diagnosis(api_context)
+    settings = Settings(
+        _env_file=None,
+        ai_enabled=True,
+        ai_require_knowledge=False,
+        ai_max_retries=0,
+        ai_calls_per_episode=10,
+        ai_calls_per_device_hour=10,
+    )
+    with api_context["session_factory"]() as db:
+        diagnosis = db.get(DiagnosisResult, diagnosis_id)
+        device = db.query(Device).one()
+        fake = FakeAIClient(
+            {
+                "error_type": diagnosis.matched_rules[0]["error_type"],
+                "summary": "合成缓存测试",
+                "evidence": [],
+                "possible_causes": [],
+                "steps": [],
+                "hint_level": 1,
+                "need_teacher_help": False,
+            }
+        )
+        first = explain_diagnosis(db, device, diagnosis, settings, ai_client=fake)
+        assert first.status == "succeeded"
+        cached = db.query(AIExplanationCache).one()
+        cached.explanation_json = {**cached.explanation_json, "steps": ["直接更换主板。"]}
+        db.commit()
+        second = explain_diagnosis(db, device, diagnosis, settings, ai_client=fake)
+        assert second.status == "succeeded"
+        assert second.explanation.steps == []
+        assert fake.calls == 2
+        assert db.query(AIExplanationCache).one().explanation_json["steps"] == []

@@ -32,6 +32,10 @@ class SequenceAI:
         self.calls += 1
         if isinstance(outcome, Exception):
             raise outcome
+        if isinstance(outcome, dict):
+            # A retry may append a correction after the initial JSON document.
+            prompt, _ = json.JSONDecoder().raw_decode(user_prompt)
+            outcome = {**outcome, "steps": prompt["output_contract"]["allowed_steps"][:1]}
         content = outcome if isinstance(outcome, str) else json.dumps(outcome, ensure_ascii=False)
         return AICompletion(content=content, input_tokens=40, output_tokens=25)
 
