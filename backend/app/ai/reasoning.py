@@ -16,11 +16,12 @@ from app.core.config import Settings
 from app.models.ai_call_record import AICallRecord
 from app.models.diagnosis_result import DiagnosisResult
 
-REASONING_PROMPT_VERSION = "evidence-reasoning-v2.2"
+REASONING_PROMPT_VERSION = "evidence-reasoning-v2.3"
 REASONING_SYSTEM_PROMPT = """你是受约束的嵌入式实验原因排序器。
 error_type 是规则引擎已经确定的事实，不得修改。
 只能使用 candidate_causes 中已有的 cause_id，不得创造新故障。
-used_evidence_ids 只能选择 evidence_registry 中已有的 id。
+used_evidence_ids 必须同时属于 evidence_registry 和该 cause_id 的 evidence_refs。
+每个排序候选必须有该候选关联的证据；没有可关联证据时返回 unknown，不借用其他候选或心跳的证据。
 没有有效证据引用时不得给出 high；status=unknown/invalid 的证据不能支持 high。
 next_verification_action 只能逐字选择 allowed_verification_actions 中的 text。
 knowledge_constraints 只提供实验定义、正常条件、标准故障映射和已确认案例；
@@ -137,6 +138,17 @@ def _validate_reasoning(
         for cause in result.ranked_causes
     ):
         raise ValueError("high support requires usable evidence references")
+    candidate_evidence = {
+        str(item.get("cause_id")): set(item.get("evidence_refs") or [])
+        for item in state.get("fault_tree_candidates") or []
+        if item.get("cause_id")
+    }
+    if any(
+        not cause.used_evidence_ids
+        or not set(cause.used_evidence_ids).issubset(candidate_evidence[cause.cause_id])
+        for cause in result.ranked_causes
+    ):
+        raise ValueError("AI reasoning cited evidence not associated with the selected candidate")
     allowed_actions = {
         str(item.get("text"))
         for item in state.get("allowed_verification_actions") or []

@@ -1,6 +1,6 @@
 # 芯鉴知微 API 设计
 
-最后更新：2026-09-05。本文描述稳定语义；完整字段、枚举和响应 Schema 以运行中的 FastAPI OpenAPI（`/docs`）为准。
+最后更新：2026-09-12。本文描述当前代码契约；完整字段、枚举和响应 Schema 以对应版本的 FastAPI OpenAPI（`/docs`）为准。本轮反馈契约变更尚未部署。
 
 ## 通用约定
 
@@ -157,11 +157,35 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 
 ### POST `/student/diagnoses/{diagnosis_result_id}/feedback`
 
-保存 `resolved`、`unresolved` 或 `request_teacher_help`。只能反馈当前凭据所属设备的诊断
-结果；其他设备或不存在的结果返回 404。反馈继承诊断的 `is_test_data` 标记。选择
-`request_teacher_help` 时，若设备存在启用中的班级与学生绑定，服务端以诊断结果为唯一键
-幂等创建 `intervention_cases` 工单和公开 `request_help` 事件；未配置归属时只保存反馈与
-Episode 升级状态，不猜测学生或班级。
+保存 `resolved`、`unresolved` 或 `request_teacher_help`。继续使用设备认证头，并且必须提供
+`X-Experiment-Session-ID`；JSON 必须包含 UUID `request_id`，以及 action 和可选 note。
+
+```json
+{
+  "request_id": "655b30d0-27e4-4280-8769-c00f039fc88d",
+  "action": "unresolved",
+  "note": "完成本次检查，问题仍未解决。"
+}
+```
+
+上例只说明报文结构；客户端每次有意的新反馈生成新 UUID，同一次提交重试保留原 UUID 和载荷。
+
+服务端先校验会话—学生—设备—诊断/工作流归属，再写入反馈、Episode、工单、调用或案例草稿。
+其他设备或不存在的诊断返回 404，会话归属不符或旧诊断缺少可信创建归属返回 403；缺少必需头/字段
+或非法 UUID 返回 422。不会将无归属的旧诊断自动绑定给今天使用设备的学生。
+
+| 同诊断下的请求 | 行为 |
+| --- | --- |
+| 相同 request_id、相同 action/note | 已应用则返回原反馈（仍为 201）；未决则恢复或补确认原提交，不重复推进 |
+| 相同 request_id、不同 action/note | 409，无新增副作用 |
+| 新 request_id | 视为有意的新尝试，受会话和工作流状态约束；有其他未决反馈时 409 |
+| 网络结果不明或 503 | 保留原 request_id 和原载荷重试；503 detail.code 为 `DIAGNOSIS_FEEDBACK_RETRY_REQUIRED` |
+
+重放也必须先通过归属校验。关闭会话可重放已完成响应或补确认已经消费的反馈，不能因此继续执行未消费的新操作。
+反馈继承诊断的 `is_test_data`。求助仍通过已核实的课堂绑定幂等创建工单；无合法反馈归属时不先保存反馈兜底。
+
+调用方应同步更新，部署新后端前先完成 Alembic `20260912_0027`。重试与历史记录兼容详情见
+[完整流程问题整改](workflow-remediation.md)。当前仍是设备凭据与已有实验会话模式，不是新增完整学生账号认证。
 
 ### GET `/teacher/dashboard`
 

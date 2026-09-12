@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 
 from app.core.security import hash_password
@@ -8,6 +10,8 @@ from app.models import (
     DeviceBinding,
     DiagnosisEpisode,
     DiagnosisResult,
+    ExperimentAssignment,
+    ExperimentSession,
     InterventionCase,
     TeachingAssignment,
     User,
@@ -287,6 +291,22 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
                 is_active=True,
             )
         )
+        assignment = ExperimentAssignment(
+            class_id=classroom.id, title="合成反馈作业", status="published", is_test_data=True
+        )
+        db.add(assignment)
+        db.flush()
+        session = ExperimentSession(
+            experiment_assignment_id=assignment.id,
+            student_user_id=student.id,
+            device_id=device.id,
+            status="active",
+            started_at=utc_now(),
+            is_test_data=True,
+        )
+        db.add(session)
+        db.flush()
+        api_context["headers"]["X-Experiment-Session-ID"] = session.id
         diagnosis = DiagnosisResult(
             device_id=device.id,
             evaluated_at=utc_now(),
@@ -303,7 +323,14 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
                 }
             ],
             evidence=[],
-            context_snapshot={"is_test_data": True},
+            context_snapshot={
+                "is_test_data": True,
+                "feedback_scope": {
+                    "experiment_session_id": session.id,
+                    "student_user_id": student.id,
+                    "device_id": device.id,
+                },
+            },
             is_test_data=True,
         )
         db.add(diagnosis)
@@ -329,7 +356,7 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
     feedback = client.post(
         f"/api/v1/student/diagnoses/{diagnosis_id}/feedback",
         headers=api_context["headers"],
-        json={"action": "request_teacher_help", "note": "请教师协助"},
+        json={"request_id": str(uuid4()), "action": "request_teacher_help", "note": "请教师协助"},
     )
     assert feedback.status_code == 201
     student_dashboard = client.get("/api/v1/student/dashboard", headers=api_context["headers"])

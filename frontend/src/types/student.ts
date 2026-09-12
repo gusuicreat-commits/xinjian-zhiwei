@@ -216,6 +216,11 @@ export interface StudentGuidance {
 
 export type FeedbackAction = 'resolved' | 'unresolved' | 'request_teacher_help'
 
+export interface StudentFeedbackCreate {
+  request_id: string
+  action: FeedbackAction
+}
+
 export interface StudentFeedback {
   id: string
   action: FeedbackAction

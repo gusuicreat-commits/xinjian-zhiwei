@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -114,5 +115,6 @@ class StudentDashboardResponse(StrictStudentModel):
 
 
 class StudentFeedbackCreate(StrictStudentModel):
+    request_id: UUID
     action: Literal["resolved", "unresolved", "request_teacher_help"]
     note: Optional[str] = Field(default=None, max_length=1000)

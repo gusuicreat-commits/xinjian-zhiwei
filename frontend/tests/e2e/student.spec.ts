@@ -88,6 +88,8 @@ async function mockStudentApi(page: Page, payload: ReturnType<typeof dashboard>)
       await route.fulfill({ json: payload })
       return
     }
+    expect(route.request().headers()['x-experiment-session-id']).toBe('browser-experiment-session')
+    expect(route.request().postDataJSON().request_id).toMatch(/^[0-9a-f-]{36}$/)
     const feedback = {
       id: 'feedback-test',
       action: 'request_teacher_help',

@@ -23,6 +23,10 @@ from app.models.guidance_history import GuidanceHistory
 
 
 def _verify_reasoning_constraints() -> None:
+    # Synthetic registry entries for validator acceptance, not hardware evidence.
+    failure_id = "00000000-0000-0000-0000-000000000001"
+    heartbeat_id = "00000000-0000-0000-0000-000000000002"
+    history_id = "00000000-0000-0000-0000-000000000003"
     state = {
         "device_status": {"status": "online"},
         "error_type": "SENSOR_READ_FAILED",
@@ -33,19 +37,19 @@ def _verify_reasoning_constraints() -> None:
                 "cause_id": "gpio_config",
                 "name": "GPIO 配置错误",
                 "score": 0.8,
-                "evidence_refs": ["log:1"],
+                "evidence_refs": [failure_id],
             }
         ],
     }
     allowed = [
-        {"id": "device:status", "fact": "设备状态=online", "source": "device"},
+        {"id": heartbeat_id, "fact": "设备状态=online", "source": "device"},
         {
-            "id": "rule:unknown:0",
+            "id": failure_id,
             "fact": "规则证据:log_event_count=20",
             "source": "rule_engine",
         },
         {
-            "id": "history:failure_count",
+            "id": history_id,
             "fact": "历史失败次数=2",
             "source": "diagnosis_history",
         },
@@ -60,11 +64,11 @@ def _verify_reasoning_constraints() -> None:
                         "cause_id": "gpio_config",
                         "cause": "不得改写",
                         "support_level": "high",
-                        "used_evidence_ids": ["device:status", "rule:unknown:0"],
-                        "reason": "设备在线且读取持续失败。",
+                        "used_evidence_ids": [failure_id],
+                        "reason": "窗口内累计读取失败，候选方向仍需验证。",
                     }
                 ],
-                "summary": "现有证据更符合 GPIO 配置问题。",
+                "summary": "合成输出仅用于验证候选与引用边界，不证明 GPIO 根因。",
                 "limitations": [],
             },
             ensure_ascii=False,
@@ -121,7 +125,7 @@ def _verify_case_draft_governance() -> str:
                     {
                         "rule_id": "sensor-read-failed",
                         "error_type": "SENSOR_READ_FAILED",
-                        "summary": "DHT11 连续读取失败",
+                        "summary": "DHT11 窗口内累计读取失败",
                         "evidence": [],
                     }
                 ],
@@ -176,7 +180,7 @@ def _verify_case_draft_governance() -> str:
             if draft.root_cause.get("status") != "unknown":
                 raise SystemExit("student feedback incorrectly confirmed a root cause")
             polished = dict(draft.template_payload)
-            polished["symptom"] = "DHT11 连续读取失败，尚未获得有效数据。"
+            polished["symptom"] = "DHT11 窗口内累计读取失败，尚未获得有效数据。"
             polished["aiGeneratedFields"] = {
                 "title": "DHT11 读取异常排查",
                 "sourceIds": draft.source_ids,
@@ -195,10 +199,10 @@ def _verify_case_draft_governance() -> str:
                 db,
                 draft,
                 case_id="dht11.feedback-confirmed.v1",
-                reviewer_ref="teacher-verification",
+                reviewer_ref="synthetic-test-reviewer",
                 confirmed_root_cause="GPIO 配置错误",
                 final_solution_steps=["核对并修正 GPIO 配置", "重新运行并确认读数恢复"],
-                confirmation_note="教师现场确认修改 GPIO 后连续读数恢复。",
+                confirmation_note="合成审核流程夹具，不代表真实教师确认或硬件测试。",
             )
             if (
                 case.review_status != "approved"
@@ -220,7 +224,12 @@ def main() -> None:
         {
             "error_type": "SENSOR_READ_FAILED",
             "rule_hits": [{"error_type": "SENSOR_READ_FAILED"}],
-            "fault_tree_candidates": [{"cause_id": "gpio_config"}],
+            "fault_tree_candidates": [
+                {
+                    "cause_id": "gpio_config",
+                    "evidence_refs": ["00000000-0000-0000-0000-000000000001"],
+                }
+            ],
             "reasoned_causes": [
                 {
                     "cause_id": "gpio_config",
@@ -252,6 +261,9 @@ def main() -> None:
     case_id = _verify_case_draft_governance()
     print(
         {
+            "is_test_data": True,
+            "hardware_validation": "not_run",
+            "teacher_confirmation": "synthetic_fixture_only",
             "reasoning_rejects_new_causes": True,
             "unknown_fallback": True,
             "unresolved_feedback_continues_reasoning": True,

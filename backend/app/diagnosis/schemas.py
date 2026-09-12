@@ -147,6 +147,8 @@ class ExperimentTemplateContext(StrictModel):
 
 
 class DiagnosisContext(StrictModel):
+    # Server-owned scope for deterministic API runs. Old records stay unscoped.
+    feedback_scope: Optional[dict[str, str]] = None
     diagnosis_id: Optional[str] = None
     device_id: str
     evaluated_at: datetime

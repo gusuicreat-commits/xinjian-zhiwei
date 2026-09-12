@@ -135,7 +135,22 @@ def validate_reasoning_against_knowledge(state: dict[str, Any]) -> dict[str, Any
         for item in reasoned
         if item.get("support_level") == "high"
     )
+    candidate_evidence = {
+        str(item.get("cause_id")): set(item.get("evidence_refs") or [])
+        for item in state.get("fault_tree_candidates") or []
+        if item.get("cause_id")
+    }
+    checks["candidate_evidence_associated"] = all(
+        bool(item.get("used_evidence_ids"))
+        and set(item["used_evidence_ids"]).issubset(
+            candidate_evidence.get(str(item.get("cause_id")), set())
+        )
+        for item in reasoned
+    )
     messages = {
+        "candidate_evidence_associated": (
+            "排序候选必须引用故障树为该候选关联的证据，不能借用无关证据。"
+        ),
         "high_support_has_evidence": "high 支持等级必须引用有效的本次诊断证据。",
         "error_type_preserved": "AI 输出与规则确定的异常类型冲突。",
         "cause_ids_in_fault_tree": "AI 输出包含故障树候选集合之外的原因。",

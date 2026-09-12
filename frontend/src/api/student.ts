@@ -3,9 +3,9 @@ import type {
   AIExplanationResponse,
   DiagnosisWorkflow,
   DeviceCredentials,
-  FeedbackAction,
   StudentDashboard,
   StudentFeedback,
+  StudentFeedbackCreate,
   StudentSession,
 } from '@/types/student'
 
@@ -62,11 +62,14 @@ export async function getStudentDashboard(
 export async function createDiagnosisFeedback(
   credentials: DeviceCredentials,
   diagnosisId: string,
-  action: FeedbackAction,
+  payload: StudentFeedbackCreate,
 ): Promise<StudentFeedback> {
+  if (!credentials.experimentSessionId) {
+    throw new Error('反馈需要实验会话，请重新登录。')
+  }
   const response = await apiClient.post<StudentFeedback>(
     `/api/v1/student/diagnoses/${encodeURIComponent(diagnosisId)}/feedback`,
-    { action },
+    payload,
     { headers: authHeaders(credentials) },
   )
   return response.data

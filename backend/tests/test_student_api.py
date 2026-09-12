@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 from app.models import DiagnosisFeedback
 
@@ -97,7 +98,11 @@ def test_student_dashboard_exposes_diagnosis_guidance_and_feedback(
     feedback = client.post(
         f"/api/v1/student/diagnoses/{diagnosis_id}/feedback",
         headers=headers,
-        json={"action": "request_teacher_help", "note": "Phase 6 test feedback"},
+        json={
+            "request_id": str(uuid4()),
+            "action": "request_teacher_help",
+            "note": "Phase 6 test feedback",
+        },
     )
     dashboard = client.get("/api/v1/student/dashboard", headers=headers)
 
@@ -122,7 +127,7 @@ def test_student_feedback_cannot_access_other_diagnosis(api_context: dict[str, A
     response = api_context["client"].post(
         "/api/v1/student/diagnoses/not-owned/feedback",
         headers=api_context["headers"],
-        json={"action": "resolved"},
+        json={"request_id": str(uuid4()), "action": "resolved"},
     )
 
     assert response.status_code == 404

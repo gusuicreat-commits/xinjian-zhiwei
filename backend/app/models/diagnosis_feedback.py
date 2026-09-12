@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -10,7 +10,17 @@ from app.models.base import UuidPrimaryKeyMixin, utc_now
 
 class DiagnosisFeedback(UuidPrimaryKeyMixin, Base):
     __tablename__ = "diagnosis_feedback"
-    __table_args__ = (Index("ix_feedback_device_created", "device_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_feedback_device_created", "device_id", "created_at"),
+        UniqueConstraint("diagnosis_result_id", "request_id", name="uq_feedback_diagnosis_request"),
+    )
+
+    # Nullable only for immutable records created before request-scoped feedback.
+    request_id: Mapped[Optional[str]] = mapped_column(String(36))
+    experiment_session_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("experiment_sessions.id", ondelete="RESTRICT")
+    )
+    processing_status: Mapped[Optional[str]] = mapped_column(String(20))
 
     device_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,6 @@ from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.models.device import Device
 from app.models.diagnosis_result import DiagnosisResult
-from app.models.diagnosis_workflow import DiagnosisWorkflowRun
 from app.schemas.student import (
     StudentDashboardResponse,
     StudentFeedbackCreate,
@@ -20,9 +19,9 @@ from app.services.diagnosis_workflow import (
     WorkflowConflict,
     WorkflowScopeViolation,
     find_active_experiment_session,
-    resume_workflow_with_feedback,
 )
-from app.services.student_dashboard import build_student_dashboard, save_student_feedback
+from app.services.student_dashboard import build_student_dashboard
+from app.services.student_feedback import submit_student_feedback
 
 router = APIRouter(prefix="/student", tags=["student"])
 AuthenticatedDevice = Annotated[Device, Depends(get_authenticated_device)]
@@ -74,47 +73,38 @@ def create_student_feedback(
     device: AuthenticatedDevice,
     db: DatabaseSession,
     settings: AppSettings,
+    experiment_session_id: Annotated[
+        str, Header(alias="X-Experiment-Session-ID", min_length=1, max_length=36)
+    ],
 ) -> StudentFeedbackItem:
     diagnosis = db.scalar(select(DiagnosisResult).where(DiagnosisResult.id == diagnosis_result_id))
     if diagnosis is None or diagnosis.device_id != device.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="diagnosis not found")
-    record = save_student_feedback(db, device, diagnosis, payload)
-    workflow = db.scalar(
-        select(DiagnosisWorkflowRun)
-        .where(
-            DiagnosisWorkflowRun.diagnosis_result_id == diagnosis.id,
-            DiagnosisWorkflowRun.device_id == device.id,
-            DiagnosisWorkflowRun.status == "waiting_feedback",
+    try:
+        record = submit_student_feedback(
+            db,
+            device,
+            diagnosis,
+            payload,
+            experiment_session_id,
+            getattr(request.app.state, "diagnosis_graph", None),
+            settings,
         )
-        .order_by(DiagnosisWorkflowRun.created_at.desc())
-        .limit(1)
-    )
-    if workflow is not None:
-        graph = getattr(request.app.state, "diagnosis_graph", None)
-        if graph is None:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "code": "DIAGNOSIS_GRAPH_UNAVAILABLE",
-                    "message": "feedback saved but workflow resume is unavailable",
-                },
-            )
-        try:
-            resume_workflow_with_feedback(
-                db, graph, workflow, record, device, settings
-            )
-        except WorkflowScopeViolation as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        except WorkflowConflict as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "code": "DIAGNOSIS_FEEDBACK_RESUME_FAILED",
-                    "message": "feedback saved; workflow can be retried",
-                },
-            ) from exc
+    except WorkflowScopeViolation as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WorkflowConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DIAGNOSIS_FEEDBACK_RETRY_REQUIRED",
+                "message": "retry the same request_id and payload; do not create a new submission",
+            },
+        ) from exc
     return StudentFeedbackItem(
         id=record.id,
         action=record.action,

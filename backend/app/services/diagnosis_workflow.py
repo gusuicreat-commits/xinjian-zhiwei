@@ -655,6 +655,8 @@ def resume_workflow_with_feedback(
     feedback: DiagnosisFeedback,
     device: Device,
     settings: Settings,
+    *,
+    reconcile_only: bool = False,
 ) -> DiagnosisWorkflowRun:
     """Resume the same diagnosis state with student feedback as new evidence."""
 
@@ -668,10 +670,29 @@ def resume_workflow_with_feedback(
         raise WorkflowConflict("workflow no longer exists")
     workflow = locked
     assert_workflow_ownership(db, workflow, expected_device_id=device.id)
-    if workflow.status != "waiting_feedback":
-        raise WorkflowConflict("workflow is not waiting for student feedback")
     if workflow.diagnosis_result_id != feedback.diagnosis_result_id:
         raise WorkflowScopeViolation("feedback belongs to another diagnosis")
+    if feedback.request_id and feedback.processing_status == "applied":
+        return workflow
+    checkpoint = graph.get_state(_config(workflow)) if feedback.request_id else None
+    resumed_already = bool(
+        checkpoint and (checkpoint.values.get("student_feedback") or {}).get("id") == feedback.id
+    )
+    pending_task_results = bool(
+        checkpoint and any(task.result is not None for task in checkpoint.tasks)
+    )
+    pending_interrupts = (
+        [item for task in checkpoint.tasks for item in task.interrupts]
+        if checkpoint and resumed_already
+        else []
+    )
+    can_acknowledge = bool(
+        resumed_already and not pending_task_results and (not checkpoint.next or pending_interrupts)
+    )
+    if reconcile_only and not can_acknowledge:
+        raise WorkflowConflict("closed session can only acknowledge already completed feedback")
+    if workflow.status != "waiting_feedback" and not resumed_already:
+        raise WorkflowConflict("workflow is not waiting for student feedback")
     decision = {
         "id": feedback.id,
         "action": feedback.action,
@@ -679,33 +700,52 @@ def resume_workflow_with_feedback(
         "created_at": feedback.created_at.isoformat(),
     }
     try:
-        result = graph.invoke(
-            Command(resume=decision),
-            config=_config(workflow),
-            context=DiagnosisGraphContext(db=db, device=device, settings=settings),
-        )
+        if can_acknowledge:
+            # The prior request reached its next pause/terminal checkpoint but
+            # lost the business acknowledgement. Do not send a second feedback.
+            result = dict(checkpoint.values)
+            if pending_interrupts:
+                result["__interrupt__"] = pending_interrupts
+        else:
+            result = graph.invoke(
+                None if resumed_already or pending_task_results else Command(resume=decision),
+                config=_config(workflow),
+                context=DiagnosisGraphContext(db=db, device=device, settings=settings),
+                durability="sync",
+            )
     except Exception:
         db.rollback()
         refreshed = db.get(DiagnosisWorkflowRun, workflow.id)
-        if refreshed is not None and refreshed.status in _TERMINAL_STATUSES:
+        latest = graph.get_state(_config(workflow))
+        terminal_feedback = (latest.values.get("student_feedback") or {}).get(
+            "id"
+        ) == feedback.id and (
+            latest.values.get("diagnosis_status") or latest.values.get("status")
+        ) in _TERMINAL_STATUSES
+        if (
+            not reconcile_only
+            and refreshed is not None
+            and (refreshed.status in _TERMINAL_STATUSES or terminal_feedback)
+        ):
+            # With synchronous saving, the feedback's terminal node result may
+            # exist before persist_result commits the business status. Finish
+            # that recorded decision once; never inject a second resume command.
             result = _reconcile_terminal_checkpoint(
                 db,
                 graph,
                 refreshed,
                 context=DiagnosisGraphContext(db=db, device=device, settings=settings),
             )
-            refreshed.resume_count = int(refreshed.resume_count or 0) + 1
-            return _sync_business_record(
-                db,
-                refreshed,
-                result,
-                review_request=_interrupt_payload(result),
-            )
-        raise
+        else:
+            raise
+    if (result.get("student_feedback") or {}).get("id") != feedback.id:
+        raise RuntimeError("checkpoint did not acknowledge this feedback; retry the same request")
     refreshed = db.get(DiagnosisWorkflowRun, workflow.id)
     if refreshed is None:
         raise WorkflowConflict("workflow no longer exists")
     refreshed.resume_count = int(refreshed.resume_count or 0) + 1
+    if feedback.request_id:
+        feedback.processing_status = "applied"
     return _sync_business_record(
         db,
         refreshed,

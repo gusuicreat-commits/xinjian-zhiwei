@@ -1,6 +1,6 @@
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,11 @@ from app.models.guidance_history import GuidanceHistory
 from app.services.ai_diagnosis import explain_diagnosis, get_ai_status
 from app.services.diagnosis import build_diagnosis_context, diagnose, save_diagnosis_result
 from app.services.diagnosis_episode import upsert_episode
+from app.services.diagnosis_workflow import (
+    WorkflowConflict,
+    WorkflowScopeViolation,
+    resolve_experiment_session,
+)
 from app.services.guidance import (
     generate_guidance,
     history_to_evaluation,
@@ -69,9 +74,21 @@ def run_device_diagnosis(
     device: AuthenticatedDevice,
     db: DatabaseSession,
     settings: AppSettings,
+    experiment_session_id: Annotated[Optional[str], Header(alias="X-Experiment-Session-ID")] = None,
 ) -> DiagnosisRunResponse:
     if device_id != device.device_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="device id mismatch")
+    feedback_scope = None
+    if experiment_session_id:
+        try:
+            session = resolve_experiment_session(db, device, experiment_session_id)
+        except (WorkflowConflict, WorkflowScopeViolation) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        feedback_scope = {
+            "experiment_session_id": session.id,
+            "student_user_id": session.student_user_id,
+            "device_id": device.id,
+        }
     try:
         context = build_diagnosis_context(
             db,
@@ -88,6 +105,8 @@ def run_device_diagnosis(
         ) from exc
     outcome = diagnose(context)
     record = save_diagnosis_result(db, device, context, outcome)
+    if feedback_scope:
+        record.context_snapshot = {**record.context_snapshot, "feedback_scope": feedback_scope}
     guidance = generate_guidance(db, device, record)
     core = build_diagnosis_core(record, guidance)
     explanation = render_deterministic_explanation(core)

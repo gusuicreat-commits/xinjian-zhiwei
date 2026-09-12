@@ -1,6 +1,13 @@
+import axios from 'axios'
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import {
+  completeFeedbackRequest,
+  FeedbackRequestError,
+  feedbackSessionScope,
+  getOrCreateFeedbackRequest,
+} from '@/api/feedbackRetry'
 import {
   createDiagnosisFeedback,
   getLatestDiagnosisWorkflow,
@@ -38,8 +45,17 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   const aiLoading = ref(false)
   const workflowLoading = ref(false)
   const workflow = ref<DiagnosisWorkflow | null>(null)
+  let activeSessionScope: string | null = null
+  let loadSequence = 0
 
   async function load(credentials: DeviceCredentials): Promise<void> {
+    const scope = feedbackSessionScope(credentials)
+    if (activeSessionScope !== scope) {
+      dashboard.value = null
+      workflow.value = null
+      activeSessionScope = scope
+    }
+    const sequence = ++loadSequence
     state.value = dashboard.value ? 'ready' : 'loading'
     errorMessage.value = ''
     if (REVIEW_MODE) {
@@ -50,16 +66,22 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       return
     }
     try {
-      dashboard.value = await withCappedRetry(() => getStudentDashboard(credentials))
+      const loadedDashboard = await withCappedRetry(() => getStudentDashboard(credentials))
+      if (sequence !== loadSequence) return
+      dashboard.value = loadedDashboard
       try {
-        workflow.value = await getLatestDiagnosisWorkflow(credentials)
+        const loadedWorkflow = await getLatestDiagnosisWorkflow(credentials)
+        if (sequence !== loadSequence) return
+        workflow.value = loadedWorkflow
       } catch {
+        if (sequence !== loadSequence) return
         // The additive graph surface must not take down the legacy student dashboard.
         workflow.value = null
       }
       state.value = 'ready'
       failureKind.value = null
     } catch (error) {
+      if (sequence !== loadSequence) return
       state.value = 'error'
       failureKind.value = classifyRequestFailure(error)
       errorMessage.value = failureMessage(failureKind.value)
@@ -69,8 +91,11 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   async function submitFeedback(
     credentials: DeviceCredentials,
     action: FeedbackAction,
-  ): Promise<void> {
-    if (!dashboard.value?.diagnosis) return
+  ): Promise<boolean> {
+    if (feedbackLoading.value) return false
+    if (!dashboard.value?.diagnosis || activeSessionScope !== feedbackSessionScope(credentials)) {
+      throw new FeedbackRequestError('当前诊断已变化，请刷新后再提交反馈。')
+    }
     if (REVIEW_MODE) {
       dashboard.value.feedback = {
         id: 'review-feedback-interactive',
@@ -79,16 +104,36 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
         is_test_data: true,
         created_at: new Date().toISOString(),
       }
-      return
+      return true
     }
+    const scopedCredentials = { ...credentials }
+    const scope = feedbackSessionScope(scopedCredentials)
+    const diagnosisId = dashboard.value.diagnosis.id
+    const payload = getOrCreateFeedbackRequest(scopedCredentials, diagnosisId, action)
     feedbackLoading.value = true
     try {
-      dashboard.value.feedback = await createDiagnosisFeedback(
-        credentials,
-        dashboard.value.diagnosis.id,
-        action,
+      const feedback = await withCappedRetry(() =>
+        createDiagnosisFeedback(scopedCredentials, diagnosisId, payload),
       )
-      await load(credentials)
+      completeFeedbackRequest(scopedCredentials, diagnosisId)
+      if (activeSessionScope === scope && dashboard.value?.diagnosis?.id === diagnosisId) {
+        dashboard.value.feedback = feedback
+        await load(scopedCredentials)
+      }
+      return true
+    } catch (error) {
+      if (error instanceof FeedbackRequestError) throw error
+      if (
+        axios.isAxiosError(error) &&
+        error.response &&
+        [400, 401, 403, 404, 422].includes(error.response.status)
+      ) {
+        completeFeedbackRequest(scopedCredentials, diagnosisId)
+        throw new FeedbackRequestError('反馈已被拒绝，未被接受；请检查实验会话并刷新诊断后再提交。')
+      }
+      throw new FeedbackRequestError(
+        '反馈结果尚未确认，请重试同一反馈；系统会沿用原提交记录，避免重复处理。',
+      )
     } finally {
       feedbackLoading.value = false
     }
@@ -126,6 +171,8 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   }
 
   function clear(): void {
+    activeSessionScope = null
+    loadSequence += 1
     state.value = 'idle'
     dashboard.value = null
     errorMessage.value = ''

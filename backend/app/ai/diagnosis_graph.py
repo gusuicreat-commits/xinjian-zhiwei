@@ -411,12 +411,89 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
     }
 
 
+def _candidate_evidence_refs(
+    cause: dict[str, Any], diagnosis: DiagnosisResult, rows: list[DiagnosisEvidence]
+) -> list[str]:
+    """Follow matched criteria to this diagnosis's persisted facts, never guess a UUID.
+
+    A diagnosis_error_count criterion identifies a rule hit, not a raw event.
+    Resolve that hit to its aggregate rule facts and the original observations
+    in those facts. The resulting association supports an anomaly candidate;
+    it does not establish a hardware root cause.
+    """
+
+    rows = [row for row in rows if row.diagnosis_id == diagnosis.id]
+    aliases: dict[str, list[str]] = {}
+    source_prefix = {
+        "device_log": "log",
+        "sensor_reading": "reading",
+        "device_heartbeat": "heartbeat",
+    }
+    for row in rows:
+        references = {
+            f"{row.source_type}:{row.source_ref}",
+            f"{source_prefix.get(row.source_type, row.source_type)}:{row.source_ref}",
+            str((row.normalized_value or {}).get("normalized_id") or ""),
+        }
+        for reference in references - {""}:
+            aliases.setdefault(reference, []).append(row.id)
+
+    def detail_refs(details: list[dict[str, Any]]) -> list[str]:
+        found: list[str] = []
+        for detail in details:
+            references = list(detail.get("evidence_refs") or [])
+            if detail.get("event_id"):
+                references.append(str(detail["event_id"]))
+            elif detail.get("source") and detail.get("source_ref"):
+                references.append(f"{detail['source']}:{detail['source_ref']}")
+            for key, kind in (("log_id", "log"), ("reading_id", "reading")):
+                if detail.get(key):
+                    references.append(f"{kind}:{detail[key]}")
+            for reference in references:
+                found.extend(aliases.get(reference, []))
+        return found
+
+    references: list[str] = []
+    for criterion in cause.get("evidence") or []:
+        details = criterion.get("details") or []
+        if criterion.get("fact") != "diagnosis_error_count":
+            references.extend(detail_refs(details))
+            continue
+        matched_keys = {
+            (detail.get("rule_id"), detail.get("error_type"))
+            for detail in details
+            if detail.get("rule_id") and detail.get("error_type")
+        }
+        for match in diagnosis.matched_rules:
+            key = (match.get("rule_id"), match.get("error_type"))
+            if key not in matched_keys:
+                continue
+            for index, fact in enumerate(match.get("evidence") or []):
+                for row in rows:
+                    value = row.normalized_value or {}
+                    if (
+                        row.source_type == "rule_engine"
+                        and row.source_ref == f"rule:{key[0]}:{index}"
+                        and value.get("kind") == "rule_fact"
+                        and (value.get("rule_id"), value.get("error_type")) == key
+                        and value.get("fact") == fact.get("fact")
+                        and value.get("observed_value") == fact.get("observed_value")
+                    ):
+                        references.append(row.id)
+                references.extend(detail_refs(fact.get("details") or []))
+    return list(dict.fromkeys(references))
+
+
 @observed_node("fault_tree_analyzer")
 def fault_tree_analyzer(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
 ) -> dict[str, Any]:
     diagnosis = _diagnosis(runtime, state)
-    evidence_ids = _evidence_id_map(runtime, diagnosis.id)
+    evidence_rows = list(
+        runtime.context.db.scalars(
+            select(DiagnosisEvidence).where(DiagnosisEvidence.diagnosis_id == diagnosis.id)
+        )
+    )
     guidance = generate_guidance(runtime.context.db, runtime.context.device, diagnosis)
     core = build_diagnosis_core(diagnosis, guidance)
     deterministic = render_deterministic_explanation(core)
@@ -431,14 +508,7 @@ def fault_tree_analyzer(
                     "cause_id": str(cause.get("cause_id", "")),
                     "name": str(cause.get("title", "")),
                     "score": float(cause.get("score", 0.0)) / 100.0,
-                    "evidence_refs": [
-                        evidence_ids[f"{kind}:{detail[key]}"]
-                        for evidence in cause.get("evidence", [])
-                        for detail in evidence.get("details", [])
-                        for key, kind in (("log_id", "log"), ("reading_id", "reading"))
-                        if detail.get(key) and f"{kind}:{detail[key]}" in evidence_ids
-                    ]
-                    or list(dict.fromkeys(evidence_ids.values()))[:1],
+                    "evidence_refs": _candidate_evidence_refs(cause, diagnosis, evidence_rows),
                 }
             )
     candidates.sort(key=lambda item: (-item["score"], item["cause_id"]))

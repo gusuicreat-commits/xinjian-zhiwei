@@ -1,0 +1,1626 @@
+[
+  {
+    "id": "dht-missing",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": []
+  },
+  {
+    "id": "led-legacy",
+    "package": "gpio_led_output",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "reading",
+        "payload": {
+          "sensor_type": "status_led",
+          "metric_key": "level",
+          "value": 1
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": []
+  },
+  {
+    "id": "led-command",
+    "package": "gpio_led_output",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "reading",
+        "payload": {
+          "sensor_type": "status_led",
+          "metric_key": "gpio_command_level",
+          "value": 1,
+          "metadata": {
+            "measurement_source": "command",
+            "command_id": "synthetic-command"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": []
+  },
+  {
+    "id": "dht-ambiguous",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "unknown",
+    "actions": []
+  },
+  {
+    "id": "dht-valid",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": []
+  },
+  {
+    "id": "dht-foreign_evidence",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "foreign_evidence",
+    "actions": []
+  },
+  {
+    "id": "dht-invalid_json",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "invalid_json",
+    "actions": []
+  },
+  {
+    "id": "dht-timeout",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "timeout",
+    "actions": []
+  },
+  {
+    "id": "dht-candidate-linkage",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": []
+  },
+  {
+    "id": "feedback-roundtrip",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "unresolved",
+      "resolved",
+      "read"
+    ]
+  },
+  {
+    "id": "duplicate-feedback",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "unresolved",
+      "repeat_feedback"
+    ]
+  },
+  {
+    "id": "teacher-roundtrip",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "request_teacher_help",
+      "teacher_approve",
+      "teacher_approve"
+    ]
+  },
+  {
+    "id": "foreign-session-read",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "foreign_session_read"
+    ]
+  },
+  {
+    "id": "foreign-session-feedback",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "foreign_session_feedback"
+    ]
+  },
+  {
+    "id": "foreign-package-version",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "foreign_version"
+    ]
+  },
+  {
+    "id": "postgres-restart",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "restart",
+      "unresolved",
+      "request_teacher_help",
+      "teacher_approve"
+    ]
+  },
+  {
+    "id": "feedback-conflict-action",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "unresolved",
+      "conflicting_feedback_action"
+    ]
+  },
+  {
+    "id": "feedback-conflict-note",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "unresolved",
+      "conflicting_feedback_note"
+    ]
+  },
+  {
+    "id": "feedback-new-attempt",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "unresolved",
+      "unresolved"
+    ]
+  },
+  {
+    "id": "feedback-missing-session",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "feedback_without_session"
+    ]
+  },
+  {
+    "id": "feedback-missing-request-id",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "feedback_without_request_id"
+    ]
+  },
+  {
+    "id": "feedback-invalid-request-id",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "feedback_invalid_request_id"
+    ]
+  },
+  {
+    "id": "foreign-session-feedback-replay",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "unresolved",
+      "foreign_session_feedback_replay"
+    ]
+  },
+  {
+    "id": "postgres-restart-replay",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "valid",
+    "actions": [
+      "unresolved",
+      "restart",
+      "repeat_feedback"
+    ]
+  },
+  {
+    "id": "dht-unrelated-evidence",
+    "package": "dht11_temperature_humidity",
+    "records": [
+      {
+        "type": "heartbeat",
+        "payload": {
+          "metadata": {}
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      },
+      {
+        "type": "log",
+        "payload": {
+          "level": "error",
+          "message": "synthetic failure, not a hardware observation",
+          "event_code": "DHT11_READ_FAILED",
+          "sensor_snapshot": {
+            "component_id": "dht11"
+          }
+        }
+      }
+    ],
+    "provider": "unrelated_evidence",
+    "actions": []
+  }
+]

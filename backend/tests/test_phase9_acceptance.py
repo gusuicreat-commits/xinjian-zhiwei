@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 from app.ai.clients import (
     AICompletion,
@@ -162,7 +163,11 @@ def test_episode_aggregates_five_failures_resolves_and_separates_new_error(
     resolved = api_context["client"].post(
         f"/api/v1/student/diagnoses/{latest_diagnosis_id}/feedback",
         headers=api_context["headers"],
-        json={"action": "resolved", "note": "synthetic Phase 9 recovery"},
+        json={
+            "request_id": str(uuid4()),
+            "action": "resolved",
+            "note": "synthetic Phase 9 recovery",
+        },
     )
     assert resolved.status_code == 201
     with api_context["session_factory"]() as db:

@@ -14,6 +14,7 @@ import { ElMessage } from 'element-plus'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { FeedbackRequestError } from '@/api/feedbackRetry'
 import DeviceOverview from '@/components/DeviceOverview.vue'
 import DiagnosisPanel from '@/components/DiagnosisPanel.vue'
 import RealtimeLogList from '@/components/RealtimeLogList.vue'
@@ -102,10 +103,13 @@ async function refresh(showTransition = false): Promise<void> {
 async function submitFeedback(action: FeedbackAction): Promise<void> {
   if (!sessionStore.credentials) return
   try {
-    await dashboardStore.submitFeedback(sessionStore.credentials, action)
-    ElMessage.success('反馈已记录')
-  } catch {
-    ElMessage.error('反馈提交失败，请稍后重试')
+    if (await dashboardStore.submitFeedback(sessionStore.credentials, action)) {
+      ElMessage.success('反馈已记录')
+    }
+  } catch (error) {
+    ElMessage.error(
+      error instanceof FeedbackRequestError ? error.message : '反馈提交失败，请稍后重试',
+    )
   }
 }
 
@@ -129,8 +133,7 @@ async function runDiagnosisWorkflow(): Promise<void> {
     if (workflow?.status === 'waiting_teacher') ElMessage.warning('诊断已暂停，等待教师审核')
     else if (workflow?.status === 'waiting_feedback') {
       ElMessage.info('请按建议排查后反馈结果，系统将继续本次诊断')
-    }
-    else if (workflow?.status === 'completed') ElMessage.success('辅助诊断工作流已完成')
+    } else if (workflow?.status === 'completed') ElMessage.success('辅助诊断工作流已完成')
     else ElMessage.info(`工作流状态：${workflow?.status || '未知'}`)
   } catch {
     ElMessage.error('辅助诊断工作流启动失败，原有诊断结果不受影响')

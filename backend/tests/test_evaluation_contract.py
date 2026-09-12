@@ -89,14 +89,17 @@ def test_high_support_with_allowed_observed_evidence_is_structurally_valid():
     evidence = [
         {"id": "synthetic-evidence", "fact": "test=1", "source": "rule", "status": "observed"}
     ]
+    state = reasoning_state()
+    state["fault_tree_candidates"][0]["evidence_refs"] = ["synthetic-evidence"]
     result = _validate_reasoning(
-        json.dumps(reasoning_output(["synthetic-evidence"])), reasoning_state(), evidence
+        json.dumps(reasoning_output(["synthetic-evidence"])), state, evidence
     )
     assert result.ranked_causes[0].support_level == "high"
 
 
 def test_model_cannot_hide_input_conflict():
     state = {**reasoning_state(), "evidence_conflict": True}
+    state["fault_tree_candidates"][0]["evidence_refs"] = ["e1"]
     with pytest.raises(ValueError, match="conflict"):
         _validate_reasoning(json.dumps(reasoning_output(["e1"])), state, [{"id": "e1"}])
 

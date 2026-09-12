@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.knowledge.case_drafting import CaseDraftError, build_case_draft
 from app.models.ai_call_record import AICallRecord
-from app.models.classroom import DeviceBinding
+from app.models.classroom import DeviceBinding, ExperimentAssignment, ExperimentSession
 from app.models.device import Device
 from app.models.device_log import DeviceLog
 from app.models.diagnosis_episode import DiagnosisEpisode
@@ -218,12 +218,18 @@ def save_student_feedback(
     device: Device,
     diagnosis: DiagnosisResult,
     payload: StudentFeedbackCreate,
+    *,
+    experiment_session_id: str,
+    processing_status: str = "pending",
 ) -> DiagnosisFeedback:
     record = DiagnosisFeedback(
         device_id=device.id,
         diagnosis_result_id=diagnosis.id,
         action=payload.action,
         note=payload.note,
+        request_id=str(payload.request_id),
+        experiment_session_id=experiment_session_id,
+        processing_status=processing_status,
         is_test_data=diagnosis.is_test_data,
     )
     db.add(record)
@@ -247,12 +253,15 @@ def save_student_feedback(
             episode.status = "escalated"
             episode.current_hint_level = 4
     if payload.action == "request_teacher_help":
+        session = db.get(ExperimentSession, experiment_session_id)
+        assignment = db.get(ExperimentAssignment, session.experiment_assignment_id)
         binding = db.scalar(
             select(DeviceBinding)
             .where(
                 DeviceBinding.device_id == device.id,
                 DeviceBinding.is_active.is_(True),
-                DeviceBinding.student_user_id.is_not(None),
+                DeviceBinding.student_user_id == session.student_user_id,
+                DeviceBinding.class_id == assignment.class_id,
             )
             .order_by(DeviceBinding.created_at)
             .limit(1)

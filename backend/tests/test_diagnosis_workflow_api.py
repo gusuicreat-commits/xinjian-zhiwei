@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import select
 
@@ -256,7 +257,7 @@ def test_admin_can_reject_waiting_workflow_and_duplicate_review_conflicts(
             feedback = api_context["client"].post(
                 f"/api/v1/student/diagnoses/{started.json()['diagnosis_result_id']}/feedback",
                 headers=api_context["headers"],
-                json={"action": action},
+                json={"request_id": str(uuid4()), "action": action},
             )
             assert feedback.status_code == 201
 
@@ -283,7 +284,7 @@ def test_admin_can_reject_waiting_workflow_and_duplicate_review_conflicts(
             "reviewed": 1,
             "edit_rate": 0.0,
             "reject_rate": 1.0,
-                "needs_rag_count": 0,
+            "needs_rag_count": 0,
             "resume_count": 1,
             "average_node_duration_ms": metrics.json()["average_node_duration_ms"],
             "ai_call_count": 1,

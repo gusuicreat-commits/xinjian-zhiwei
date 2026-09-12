@@ -1,0 +1,389 @@
+{
+  "dht-missing": {
+    "errors": [],
+    "normal": "unknown",
+    "statuses": [
+      "completed"
+    ],
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "led-legacy": {
+    "errors": [],
+    "normal": "unknown",
+    "statuses": [
+      "completed"
+    ],
+    "no_physical_light": true,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "led-command": {
+    "errors": [],
+    "normal": "unknown",
+    "statuses": [
+      "completed"
+    ],
+    "no_physical_light": true,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "dht-ambiguous": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_teacher"
+    ],
+    "reasoning": "unknown",
+    "minimum_mock_calls": 1,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "dht-valid": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback"
+    ],
+    "minimum_mock_calls": 1,
+    "reasoning_mode": "ai",
+    "reasoning_audit_status": "succeeded",
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "dht-foreign_evidence": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback"
+    ],
+    "minimum_mock_calls": 1,
+    "reasoning_mode": "deterministic_fallback",
+    "reasoning_audit_status": "failed",
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "dht-invalid_json": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback"
+    ],
+    "minimum_mock_calls": 1,
+    "reasoning_mode": "deterministic_fallback",
+    "reasoning_audit_status": "failed",
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "dht-timeout": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback"
+    ],
+    "minimum_mock_calls": 1,
+    "reasoning_mode": "deterministic_fallback",
+    "reasoning_audit_status": "failed",
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "feedback-roundtrip": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback",
+      "completed",
+      "completed"
+    ],
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": [
+      201,
+      201,
+      200
+    ]
+  },
+  "duplicate-feedback": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "last_action_no_side_effects": true,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "feedback_replayed_exactly": true,
+    "action_http_statuses": [
+      201,
+      201
+    ]
+  },
+  "teacher-roundtrip": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_teacher",
+      "completed",
+      "completed"
+    ],
+    "last_action_no_side_effects": true,
+    "final_http_status": 409,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": [
+      201,
+      200,
+      409
+    ]
+  },
+  "foreign-session-read": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "last_action_no_side_effects": true,
+    "final_http_status": 404,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": [
+      404
+    ]
+  },
+  "foreign-session-feedback": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "last_action_no_side_effects": true,
+    "final_http_status": 403,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": [
+      403
+    ]
+  },
+  "foreign-package-version": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "last_action_no_side_effects": true,
+    "final_http_status": 403,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": [
+      403
+    ]
+  },
+  "postgres-restart": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_teacher",
+      "completed"
+    ],
+    "restart_preserves_state": true,
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": [
+      null,
+      201,
+      201,
+      200
+    ]
+  },
+  "dht-candidate-linkage": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback"
+    ],
+    "minimum_mock_calls": 1,
+    "candidate_evidence_types": [
+      "sensor.read_failed",
+      "rule.failure_count_in_window"
+    ],
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  },
+  "feedback-conflict-action": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "source": "phase2 remediation feedback contract; synthetic, not hardware ground truth",
+    "last_action_no_side_effects": true,
+    "action_http_statuses": [
+      201,
+      409
+    ]
+  },
+  "feedback-conflict-note": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "source": "phase2 remediation feedback contract; synthetic, not hardware ground truth",
+    "last_action_no_side_effects": true,
+    "action_http_statuses": [
+      201,
+      409
+    ]
+  },
+  "feedback-new-attempt": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "source": "phase2 remediation feedback contract; synthetic, not hardware ground truth",
+    "new_feedback_attempt": true,
+    "action_http_statuses": [
+      201,
+      201
+    ]
+  },
+  "feedback-missing-session": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "source": "phase2 remediation feedback contract; synthetic, not hardware ground truth",
+    "last_action_no_side_effects": true,
+    "action_http_statuses": [
+      422
+    ]
+  },
+  "feedback-missing-request-id": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "source": "phase2 remediation feedback contract; synthetic, not hardware ground truth",
+    "last_action_no_side_effects": true,
+    "action_http_statuses": [
+      422
+    ]
+  },
+  "feedback-invalid-request-id": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "source": "phase2 remediation feedback contract; synthetic, not hardware ground truth",
+    "last_action_no_side_effects": true,
+    "action_http_statuses": [
+      422
+    ]
+  },
+  "foreign-session-feedback-replay": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "source": "phase2 remediation feedback contract; synthetic, not hardware ground truth",
+    "last_action_no_side_effects": true,
+    "action_http_statuses": [
+      201,
+      403
+    ]
+  },
+  "postgres-restart-replay": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_feedback",
+      "waiting_feedback"
+    ],
+    "source": "phase2 remediation feedback contract; synthetic, not hardware ground truth",
+    "last_action_no_side_effects": true,
+    "restart_preserves_state": true,
+    "feedback_replayed_exactly": true,
+    "action_http_statuses": [
+      201,
+      null,
+      201
+    ]
+  },
+  "dht-unrelated-evidence": {
+    "errors": [
+      "SENSOR_READ_FAILED"
+    ],
+    "normal": "abnormal",
+    "statuses": [
+      "waiting_feedback"
+    ],
+    "minimum_mock_calls": 1,
+    "reasoning_mode": "deterministic_fallback",
+    "reasoning_audit_status": "failed",
+    "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
+    "action_http_statuses": []
+  }
+}

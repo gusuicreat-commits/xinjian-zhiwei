@@ -24,6 +24,7 @@
 - Experiment Package 严格 Schema、跨文件引用、内容哈希、状态流转、运行时版本锁定和证据落库。
 - LangGraph 节点顺序、Checkpoint、暂停恢复、反馈分支、教师审核和确定性降级。
 - AI 原因只能来自候选集合，证据只能来自本次诊断实际落库的证据 UUID，错误类型不可覆盖。
+- 原因引用还须属于该候选实际匹配的证据集合，不得借用当前诊断中的无关 UUID。
 - 推理前知识供给和推理后知识校验；错误实验、错误类型、未审核、未锁定事实和测试数据不得越界。
 - 案例草稿的事实锁定、AI 表达字段限制和教师确认发布。
 - 学生/教师认证、班级范围、处置乐观锁和私人备注隔离。
@@ -44,6 +45,7 @@
 ### 前端与端到端测试
 
 - 学生和教师关键页面、状态投影和错误降级。
+- 反馈必需会话头与请求 UUID；同一提交的重试保持载荷，刷新恢复未决记录，真实新尝试使用新键，晚响应不跨会话回填。
 - 合成身份登录、诊断反馈、请求教师帮助、教师认领/解决/关闭和学生端回显。
 - 就绪状态不因演示数据被错误提升为生产 ready。
 
@@ -131,3 +133,19 @@ docker compose exec -T backend alembic check
 - 原 100 次重复结构样例改为明确的合法/非法样例；不报告真实模型输出合格率。
 
 专项回归：`cd backend && python -m pytest tests/test_evaluation_contract.py tests/test_ai_diagnosis.py tests/test_diagnosis_workflow_security.py`。
+
+## 8. 完整流程评测（第二阶段）
+
+独立 CLI 通过真实路由和诊断图运行合成场景并输出可追溯 JSON；参考答案独立于被测输入。第二阶段最初 16 场景的 13 passed / 3 failed 保留在 [历史失败基线](workflow-evaluation-phase2.md)，不改写原记录。
+
+本轮修复三项缺口并扩展为 **25 个 PostgreSQL 场景，25 passed**，最新报告为 `output/workflow-evaluation/remediation-postgres.json`。原三项 strict xfail 已移除，反馈副作用、重放响应与关联证据篡改必须使门禁失败。负责人摘要、兼容变化及全部结果见 [整改报告](workflow-remediation.md)。
+
+## 9. 反馈可靠性与本轮迁移验收
+
+- 42 项可靠性测试通过：同请求并发、成功回执丢失、已消费反馈补确认、未消费反馈恢复，以及关闭会话边界。
+- Checkpoint `put` 的 6 个失败点与 `put_writes` 的 8 个失败点分别在 SQLite/PostgreSQL 验证，共 28 项故障注入；成功后不重复反馈或调用。
+- PostgreSQL 已验证空库升级、0026 带历史反馈升级至 0027、单 Head、模型差异检查和重复键拒绝；旧反馈关联保持 NULL。
+- 前端 43 项单元测试和 4 项学生页面 Chrome E2E 通过，类型、lint、生产构建通过。E2E 使用 Mock API，不能冒充浏览器与真实后端联合验收。
+- 后端全量：330 passed，无 skipped/xfail；40.34 秒，1 项 Starlette/anyio 依赖弃用警告。完整流程 CLI、迁移、前端与后端回归分别计数，不相互替代。
+
+同步 Checkpoint 与补确认解决具体恢复窗口，不代表数据库和 Saver 已有跨存储原子事务；连接/图重建、注入保存错误也不等于进程 kill、断电或生产负载验收。当前尚未部署或推送 GitHub。
