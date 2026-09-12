@@ -89,6 +89,18 @@ class StudentFeedbackItem(StrictStudentModel):
     created_at: datetime
 
 
+class StudentFeedbackRecoveryItem(StudentFeedbackItem):
+    diagnosis_result_id: str
+    request_id: UUID
+    processing_status: Literal["pending", "applied"]
+
+
+class StudentFeedbackRecoveryResponse(StrictStudentModel):
+    pending: list[StudentFeedbackRecoveryItem]
+    latest_applied: Optional[StudentFeedbackRecoveryItem] = None
+    has_more_pending: bool = False
+
+
 class StudentInterventionSummary(StrictStudentModel):
     id: str
     status: Literal["open", "claimed", "resolved", "unconfirmed", "closed"]

@@ -18,7 +18,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:integration": "playwright test --config playwright.integration.config.ts"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

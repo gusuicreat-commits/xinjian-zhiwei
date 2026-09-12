@@ -17,7 +17,8 @@ coverage.xml
 htmlcov/
 
 # Node
-node_modules/
+# Match dependency directories and local runtime symlinks alike.
+node_modules
 frontend/dist/
 frontend/review-dist/
 frontend/playwright-report/

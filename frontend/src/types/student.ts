@@ -219,6 +219,26 @@ export type FeedbackAction = 'resolved' | 'unresolved' | 'request_teacher_help'
 export interface StudentFeedbackCreate {
   request_id: string
   action: FeedbackAction
+  note?: string | null
+}
+
+export interface FeedbackRecoveryItem extends StudentFeedback {
+  diagnosis_result_id: string
+  request_id: string
+  processing_status: 'pending' | 'applied'
+}
+
+export interface FeedbackRecovery {
+  pending: FeedbackRecoveryItem[]
+  latest_applied: FeedbackRecoveryItem | null
+  has_more_pending: boolean
+}
+
+export interface FeedbackRecoveryTarget {
+  diagnosis_result_id: string
+  payload: StudentFeedbackCreate
+  source: 'server' | 'browser'
+  created_at?: string
 }
 
 export interface StudentFeedback {

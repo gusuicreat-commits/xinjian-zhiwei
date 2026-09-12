@@ -3,6 +3,7 @@ import type {
   AIExplanationResponse,
   DiagnosisWorkflow,
   DeviceCredentials,
+  FeedbackRecovery,
   StudentDashboard,
   StudentFeedback,
   StudentFeedbackCreate,
@@ -54,6 +55,18 @@ export async function getStudentDashboard(
   credentials: DeviceCredentials,
 ): Promise<StudentDashboard> {
   const response = await apiClient.get<StudentDashboard>('/api/v1/student/dashboard', {
+    headers: authHeaders(credentials),
+  })
+  return response.data
+}
+
+export async function getFeedbackRecovery(
+  credentials: DeviceCredentials,
+): Promise<FeedbackRecovery> {
+  if (!credentials.experimentSessionId) {
+    throw new Error('反馈需要实验会话，请重新登录。')
+  }
+  const response = await apiClient.get<FeedbackRecovery>('/api/v1/student/feedback-recovery', {
     headers: authHeaders(credentials),
   })
   return response.data

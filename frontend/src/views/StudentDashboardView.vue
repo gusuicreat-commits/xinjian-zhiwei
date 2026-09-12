@@ -17,11 +17,12 @@ import { useRouter } from 'vue-router'
 import { FeedbackRequestError } from '@/api/feedbackRetry'
 import DeviceOverview from '@/components/DeviceOverview.vue'
 import DiagnosisPanel from '@/components/DiagnosisPanel.vue'
+import FeedbackRecoveryPanel from '@/components/FeedbackRecoveryPanel.vue'
 import RealtimeLogList from '@/components/RealtimeLogList.vue'
 import SensorTrendChart from '@/components/SensorTrendChart.vue'
 import { useStudentDashboardStore } from '@/stores/studentDashboard'
 import { useStudentSessionStore } from '@/stores/studentSession'
-import type { FeedbackAction } from '@/types/student'
+import type { FeedbackAction, FeedbackRecoveryTarget } from '@/types/student'
 
 const router = useRouter()
 const sessionStore = useStudentSessionStore()
@@ -102,15 +103,43 @@ async function refresh(showTransition = false): Promise<void> {
 
 async function submitFeedback(action: FeedbackAction): Promise<void> {
   if (!sessionStore.credentials) return
+  const credentials = sessionStore.credentials
   try {
-    if (await dashboardStore.submitFeedback(sessionStore.credentials, action)) {
+    if (
+      (await dashboardStore.submitFeedback(credentials, action)) &&
+      sessionStore.credentials === credentials
+    ) {
       ElMessage.success('反馈已记录')
     }
   } catch (error) {
+    if (sessionStore.credentials !== credentials) return
     ElMessage.error(
       error instanceof FeedbackRequestError ? error.message : '反馈提交失败，请稍后重试',
     )
   }
+}
+
+async function recoverFeedback(target: FeedbackRecoveryTarget): Promise<void> {
+  if (!sessionStore.credentials) return
+  const credentials = sessionStore.credentials
+  try {
+    if (
+      (await dashboardStore.recoverFeedback(credentials, target)) &&
+      sessionStore.credentials === credentials
+    ) {
+      ElMessage.success('原反馈已确认')
+    }
+  } catch (error) {
+    if (sessionStore.credentials !== credentials) return
+    ElMessage.error(
+      error instanceof FeedbackRequestError ? error.message : '确认暂未完成，请稍后重试原反馈',
+    )
+  }
+}
+
+async function refreshFeedbackRecovery(): Promise<void> {
+  if (sessionStore.credentials)
+    await dashboardStore.refreshFeedbackRecovery(sessionStore.credentials)
 }
 
 async function generateAIExplanation(): Promise<void> {
@@ -280,6 +309,17 @@ onBeforeUnmount(() => {
           :closable="false"
           show-icon
         />
+        <FeedbackRecoveryPanel
+          :state="dashboardStore.feedbackRecoveryState"
+          :recovery="dashboardStore.feedbackRecovery"
+          :pending="dashboardStore.pendingFeedback"
+          :error="dashboardStore.feedbackRecoveryError"
+          :local-error="dashboardStore.localFeedbackError"
+          :loading="dashboardStore.feedbackLoading"
+          :current-diagnosis-id="dashboardStore.dashboard.diagnosis?.id"
+          @retry="refreshFeedbackRecovery"
+          @recover="recoverFeedback"
+        />
         <div id="overview">
           <DeviceOverview
             :task="dashboardStore.dashboard.task"
@@ -295,11 +335,13 @@ onBeforeUnmount(() => {
             :feedback="dashboardStore.dashboard.feedback"
             :intervention="dashboardStore.dashboard.intervention"
             :feedback-loading="dashboardStore.feedbackLoading"
+            :feedback-blocked="dashboardStore.feedbackBlocked"
             :ai-status="dashboardStore.dashboard.ai_status"
             :ai-explanation="dashboardStore.dashboard.ai_explanation"
             :ai-loading="dashboardStore.aiLoading"
             :workflow="dashboardStore.workflow"
             :workflow-loading="dashboardStore.workflowLoading"
+            :has-experiment-session="Boolean(sessionStore.credentials?.experimentSessionId)"
             :device-state-explanation="dashboardStore.dashboard.device_state_explanation"
             @feedback="submitFeedback"
             @request-ai="generateAIExplanation"

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.schemas.student import (
     StudentDashboardResponse,
     StudentFeedbackCreate,
     StudentFeedbackItem,
+    StudentFeedbackRecoveryResponse,
     StudentSessionResponse,
 )
 from app.services.diagnosis_workflow import (
@@ -21,7 +22,7 @@ from app.services.diagnosis_workflow import (
     find_active_experiment_session,
 )
 from app.services.student_dashboard import build_student_dashboard
-from app.services.student_feedback import submit_student_feedback
+from app.services.student_feedback import read_feedback_recovery, submit_student_feedback
 
 router = APIRouter(prefix="/student", tags=["student"])
 AuthenticatedDevice = Annotated[Device, Depends(get_authenticated_device)]
@@ -112,3 +113,21 @@ def create_student_feedback(
         is_test_data=record.is_test_data,
         created_at=record.created_at,
     )
+
+
+@router.get("/feedback-recovery", response_model=StudentFeedbackRecoveryResponse)
+def get_feedback_recovery(
+    device: AuthenticatedDevice,
+    db: DatabaseSession,
+    response: Response,
+    experiment_session_id: Annotated[
+        str, Header(alias="X-Experiment-Session-ID", min_length=1, max_length=36)
+    ],
+) -> StudentFeedbackRecoveryResponse:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return StudentFeedbackRecoveryResponse.model_validate(
+            read_feedback_recovery(db, device, experiment_session_id)
+        )
+    except WorkflowScopeViolation as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc

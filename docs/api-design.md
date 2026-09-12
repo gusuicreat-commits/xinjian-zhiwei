@@ -155,6 +155,22 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 使用设备凭据读取当前设备状态、最近 100 条日志、最近 500 条读数、最新诊断、对应提示、
 最新反馈及该诊断对应的教师处置状态。处置状态只包含公开结果，不返回教师私人备注。
 
+### GET `/student/feedback-recovery`
+
+使用设备认证头和必需的 `X-Experiment-Session-ID` 找回该实验会话的反馈确认记录，不要求浏览器保留原诊断 ID 或请求 UUID。接口仅查询，不提交反馈、不确认处理状态、不恢复诊断图；响应带 `Cache-Control: no-store`。
+
+| 字段 | 含义 |
+| --- | --- |
+| `pending` | 当前会话最早的至多 20 条未决记录，包含之前诊断的记录 |
+| `latest_applied` | 当前会话按提交时间排序的最近一条已应用记录；没有时为 null |
+| `has_more_pending` | 是否还有未返回的未决记录；处理当前记录后重新查询 |
+
+每条记录包含 `id`、`diagnosis_result_id`、UUID `request_id`、`action`、原始 `note`、`created_at`、`processing_status` 和 `is_test_data`。原备注保留空白与换行，供同载荷重放；接口不返回其他学生备注、认证凭据或完整诊断状态。
+
+先核对设备、会话与学生，再逐条校验诊断/工作流原归属；不按当前设备绑定补造历史归属。旧记录缺少请求键、会话或有效处理状态时不纳入找回结果。无效设备凭据返回 401，缺会话头 422，越界、无效或停用学生的会话返回 403。
+
+已关闭但归属有效的会话可以查询回执；这不赋予继续处理未消费反馈的权限。前端展示待确认记录，由用户明确点击后沿用原 `diagnosis_result_id`、`request_id`、action/note 调用现有 POST。若请求从未到达服务器，且浏览器记录也已丢失，服务端不能找回它。
+
 ### POST `/student/diagnoses/{diagnosis_result_id}/feedback`
 
 保存 `resolved`、`unresolved` 或 `request_teacher_help`。继续使用设备认证头，并且必须提供

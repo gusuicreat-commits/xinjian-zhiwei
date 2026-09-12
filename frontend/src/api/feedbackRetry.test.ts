@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { getOrCreateFeedbackRequest } from './feedbackRetry'
+import {
+  completeFeedbackRequest,
+  getOrCreateFeedbackRequest,
+  listLocalFeedbackRequests,
+} from './feedbackRetry'
 
 const credentials = {
   deviceId: 'test-device',
@@ -33,4 +37,25 @@ describe('pending feedback persistence', () => {
       '无法保存反馈重试记录',
     )
   })
+})
+
+it('retains the original note and will not erase a different prepared payload', () => {
+  sessionStorage.clear()
+  const first = getOrCreateFeedbackRequest(
+    credentials,
+    'diagnosis-note',
+    'unresolved',
+    '原备注，不能改写',
+  )
+  expect(
+    getOrCreateFeedbackRequest(credentials, 'diagnosis-note', 'unresolved', first.note),
+  ).toEqual(first)
+  expect(listLocalFeedbackRequests(credentials)[0]?.payload).toEqual(first)
+  expect(() =>
+    getOrCreateFeedbackRequest(credentials, 'diagnosis-note', 'unresolved', '改写后的备注'),
+  ).toThrow('先点击原反馈重试')
+  completeFeedbackRequest(credentials, 'diagnosis-note', { ...first, note: 'different note' })
+  expect(listLocalFeedbackRequests(credentials)).toHaveLength(1)
+  completeFeedbackRequest(credentials, 'diagnosis-note', first)
+  expect(listLocalFeedbackRequests(credentials)).toEqual([])
 })

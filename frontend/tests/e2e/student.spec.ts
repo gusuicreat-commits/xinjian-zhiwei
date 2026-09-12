@@ -84,6 +84,13 @@ async function mockStudentApi(page: Page, payload: ReturnType<typeof dashboard>)
       })
       return
     }
+    if (url.endsWith('/feedback-recovery')) {
+      expect(route.request().headers()['x-experiment-session-id']).toBe(
+        'browser-experiment-session',
+      )
+      await route.fulfill({ json: { pending: [], latest_applied: null, has_more_pending: false } })
+      return
+    }
     if (url.endsWith('/dashboard')) {
       await route.fulfill({ json: payload })
       return
@@ -342,4 +349,89 @@ test('shows workflow provenance, missing evidence and teacher review history', a
   await expect(page.getByText('证据可用')).toHaveCount(0)
   await expect(page.getByText('teacher-1')).toHaveCount(0)
   await expect(page.getByText('context_builder')).toHaveCount(0)
+})
+
+test('recovers an older server feedback after browser storage is cleared', async ({ page }) => {
+  const payload = dashboard({
+    diagnosis: {
+      id: 'new-diagnosis',
+      evaluated_at: '2026-07-20T09:00:00Z',
+      matches: [],
+      evidence: [],
+      is_test_data: true,
+    },
+  })
+  await mockStudentApi(page, payload)
+  const original = {
+    id: 'previous-feedback',
+    diagnosis_result_id: 'old-diagnosis',
+    request_id: '655b30d0-27e4-4280-8769-c00f039fc88d',
+    action: 'unresolved',
+    note: '原备注需要完整保留',
+    is_test_data: true,
+    created_at: '2026-07-20T08:00:00Z',
+    processing_status: 'pending',
+  }
+  let applied = false
+  let submissions = 0
+  await page.route('**/api/v1/student/feedback-recovery', async (route) => {
+    await route.fulfill({
+      json: {
+        pending: applied ? [] : [original],
+        latest_applied: applied ? { ...original, processing_status: 'applied' } : null,
+        has_more_pending: false,
+      },
+    })
+  })
+  await page.route('**/api/v1/student/diagnoses/old-diagnosis/feedback', async (route) => {
+    submissions += 1
+    expect(route.request().headers()['x-experiment-session-id']).toBe('browser-experiment-session')
+    expect(route.request().postDataJSON()).toEqual({
+      request_id: original.request_id,
+      action: original.action,
+      note: original.note,
+    })
+    applied = true
+    await route.fulfill({ status: 201, json: original })
+  })
+  await login(page)
+  await page.evaluate(() => sessionStorage.clear())
+  await page.reload()
+  await login(page)
+  await expect(page.getByRole('heading', { name: '上一条反馈待确认' })).toBeVisible()
+  await expect(page.getByText('原备注：原备注需要完整保留')).toBeVisible()
+  expect(submissions).toBe(0)
+  await page.getByRole('button', { name: '继续确认原反馈' }).click()
+  await expect(page.getByText(/最近一次反馈已确认：仍未解决/)).toBeVisible()
+  expect(submissions).toBe(1)
+  await expect(page.getByRole('button', { name: '继续确认原反馈' })).toHaveCount(0)
+})
+
+test('blocks fresh feedback when recovery status cannot be queried', async ({ page }) => {
+  await mockStudentApi(
+    page,
+    dashboard({
+      diagnosis: {
+        id: 'diagnosis-query-failure',
+        evaluated_at: '2026-07-20T09:00:00Z',
+        matches: [
+          {
+            rule_id: 'test-recovery-rule',
+            error_type: 'sensor_read_failure',
+            priority: 10,
+            summary: '测试故障',
+            evidence: [],
+          },
+        ],
+        evidence: [],
+        is_test_data: true,
+      },
+    }),
+  )
+  await page.route('**/api/v1/student/feedback-recovery', async (route) => {
+    await route.fulfill({ status: 503, json: { detail: 'test-only unavailable' } })
+  })
+  await login(page)
+  await expect(page.getByRole('button', { name: '重新查询反馈状态' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '请求教师协助' })).toBeDisabled()
 })

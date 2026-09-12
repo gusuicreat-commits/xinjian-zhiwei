@@ -194,6 +194,7 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
       aiLoading: false,
       workflow: null,
       workflowLoading: false,
+      hasExperimentSession: true,
       deviceStateExplanation,
       ...overrides,
     },
@@ -365,4 +366,22 @@ describe('DiagnosisPanel', () => {
 
     expect(wrapper.text()).toContain(label)
   })
+})
+
+it('lets a valid new session start its first workflow without a previous diagnosis', async () => {
+  const wrapper = mountPanel({ diagnosis: null, workflow: null, hasExperimentSession: true })
+  const button = wrapper.findAll('button').find((item) => item.text() === '启动辅助诊断')!
+  expect(button.exists()).toBe(true)
+  expect(button.attributes('disabled')).toBeUndefined()
+  await button.trigger('click')
+  expect(wrapper.emitted('requestWorkflow')).toEqual([[]])
+})
+
+it('explains and disables starting a workflow without an experiment session', async () => {
+  const wrapper = mountPanel({ diagnosis: null, workflow: null, hasExperimentSession: false })
+  const button = wrapper.findAll('button').find((item) => item.text() === '启动辅助诊断')!
+  expect(button.attributes('disabled')).toBeDefined()
+  expect(wrapper.text()).toContain('请先连接有效的实验会话')
+  await button.trigger('click')
+  expect(wrapper.emitted('requestWorkflow')).toBeUndefined()
 })

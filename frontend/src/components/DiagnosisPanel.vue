@@ -28,11 +28,13 @@ const props = defineProps<{
   feedback: StudentFeedback | null
   intervention: StudentIntervention | null
   feedbackLoading: boolean
+  feedbackBlocked?: boolean
   aiStatus: AIStatus
   aiExplanation: AIExplanationResponse | null
   aiLoading: boolean
   workflow: DiagnosisWorkflow | null
   workflowLoading: boolean
+  hasExperimentSession: boolean
   deviceStateExplanation: DeviceStateExplanation
 }>()
 
@@ -320,8 +322,8 @@ function formatReviewTime(value: string): string {
           当前限制：{{ diagnosis.explanation.limitations.join('；') }}
         </small>
         <small>
-          Provider {{ aiStatus.provider_configured ? '已配置' : '待配置' }} · 知识匹配
-          结构化案例 · Prompt
+          Provider {{ aiStatus.provider_configured ? '已配置' : '待配置' }} · 知识匹配 结构化案例 ·
+          Prompt
           {{ aiStatus.prompt_version }}
         </small>
       </div>
@@ -339,7 +341,7 @@ function formatReviewTime(value: string): string {
       </p>
     </article>
 
-    <article v-if="diagnosis" class="panel-card ai-explanation-panel">
+    <article class="panel-card ai-explanation-panel">
       <div class="panel-heading compact-heading">
         <h2><List /> 辅助诊断进度</h2>
         <el-tag :type="workflowStatus.type" size="small" round>
@@ -374,11 +376,14 @@ function formatReviewTime(value: string): string {
       <el-button
         type="primary"
         :loading="workflowLoading"
-        :disabled="workflow?.status === 'waiting_teacher'"
-        @click="emit('requestWorkflow')"
+        :disabled="!hasExperimentSession || workflow?.status === 'waiting_teacher'"
+        @click="hasExperimentSession && emit('requestWorkflow')"
       >
         {{ workflowActionLabel }}
       </el-button>
+      <p v-if="!hasExperimentSession" class="ai-safety-note">
+        请先连接有效的实验会话，再启动辅助诊断。
+      </p>
       <p class="ai-safety-note">
         诊断以设备证据和规则结果为准，AI 只能在故障树候选范围内辅助排序和解释。
       </p>
@@ -447,12 +452,18 @@ function formatReviewTime(value: string): string {
         <CircleCheck /> 已记录：{{ actionLabels[feedback.action] }}
       </div>
       <div class="feedback-actions">
-        <el-button type="success" :loading="feedbackLoading" @click="emit('feedback', 'resolved')">
+        <el-button
+          type="success"
+          :loading="feedbackLoading"
+          :disabled="feedbackBlocked"
+          @click="emit('feedback', 'resolved')"
+        >
           <CircleCheck /> 问题已解决
         </el-button>
         <el-button
           type="warning"
           :loading="feedbackLoading"
+          :disabled="feedbackBlocked"
           @click="emit('feedback', 'unresolved')"
         >
           <QuestionFilled /> 仍未解决
@@ -460,6 +471,7 @@ function formatReviewTime(value: string): string {
         <el-button
           type="primary"
           :loading="feedbackLoading"
+          :disabled="feedbackBlocked"
           @click="emit('feedback', 'request_teacher_help')"
         >
           <Promotion /> 请求教师协助

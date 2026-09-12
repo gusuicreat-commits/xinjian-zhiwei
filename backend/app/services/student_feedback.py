@@ -4,10 +4,10 @@ import hashlib
 from contextlib import contextmanager
 from threading import RLock
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, or_, select, text
 from sqlalchemy.pool import NullPool
 
-from app.models import DiagnosisFeedback, DiagnosisWorkflowRun
+from app.models import DiagnosisFeedback, DiagnosisResult, DiagnosisWorkflowRun
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
     WorkflowScopeViolation,
@@ -47,6 +47,96 @@ def feedback_lock(db, diagnosis_id):
             yield
 
 
+def _workflow_for_feedback_scope(db, device, diagnosis, session):
+    if diagnosis is None or diagnosis.device_id != device.id:
+        raise WorkflowScopeViolation("diagnosis is outside the authenticated device scope")
+    workflow = db.scalar(
+        select(DiagnosisWorkflowRun)
+        .where(DiagnosisWorkflowRun.diagnosis_result_id == diagnosis.id)
+        .order_by(DiagnosisWorkflowRun.created_at.desc())
+        .limit(1)
+    )
+    if workflow is not None:
+        assert_workflow_ownership(
+            db,
+            workflow,
+            expected_device_id=device.id,
+            expected_student_user_id=session.student_user_id,
+            expected_experiment_session_id=session.id,
+        )
+    else:
+        # Only server-recorded creation scope is acceptable for legacy
+        # deterministic runs. Never infer old ownership from today's binding.
+        scope = (diagnosis.context_snapshot or {}).get("feedback_scope") or {}
+        if scope != {
+            "experiment_session_id": session.id,
+            "student_user_id": session.student_user_id,
+            "device_id": device.id,
+        }:
+            raise WorkflowScopeViolation("diagnosis has no matching recorded feedback scope")
+    return workflow
+
+
+def read_feedback_recovery(db, device, session_id):
+    """Read server-owned retry payloads; never acknowledge or resume on GET.
+
+    Scope spans the validated session, including earlier diagnoses. Older
+    unscoped rows are not assigned to the current student or backfilled.
+    """
+    session = resolve_experiment_session(db, device, session_id, require_active=False)
+    scoped = select(DiagnosisFeedback.id).where(
+        DiagnosisFeedback.device_id == device.id,
+        DiagnosisFeedback.experiment_session_id == session.id,
+        DiagnosisFeedback.request_id.is_not(None),
+    )
+    pending_ids = (
+        scoped.where(DiagnosisFeedback.processing_status == "pending")
+        .order_by(DiagnosisFeedback.created_at, DiagnosisFeedback.id)
+        .limit(21)
+    )
+    latest_id = (
+        scoped.where(DiagnosisFeedback.processing_status == "applied")
+        .order_by(DiagnosisFeedback.created_at.desc(), DiagnosisFeedback.id.desc())
+        .limit(1)
+    )
+    # Select both categories in one database snapshot. Two separate SELECTs
+    # could expose the same concurrently completed request as pending/applied.
+    records = list(
+        db.scalars(
+            select(DiagnosisFeedback).where(
+                or_(DiagnosisFeedback.id.in_(pending_ids), DiagnosisFeedback.id.in_(latest_id))
+            )
+        )
+    )
+    pending = sorted(
+        (record for record in records if record.processing_status == "pending"),
+        key=lambda record: (record.created_at, record.id),
+    )
+    latest = next((record for record in records if record.processing_status == "applied"), None)
+
+    def project(record):
+        _workflow_for_feedback_scope(
+            db, device, db.get(DiagnosisResult, record.diagnosis_result_id), session
+        )
+        return {
+            "id": record.id,
+            "diagnosis_result_id": record.diagnosis_result_id,
+            "request_id": record.request_id,
+            "action": record.action,
+            # Exact payload is required for replay; it belongs to this session.
+            "note": record.note,
+            "is_test_data": record.is_test_data,
+            "created_at": record.created_at,
+            "processing_status": record.processing_status,
+        }
+
+    return {
+        "pending": [project(record) for record in pending[:20]],
+        "latest_applied": project(latest) if latest is not None else None,
+        "has_more_pending": len(pending) > 20,
+    }
+
+
 def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, settings):
     diagnosis_id = diagnosis.id
     # The route has only authenticated/read so far. Release its read connection
@@ -56,30 +146,7 @@ def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, s
         # Re-read after serialization: a previous worker may have committed.
         db.expire_all()
         session = resolve_experiment_session(db, device, session_id, require_active=False)
-        workflow = db.scalar(
-            select(DiagnosisWorkflowRun)
-            .where(DiagnosisWorkflowRun.diagnosis_result_id == diagnosis.id)
-            .order_by(DiagnosisWorkflowRun.created_at.desc())
-            .limit(1)
-        )
-        if workflow is not None:
-            assert_workflow_ownership(
-                db,
-                workflow,
-                expected_device_id=device.id,
-                expected_student_user_id=session.student_user_id,
-                expected_experiment_session_id=session.id,
-            )
-        else:
-            # Only server-recorded creation scope is acceptable for legacy
-            # deterministic runs. Never infer old ownership from today's binding.
-            scope = (diagnosis.context_snapshot or {}).get("feedback_scope") or {}
-            if scope != {
-                "experiment_session_id": session.id,
-                "student_user_id": session.student_user_id,
-                "device_id": device.id,
-            }:
-                raise WorkflowScopeViolation("diagnosis has no matching recorded feedback scope")
+        workflow = _workflow_for_feedback_scope(db, device, diagnosis, session)
         record = db.scalar(
             select(DiagnosisFeedback).where(
                 DiagnosisFeedback.diagnosis_result_id == diagnosis.id,

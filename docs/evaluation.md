@@ -46,18 +46,25 @@
 
 - 学生和教师关键页面、状态投影和错误降级。
 - 反馈必需会话头与请求 UUID；同一提交的重试保持载荷，刷新恢复未决记录，真实新尝试使用新键，晚响应不跨会话回填。
+- 浏览器记录丢失后，按有效实验会话纯读找回服务端未决记录；只有明确点击才恢复原请求，较早诊断与原备注同样保留。
 - 合成身份登录、诊断反馈、请求教师帮助、教师认领/解决/关闭和学生端回显。
 - 就绪状态不因演示数据被错误提升为生产 ready。
 
 ## 3. 标准运行方式
 
-完整本地门禁：
+完整本地门禁需要专用测试 PostgreSQL、后端虚拟环境、模拟器虚拟环境、已安装的前端依赖和 Playwright 浏览器。在仓库根目录执行：
 
 ```bash
+export BACKEND_PYTHON=/absolute/path/to/backend/venv/bin/python
+export XINJIAN_EVAL_POSTGRES_DSN='postgresql://test_user:test_password@127.0.0.1:5432/test_database'
 scripts/verify.sh
 ```
 
-该脚本依次运行 Python 静态检查、后端测试、模拟器测试、合成诊断评测、实验包校验、结构化知识校验、V2 证据工作流校验、安全扫描，以及前端 lint、类型、单元、构建和 Playwright 测试。
+以上连接串是占位示例，须换成隔离测试库。脚本不会回退到应用的 `DATABASE_URL`；缺少评测 DSN 时写出 `blocked` JSON 并退出 2，不跳过后宣称全量通过。`TEST_DIAGNOSIS_CHECKPOINT_DSN` 未配置时只继承这个明确指定的测试 DSN。
+
+脚本依次运行数据库准备、Python 静态检查、后端测试、模拟器测试、合成诊断、实验包、结构化知识、V2 工作流、25 场景 PostgreSQL 评测、安全扫描，以及前端 lint、类型、单元、构建、Mock API E2E 和浏览器真实联调。报告默认写入 `output/workflow-evaluation/local-postgres.json`，可用 `WORKFLOW_EVALUATION_REPORT` 改路径；历史失败报告不覆盖。
+
+`scripts/prepare_evaluation_postgres.py` 在指定测试库的 `public` 中准备历史迁移所需的 vector 扩展；已有扩展在其他 schema 时明确失败，不自动迁移扩展。此步骤不是启用向量检索。
 
 分层执行：
 
@@ -79,6 +86,7 @@ npm run type-check
 npm run test -- --run
 npm run build
 npm run test:e2e
+npm run test:e2e:integration  # 需上述测试 DSN 与 BACKEND_PYTHON
 ```
 
 ## 4. 数据库和部署验收
@@ -138,9 +146,9 @@ docker compose exec -T backend alembic check
 
 独立 CLI 通过真实路由和诊断图运行合成场景并输出可追溯 JSON；参考答案独立于被测输入。第二阶段最初 16 场景的 13 passed / 3 failed 保留在 [历史失败基线](workflow-evaluation-phase2.md)，不改写原记录。
 
-本轮修复三项缺口并扩展为 **25 个 PostgreSQL 场景，25 passed**，最新报告为 `output/workflow-evaluation/remediation-postgres.json`。原三项 strict xfail 已移除，反馈副作用、重放响应与关联证据篡改必须使门禁失败。负责人摘要、兼容变化及全部结果见 [整改报告](workflow-remediation.md)。
+前轮修复三项缺口并扩展为 **25 个 PostgreSQL 场景，25 passed**，该次报告为 `output/workflow-evaluation/remediation-postgres.json`。原三项 strict xfail 已移除，反馈副作用、重放响应与关联证据篡改必须使门禁失败。负责人摘要、兼容变化及本轮新结果见 [整改报告](workflow-remediation.md)。
 
-## 9. 反馈可靠性与本轮迁移验收
+## 9. 反馈可靠性与前轮迁移验收
 
 - 42 项可靠性测试通过：同请求并发、成功回执丢失、已消费反馈补确认、未消费反馈恢复，以及关闭会话边界。
 - Checkpoint `put` 的 6 个失败点与 `put_writes` 的 8 个失败点分别在 SQLite/PostgreSQL 验证，共 28 项故障注入；成功后不重复反馈或调用。
@@ -149,3 +157,20 @@ docker compose exec -T backend alembic check
 - 后端全量：330 passed，无 skipped/xfail；40.34 秒，1 项 Starlette/anyio 依赖弃用警告。完整流程 CLI、迁移、前端与后端回归分别计数，不相互替代。
 
 同步 Checkpoint 与补确认解决具体恢复窗口，不代表数据库和 Saver 已有跨存储原子事务；连接/图重建、注入保存错误也不等于进程 kill、断电或生产负载验收。当前尚未部署或推送 GitHub。
+
+## 10. 反馈找回、CI 与真实浏览器联调
+
+GitHub CI 已配置 25 场景 PostgreSQL 评测，并使用 `always()` 上传该步 JSON 报告（保留 14 天）。缺环境记录 blocked、未运行记录 not_run/incomplete、断言失败记录 failed，均不能作为通过。上传范围只包含流程 JSON，不包含浏览器 trace、凭据或数据库连接串。配置已更新不等于 GitHub 托管 runner 已执行，本轮只报告本机结果。
+
+新增真实联调使用浏览器 → 实际 FastAPI 路由 → 实际 LangGraph → PostgreSQL 业务表和 Checkpoint。设备数据与身份为合成，AI Provider 使用 Mock；不是硬件或真实模型验收，也不是生产部署。
+
+| 场景 | 独立验证点 |
+| --- | --- |
+| 登录、上报、首次诊断、反馈及刷新 | 实际数据库有 Evidence；反馈只保存一条；原 UUID 重放后状态、调用记录和 Evidence 不变 |
+| 未决反馈、关页、重新登录、找回与确认 | 浏览器 sessionStorage 为空；GET 后数据库不变；点击后沿用原 UUID，反馈/恢复次数仅增加一次 |
+
+入口为 `npm run test:e2e:integration`。测试脚本通过独立 CLI 创建随机 schema，执行真实 Alembic 到 Head，再启动仅监听回环地址的 Uvicorn；没有向生产 API 加故障注入端点。每个 schema 先创建独立版本表并校验业务表归属，避免误用已迁移的 public 表。故障窗口使用测试进程的临时控制文件；退出时清理并断言 schema 已删除。
+
+前端默认端口 15173、后端 18101，可用 `INTEGRATION_FRONTEND_PORT` / `INTEGRATION_BACKEND_PORT` 修改；不复用现有服务。CI 安装并使用 Chromium，本机可设置 `INTEGRATION_CHROME_CHANNEL=chrome` 使用已安装 Chrome。本地浏览器报告为 `frontend/playwright-report/integration/results.json`。后端找回专项另外覆盖旧诊断、原备注、越界、关闭会话、旧 NULL 记录及超过 20 条的分页边界。
+
+当前代码没有新增数据库迁移；Head 仍为 `20260912_0027`。本轮执行数量与结果集中记录在 [整改报告](workflow-remediation.md) 的“反馈找回与持续验收”。

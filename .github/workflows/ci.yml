@@ -26,6 +26,7 @@ jobs:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
       TEST_DIAGNOSIS_CHECKPOINT_DSN: postgresql://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
+      XINJIAN_EVAL_POSTGRES_DSN: postgresql://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -44,9 +45,11 @@ jobs:
           python -m pip install --no-deps -e backend
       - name: Install simulator
         run: python -m pip install --no-deps -e simulator
+      - name: Prepare isolated test database
+        run: python scripts/prepare_evaluation_postgres.py
       - name: Python checks
         run: |
-          ruff check backend simulator
+          ruff check backend simulator scripts/prepare_evaluation_postgres.py
           pytest backend/tests simulator/tests
           PYTHONPATH=backend python -m app.cli.run_synthetic_evaluation
           PYTHONPATH=backend python -m app.cli.verify_experiment_packages
@@ -54,6 +57,19 @@ jobs:
           PYTHONPATH=backend python -m app.cli.verify_v2_evidence_workflow
           python scripts/check_version.py
           scripts/security_scan.sh
+      - name: PostgreSQL workflow evaluation
+        if: ${{ !cancelled() }}
+        run: >-
+          PYTHONPATH=backend python -m app.cli.run_workflow_evaluation
+          --postgres --output output/workflow-evaluation/ci-postgres.json
+      - name: Preserve workflow evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-evaluation-postgres
+          path: output/workflow-evaluation/ci-postgres.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Migration checks
         working-directory: backend
         run: |
@@ -71,5 +87,8 @@ jobs:
           npm run type-check
           npm run test -- --run
           npm run build
-          npx playwright install --with-deps chrome
+          npx playwright install --with-deps chrome chromium
           npm run test:e2e
+      - name: Browser and real backend integration
+        working-directory: frontend
+        run: BACKEND_PYTHON="$(command -v python)" npm run test:e2e:integration

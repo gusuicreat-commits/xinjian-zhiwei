@@ -3,6 +3,9 @@
 import copy
 import json
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -10,6 +13,35 @@ from app.evaluation.workflow_runner import DATA, assess_case, execute_case, run_
 
 INPUTS = json.loads((DATA / "workflow_inputs.json").read_text())
 EXPECTED = json.loads((DATA / "workflow_expectations.json").read_text())
+
+
+def test_missing_dsn_writes_blocked_report_without_runtime_imports(tmp_path):
+    env = dict(os.environ)
+    env.pop("XINJIAN_EVAL_POSTGRES_DSN", None)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+    env["DATABASE_URL"] = "unsupported-driver://must-not-be-read/unused"
+    report_path = tmp_path / "blocked.json"
+    # -S removes installed third-party libraries. Missing environment should
+    # still be an explicit blocked report, not a driver/import crash or a pass.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            "-m",
+            "app.cli.run_workflow_evaluation",
+            "--postgres",
+            "--output",
+            str(report_path),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 2, result.stderr
+    report = json.loads(report_path.read_text())
+    assert report["status"] == "blocked" and report["cases"] == []
+    assert "unsupported-driver" not in result.stdout + result.stderr
 
 
 @pytest.fixture(scope="module")
