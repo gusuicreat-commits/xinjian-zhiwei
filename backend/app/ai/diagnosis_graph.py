@@ -715,7 +715,7 @@ def knowledge_context(
             "teacher_confirmed_cases",
         ],
         "note": (
-            "已在 AI 推理前提供实验定义、正常条件、故障映射与教师确认案例。"
+            "已在 AI 推理前提供结构化参考；测试资料不代表教师确认，根因确认状态单独校验。"
             if references
             else "没有已审核案例；AI 仍只能在规则和故障树约束内推理。"
         ),

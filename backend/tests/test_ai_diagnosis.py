@@ -390,6 +390,45 @@ def test_old_audit_prose_is_not_served_as_current_validated_output(api_context):
     assert record.output_json == before  # Historical audit is not rewritten.
 
 
+def test_specific_pending_information_survives_persistence_and_replay(api_context):
+    from app.services.ai_diagnosis import serialize_ai_call
+
+    diagnosis_id = _create_diagnosis(api_context)
+    settings = Settings(_env_file=None, ai_enabled=True, ai_require_knowledge=False)
+    with api_context["session_factory"]() as db:
+        diagnosis = db.get(DiagnosisResult, diagnosis_id)
+        fake = FakeAIClient(
+            {
+                "error_type": diagnosis.matched_rules[0]["error_type"],
+                "summary": "合成解释",
+                "steps": [],
+                "hint_level": 1,
+                "need_teacher_help": False,
+                "limitations": ["已确认供电正常。"],
+            }
+        )
+        response = explain_diagnosis(
+            db,
+            db.query(Device).one(),
+            diagnosis,
+            settings,
+            ai_client=fake,
+            workflow_state={
+                "missing_evidence": ["缺少供电测量记录。"],
+                "allowed_verification_actions": [],
+            },
+        )
+        assert response.status == "succeeded"
+        record = db.get(AICallRecord, response.call_record_id)
+        replay = serialize_ai_call(record, settings)
+        expected = "推理提出的待核验项（未确认）：「缺少供电测量记录。」"
+        assert expected in response.explanation.limitations
+        assert expected in record.output_json["limitations"]
+        assert replay.explanation == response.explanation
+        assert "已确认供电正常。" not in record.output_json["limitations"]
+        assert fake.calls == 1
+
+
 def test_invalid_cached_steps_are_revalidated_and_replaced(api_context):
     from app.models.ai_explanation_cache import AIExplanationCache
 

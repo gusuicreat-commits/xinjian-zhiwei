@@ -36,11 +36,13 @@
 - 错误类型精确匹配；
 - 原因 Top-1 / Top-3 与必需排查步骤；
 - 无证据时不得产生高置信结论；
-- 对实际渲染的确定性解释做禁止短语扫描，0 命中；该项不等于语义评价；
+- 对实际渲染的解释记录短语出现情况，仅供审阅，不以命中或未命中判定语义；
 - Episode 重复故障按预期聚合；
 - 默认评测不调用真实 AI Provider。
 
 阈值针对提交的确定性合成规则设为严格通过，不应解释为真实世界准确率。
+
+自 2026-09-15 起，合成报告版本为 `7-code-and-semantic-separated`，原顶层 passed 改为 code_checks_passed，原 forbidden_claims 改为无判定的 pattern_scan。semantic_review 逐条记录 Rubric 的 not_run/null；代码通过但语义未审阅时总体 status=incomplete，代码失败时为 failed。CLI 退出码 0 只表示确定性代码检查通过；verify 脚本同样仅承诺代码门禁，不代表语义、硬件或课程通过。消费旧 JSON 字段的调用方须同步更新，历史报告不改写。
 
 ### 前端与端到端测试
 
@@ -174,3 +176,7 @@ GitHub CI 已配置 25 场景 PostgreSQL 评测，并使用 `always()` 上传该
 前端默认端口 15173、后端 18101，可用 `INTEGRATION_FRONTEND_PORT` / `INTEGRATION_BACKEND_PORT` 修改；不复用现有服务。CI 安装并使用 Chromium，本机可设置 `INTEGRATION_CHROME_CHANNEL=chrome` 使用已安装 Chrome。本地浏览器报告为 `frontend/playwright-report/integration/results.json`。后端找回专项另外覆盖旧诊断、原备注、越界、关闭会话、旧 NULL 记录及超过 20 条的分页边界。
 
 当前代码没有新增数据库迁移；Head 仍为 `20260912_0027`。本轮执行数量与结果集中记录在 [整改报告](workflow-remediation.md) 的“反馈找回与持续验收”。
+
+## 自动报告的存放与详略
+
+流程 CLI 默认输出简明 JSON 和同名 Markdown；失败细节单独 gzip 保存。报告不再混入源码变更，详见 [测试报告约定](test-reporting.md)。原始内存检查及退出码不变；需要全部快照时使用 `--details all`。旧报告原地保留。

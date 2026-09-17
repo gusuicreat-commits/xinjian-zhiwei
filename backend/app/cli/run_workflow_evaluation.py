@@ -8,11 +8,24 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", required=True, type=Path, help="JSON report path")
+    parser.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="Compact JSON path; sibling .md summary is also written",
+    )
     parser.add_argument(
         "--postgres", action="store_true", help="Use isolated schemas on XINJIAN_EVAL_POSTGRES_DSN"
     )
+    parser.add_argument(
+        "--details",
+        choices=("failures", "all", "none"),
+        default="failures",
+        help="Compressed diagnostic artifacts; default: failed cases only",
+    )
     args = parser.parse_args()
+    if args.output.suffix != ".json":
+        parser.error("--output must end in .json (sibling .md and .details.json.gz are reserved)")
     dsn = os.getenv("XINJIAN_EVAL_POSTGRES_DSN") if args.postgres else None
     if args.postgres and not dsn:
         report = {
@@ -26,8 +39,10 @@ def main():
         from app.evaluation.workflow_runner import run_workflow_evaluation
 
         report = run_workflow_evaluation(postgres_dsn=dsn)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    from app.evaluation.reporting import write_workflow_report
+
+    summary_path = write_workflow_report(report, args.output, details=args.details)
+    print(f"Summary: {summary_path}")
     print(
         json.dumps(
             {k: report[k] for k in ("status", "counts", "reason") if k in report},

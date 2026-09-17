@@ -51,3 +51,7 @@ build_grassland_report.py
 # Device secrets (Phase 10)
 device/**/secrets.h
 device/**/secrets.ini
+
+# Generated test reports; keep reviewed policy in docs/test-reporting.md.
+/output/workflow-evaluation/
+/output/audits/

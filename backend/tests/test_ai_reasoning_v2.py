@@ -118,7 +118,13 @@ def test_reasoning_returns_unknown_without_candidates() -> None:
     assert result.ranked_causes == []
 
 
-def test_pre_reasoning_knowledge_exposes_only_structured_constraints() -> None:
+@pytest.mark.parametrize(
+    "is_test_data,root_status,confirmed",
+    [(True, "confirmed", False), (False, "unverified", False), (False, "confirmed", True)],
+)
+def test_pre_reasoning_knowledge_exposes_only_structured_constraints(
+    is_test_data, root_status, confirmed
+) -> None:
     reference = AIKnowledgeReference(
         chunk_id="dht11.case.v1",
         source_key="knowledge/cases/dht11.yaml",
@@ -135,12 +141,12 @@ def test_pre_reasoning_knowledge_exposes_only_structured_constraints() -> None:
                 "possibleCauses": ["GPIO 配置错误"],
                 "solutionSteps": ["核对 GPIO"],
                 "teacherNotes": "以课程接线表为准",
-                "rootCause": {"value": "GPIO 配置错误", "status": "confirmed"},
+                "rootCause": {"value": "GPIO 配置错误", "status": root_status},
             },
             ensure_ascii=False,
         ),
         similarity=1.0,
-        is_test_data=True,
+        is_test_data=is_test_data,
     )
 
     constraints = build_reasoning_knowledge_constraints(
@@ -152,7 +158,9 @@ def test_pre_reasoning_knowledge_exposes_only_structured_constraints() -> None:
         "temperature",
         "humidity",
     ]
-    assert constraints["teacher_confirmed_cases"][0]["case_id"] == "dht11.case.v1"
+    assert bool(constraints["teacher_confirmed_cases"]) is confirmed
+    assert bool(constraints["standard_fault_mappings"][0]["confirmed_root_cause"]) is confirmed
+    assert constraints["standard_fault_mappings"][0]["is_test_data"] is is_test_data
 
 
 def test_post_reasoning_validation_rejects_unknown_cause_and_evidence() -> None:

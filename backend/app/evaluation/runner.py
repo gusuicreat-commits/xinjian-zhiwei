@@ -213,11 +213,10 @@ def run_evaluation() -> dict[str, Any]:
         and cause_top3_rate == 1.0
         and required_steps_rate == 1.0
         and unsupported_high_confidence == 0
-        and not forbidden_hits
         and episode["passed"]
     )
     return {
-        "evaluation_version": "6-rendered-output-contract",
+        "evaluation_version": "7-code-and-semantic-separated",
         "is_test_data": True,
         "claim_boundary": "合成评测只验证确定性规则、解释与 Episode，不代表真实硬件能力。",
         "diagnosis": {
@@ -237,12 +236,20 @@ def run_evaluation() -> dict[str, Any]:
             "rag_enabled": False,
             "note": "结构化案例匹配由独立测试覆盖，不计算向量召回指标。",
         },
-        "forbidden_claims": {
-            "scope": "deterministic_rendered_output_exact_patterns",
-            "semantic_review": "not_run",
+        "pattern_scan": {
+            "scope": "literal_occurrences_for_review_only",
             "patterns_checked": len(forbidden["patterns"]),
             "hits": forbidden_hits,
-            "passed": not forbidden_hits,
+            "judgement": None,
+            "note": "命中不表示违规，未命中不表示语义合格；否定、引用和改写须单独审阅。",
+        },
+        "semantic_review": {
+            "status": "not_run",
+            "judgement": None,
+            "checks": [
+                {**item, "status": "not_run", "judgement": None}
+                for item in _load("semantic_rubrics.json")["rubrics"]
+            ],
         },
         "episode_aggregation": episode,
         "ai_activity": {
@@ -251,5 +258,6 @@ def run_evaluation() -> dict[str, Any]:
             "passed": True,
             "reason": "合成评测不调用 AI",
         },
-        "passed": passed,
+        "code_checks_passed": passed,
+        "status": "incomplete" if passed else "failed",
     }

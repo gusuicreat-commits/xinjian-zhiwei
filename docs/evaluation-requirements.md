@@ -1,16 +1,16 @@
 # 评测要求、测试与依据对应表
 
-更新：2026-09-12。范围：ClawEval 适配、完整流程评测及本轮问题整改；不包含真实模型、硬件或课堂效果验收。
+更新：2026-09-15。范围：ClawEval 适配、完整流程评测及 PDF 反例整改；不包含真实模型、硬件或课堂效果验收。
 
 ## 项目负责人可读摘要
 
 | 问题 | 结论 |
 | --- | --- |
-| 这次发现了什么问题？ | 第一阶段收紧了输出边界；第二阶段继续发现无关证据关联、重复反馈推进和请求会话归属缺口，现已整改。 |
-| 会造成什么现实影响？ | 建议可能有真实 UUID 却没有相关依据；网络重试可能重复处理；其他学生会话可能改变原诊断。 |
-| 现在能不能解决？ | 已修复对应软件路径；25 个 PostgreSQL 场景及 42 项可靠性检查通过，后端全量结果见整改报告。 |
+| 这次发现了什么问题？ | PDF 复查发现关键词会误判否定句、漏掉改写；固定模板丢掉具体限制；Rubric 的二元要求记录不完整。 |
+| 会造成什么现实影响？ | 正确提醒被拦、错误声明漏检，学生只能看到泛泛的限制；代码通过容易被误解为语言质量通过。 |
+| 现在能不能解决？ | 已把关键词扫描改为无判定的线索，代码结果与未执行语义审阅分开；摘要增加本次异常，保留具体待核验项并标明未确认；补齐二元 Rubric 清单。完整语义审阅没有假装完成。 |
 | 如果不能，需要谁确认？ | UUID 存在不等于因果成立；真实故障、测量来源和阈值仍待硬件确认，教学动作和效果仍待教师确认。 |
-| 下一步最应该做什么？ | 审阅整改、迁移兼容和最终门禁，再安排部署与真实硬件对照；不把软件通过升级为硬件 verified。 |
+| 下一步最应该做什么？ | 审阅反例回归结果，再用独立输入/输出材料逐条人工核对语义 Rubric；模型裁判仍需另行批准，真实硬件与课程事实另行验证。 |
 
 ## 来源与适配原则
 
@@ -23,19 +23,30 @@ PDF 是评测设计参考，不是器件参数或正式 KnowledgeCase 来源。�
 文档中数值 rubric 与精确校验、混合测试示例存在不一致，项目统一以代码检查可确定事项。
 第 4 页部分安全场景裁切，外链安全规范未包含在文件中，不宣称已实施该规范的全部内容。
 
+### Rubric 的必守约束（补齐原文第 1 页）
+
+- 每条实际判断仅允许“符合”或“不符合”；禁止打分、评级和分数阈值。
+- 文本只描述“符合”的条件，不写 PASS/FAIL 两侧对照。
+- 每条只检查一件事；独立要求必须拆开。
+- 每条不超过 400 字符、3 句话。
+- Rubric 不列关键词清单；精确字段/ID/枚举等用独立代码检查，语义不能用关键词替代。
+- 未审阅时 judgement=null、status=not_run，不是第三种判定，也不能算“符合”。不合并成总分，不让一项符合抵消另一项不符合。
+
+第一版可审阅条目在 `backend/evaluation/semantic_rubrics.json`：根因是否仍为候选、硬件验证陈述是否有依据、缺失证据限制、下一步检查对象。每条指定所需输入与实际输出材料；本轮没有执行真实模型语义评测或引入模型裁判。条目格式校验不证明条目的语义质量，人工审阅仍需独立依据。
+
 ## 要求映射
 
 “代码已覆盖”只指表中限定的行为。测试均为合成输入或测试数据库记录；不得推导真实硬件准确率。
 
 | 编号 | 单项要求 | 检查材料和方式 | 测试入口 | 状态与依据 |
 | --- | --- | --- | --- | --- |
-| EVAL-01 | 禁止表述检查读取已渲染解释 | 检查 summary、steps、limitations 等实际渲染结果；注入禁用短语应使门禁失败 | `test_evaluation_contract.py::test_forbidden_claim_gate_reads_rendered_explanation` | 代码已覆盖；ClawEval 第 1、3 页结果与 evidence 选择 |
+| EVAL-01 | 扫描实际渲染文字，但不以子串判定语义 | 命中仅为线索；否定和改写均保持语义未审阅；精确规则错误仍使代码检查失败 | `test_evaluation_contract.py::test_pattern_scan_reads_rendered_output_without_judging_meaning`、`test_negative_and_paraphrased_claims_cannot_get_a_keyword_verdict`、`test_exact_rule_error_still_fails_code_checks` | 9 月 15 日纠正；SEM-01/02 语义检查未执行 |
 | EVAL-02 | high 必须有有效白名单证据引用 | 空引用、unknown 观测的反例与有引用的正例 | 同文件 `test_high_support_*` | 代码已覆盖；仅最低结构门槛，不证明因果 |
 | EVAL-03 | 模型不能隐藏输入证据冲突 | 输入 conflict 与输出 conflict 比较 | 同文件 `test_model_cannot_hide_input_conflict` | 代码已覆盖；项目证据冲突约束 |
 | EVAL-04 | 降级不能借用无关证据制造支持 | 候选无关联引用时返回 unknown；保留允许的下一动作 | 同文件 `test_fallback_*` | 代码已覆盖；AI 不可用也遵守证据原则 |
 | EVAL-05 | 推理后独立校验也检查 high 引用 | 检查独立 knowledge validation 的结果 | 同文件 `test_post_reasoning_guard_independently_rejects_high_without_evidence` | 代码已覆盖；独立防线 |
 | EVAL-06 | 解释步骤只能选择允许动作 | 逐字白名单校验；显式空名单不借用其他来源 | 同文件 `test_explanation_*`、`test_empty_workflow_actions_do_not_fall_back_to_other_hints` | 代码已覆盖；动作来源仍须教师审核 |
-| EVAL-07 | AI 摘要和限制不能升级事实状态 | 后端生成固定摘要/限制；分别注入根因、LED 发光、累计/连续混淆的反例 | 同文件 `test_model_prose_cannot_replace_server_owned_fact_summary` | 代码已覆盖；不以关键词猜测句意 |
+| EVAL-07 | 摘要说明本次异常，具体待核验项不升格为事实 | 规则类型、unknown/冲突状态、引用的缺失证据需求；解释模型单独新增的“已确认”限制不作为事实采纳 | 同文件 `test_model_prose_cannot_replace_server_owned_fact_summary`、`test_specific_pending_information_is_preserved_without_becoming_confirmed`；`test_ai_diagnosis.py::test_specific_pending_information_survives_persistence_and_replay` | 9 月 15 日纠正信息损失；推理提出的需求保留“未确认”标签 |
 | EVAL-08 | 输出边界在返回和审计之前执行 | Provider Mock → 服务 → 测试数据库审计与返回值 | `test_ai_diagnosis.py::test_provider_boundary_is_applied_before_response_and_audit` | 代码已覆盖；不是完整 UI/课堂验收 |
 | EVAL-09 | 历史审计不能冒充当前验证建议 | 缺当前输出契约的旧记录保留原文，但不返回为有效 AI 建议 | 同文件 `test_old_audit_prose_is_not_served_as_current_validated_output` | 代码已覆盖；无历史数据库批量改写 |
 | EVAL-10 | 缓存命中不能绕过动作校验 | 篡改测试缓存的步骤后重读；应重建缓存 | 同文件 `test_invalid_cached_steps_are_revalidated_and_replaced` | 代码已覆盖；已有缓存/调用幂等测试继续保留 |
@@ -53,16 +64,16 @@ PDF 是评测设计参考，不是器件参数或正式 KnowledgeCase 来源。�
 ## 第一阶段运行行为与兼容
 
 - LangGraph 节点和边不变；仅证据投影附带观测 status，供现有校验使用。
-- 解释的 `summary`、`limitations` 由后端模板生成，AI 仍可选择允许的候选和步骤。代价是摘要个性化减少，避免自由文字绕过结构约束。
+- 解释的 `summary`、`limitations` 仍由后端组织，但根据本次规则、unknown/冲突状态及具体待核验项生成；推理提出的缺失证据需求用引号和“未确认”标注，不能当硬件事实。解释模型自由新增的文字不直接升级为事实。
 - `steps` 只接受现有工作流允许动作；未包化调用只能使用已传入的持久化 guidance hints。不从任意知识正文扩充白名单。
 - 推理无可关联证据时降级为 unknown，并保留已允许的下一验证动作；模型和推理后校验都拒绝无有效引用的 high。
-- 当前输出契约 `explanation-boundary-v1` 保存在现有 AI 审计 JSON 中，无数据库迁移。
+- 当前输出契约 `explanation-boundary-v2` 保存在现有 AI 审计 JSON 中，无数据库迁移。v1 历史记录不改写；缺当前契约时保持既有 rules_only 降级行为，配套发布时应了解这项兼容边界。
 - 缓存指纹纳入实际 Prompt 哈希，缓存读取重新校验。不同输入不再仅因摘要指纹相似就共享建议；可能减少缓存命中。
 - 缺当前契约的历史解释只保留审计，不作为当前有效建议展示；返回 rules_only 提示，不再次计费调用模型。历史诊断和已发布包不被重写。
 
 ## 明确未完成的范围
 
-1. 禁止短语扫描是确定性的回归哨兵，不理解否定、引用、改写，不是完整语义或电气安全认证。
+1. 字符串扫描只记录实际出现的片段，不给语义判定，也不决定整体通过。新报告以 code_checks_passed 描述代码结果；语义未审阅时总体 status=incomplete，即使关键词没有命中。
 2. AI 推理的自由 reason/summary 等字段仍未接受完整语义评价。模板保护针对最终解释摘要和限制，不宣称覆盖所有自然语言字段或教师编辑文本。
 3. 有效 UUID、status 和故障树关联不等于“该证据能区分这个根因”。候选关联质量、占位故障树和真实故障可区分性仍须验证。
 4. 包内 normal 样例仍只验证包内规则未命中；候选样例只检查树内成员资格。完整正常运行和候选排序由独立测试覆盖，包校验不能代替它们。
@@ -100,3 +111,5 @@ PDF 是评测设计参考，不是器件参数或正式 KnowledgeCase 来源。�
 | FLOW-18 | 迁移不伪造历史反馈归属且新键受唯一约束保护 | 空库/带两条历史反馈的 0026 升级、单 Head、模型差异及重复键拒绝通过 |
 
 原三个 strict xfail 已移除；25 个 PostgreSQL 场景全部通过，后端全量 330 passed、无 skipped/xfail。反馈 Schema 与迁移 0027 是兼容变化，见整改报告；LangGraph 节点、边与实验包版本机制保持不变。证据引用合法和关联匹配异常都不能代替硬件因果验证。
+
+2026-09-15 追加反例覆盖：明确 unknown（包括残留候选）和空推理结果不能由解释层恢复候选；测试资料和未确认根因不得投影成教师确认案例。对应测试：`test_evaluation_contract.py` 和 `test_ai_reasoning_v2.py`；完整回归结果见 `workflow-remediation.md` 追加复查部分。

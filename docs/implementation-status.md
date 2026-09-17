@@ -280,3 +280,13 @@ V2 CLI 仅补齐合成 validator 夹具的候选引用，不称这些条目为�
 - **不变边界：** 无新迁移，Head 仍为 0027；LangGraph 节点与边、AI 候选/证据约束、两个 2.0.2 包及其事实状态不变。没有新增账号系统、RAG 或新 AI 功能。
 
 本轮仅在本机隔离环境验证，CI 配置等待实际 GitHub 运行；未部署或推送。软件通过仍不能升级任何 pending_hardware、pending_teacher 或 pending_course_confirmation。
+
+## 18. PDF 解释反例整改（2026-09-15）
+
+- 关键词扫描不再判定语言对错或控制语义通过；合成报告分别提供 code_checks_passed、无判定的 pattern_scan 和逐条 not_run 的 semantic_review。总体状态不会因为未命中短语变成 passed。
+- 合成 CLI 的退出状态只覆盖确定性代码检查；verify 收尾明确该范围。旧报告消费者需适配版本 7 的字段，历史报告保留。
+- 解释契约为 v2，保留本次规则异常、unknown/冲突和具体待核验项。推理提出的需求带未确认标签，不能提升为根因或硬件事实；原输入继续脱敏。
+- 补齐二元语义 Rubric 定义，只有符合/不符合；未审阅为 not_run/null。没有模型裁判、数值评级或总分。
+- 没有修改主图节点/边、实验包、数据库迁移、AI 原因和证据白名单。完整语义判断仍未实现，硬件与教师确认仍未完成。
+
+本轮实际验证见 [整改报告](workflow-remediation.md) 的“PDF 反例整改”。

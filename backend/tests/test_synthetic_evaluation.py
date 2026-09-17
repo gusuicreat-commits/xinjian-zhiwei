@@ -16,10 +16,13 @@ def test_synthetic_evaluation_meets_committed_thresholds() -> None:
         "rag_enabled": False,
         "note": "结构化案例匹配由独立测试覆盖，不计算向量召回指标。",
     }
-    assert report["forbidden_claims"]["patterns_checked"] >= 5
-    assert report["forbidden_claims"]["hits"] == []
+    assert report["pattern_scan"]["patterns_checked"] >= 5
+    assert report["pattern_scan"]["judgement"] is None
     assert report["episode_aggregation"]["passed"] is True
     assert report["episode_aggregation"]["episode_count"] == 1
     assert report["ai_activity"]["provider_calls"] == 0
     assert report["ai_activity"]["cache_hits"] == 0
-    assert report["passed"] is True
+    assert report["code_checks_passed"] is True
+    assert report["status"] == "incomplete"
+    assert report["semantic_review"]["status"] == "not_run"
+    assert report["semantic_review"]["judgement"] is None

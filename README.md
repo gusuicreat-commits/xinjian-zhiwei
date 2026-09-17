@@ -139,6 +139,7 @@ docker compose exec backend python -m app.cli.seed_demo --prefix demo-local-
 - [项目真实性看板](docs/project-truth-status.md)：负责人优先阅读，包含已确认、待硬件、待教师和已知问题。
 - [实验知识审计](docs/experiment-knowledge-audit.md)：资料来源、知识事实与故障－证据矩阵。
 - [硬件验证计划](docs/hardware-validation-plan.md)：下一步怎样做真实验证。
+- [测试报告说明](docs/test-reporting.md)：简明结果入口、排错附件和保留规则。
 - [文档索引](docs/README.md)：完整资料入口。
 
 开发者可继续阅读 [架构设计](docs/architecture.md)、[实验包设计](docs/experiment-package-design.md) 和 [开发准则](docs/development-guidelines.md)。后端采用 FastAPI/PostgreSQL，前端采用 Vue 3，LangGraph 负责固定诊断流程的状态管理。

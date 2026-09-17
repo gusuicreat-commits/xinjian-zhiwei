@@ -15,7 +15,7 @@ fi
 
 backend_python=$("$backend_python" -c 'import sys; print(sys.executable)')
 export BACKEND_PYTHON="$backend_python"
-workflow_report=${WORKFLOW_EVALUATION_REPORT:-output/workflow-evaluation/local-postgres.json}
+workflow_report=${WORKFLOW_EVALUATION_REPORT:-output/workflow-evaluation/local-latest.json}
 
 if [ -z "${XINJIAN_EVAL_POSTGRES_DSN:-}" ]; then
   echo "Full verification requires XINJIAN_EVAL_POSTGRES_DSN for an isolated test PostgreSQL database." >&2
@@ -57,4 +57,4 @@ if [ "${1:-}" = "--docker" ]; then
   docker compose ps
 fi
 
-echo "local verification passed"
+echo "local code verification passed; semantic review and hardware validation are not included"

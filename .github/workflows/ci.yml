@@ -62,12 +62,18 @@ jobs:
         run: >-
           PYTHONPATH=backend python -m app.cli.run_workflow_evaluation
           --postgres --output output/workflow-evaluation/ci-postgres.json
+      - name: Show workflow summary
+        if: always()
+        run: |
+          if [ -f output/workflow-evaluation/ci-postgres.md ]; then
+            cat output/workflow-evaluation/ci-postgres.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Preserve workflow evaluation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: workflow-evaluation-postgres
-          path: output/workflow-evaluation/ci-postgres.json
+          path: output/workflow-evaluation/
           if-no-files-found: warn
           retention-days: 14
       - name: Migration checks
@@ -92,3 +98,13 @@ jobs:
       - name: Browser and real backend integration
         working-directory: frontend
         run: BACKEND_PYTHON="$(command -v python)" npm run test:e2e:integration
+      - name: Preserve browser test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-tests
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: warn
+          retention-days: 14

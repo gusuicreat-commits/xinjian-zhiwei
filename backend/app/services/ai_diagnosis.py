@@ -162,8 +162,15 @@ def _validate_explanation(raw_content: str, payload: AIDiagnosisInput) -> AIStru
         for item in reasoned_causes
         if isinstance(item, dict) and item.get("cause")
     }
+    # An explicit empty/unknown reasoning result is authoritative. Only legacy
+    # callers without a reasoning stage may fall back to fault-tree candidates.
+    if payload.workflow_state.get("reasoning_status") == "unknown":
+        allowed_cause_support = {}
     allowed_causes = set(allowed_cause_support)
-    if not allowed_causes:
+    if (
+        "reasoning_status" not in payload.workflow_state
+        and "reasoned_causes" not in payload.workflow_state
+    ):
         allowed_causes = {
             str(cause.get("title"))
             for guidance in payload.fault_tree_guidance

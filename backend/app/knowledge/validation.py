@@ -15,6 +15,7 @@ def _safe_case_payload(reference: AIKnowledgeReference) -> dict[str, Any] | None
     if not isinstance(raw, dict):
         return None
     return {
+        "is_test_data": reference.is_test_data,
         "case_id": sanitize_text(raw.get("caseId") or reference.chunk_id, max_chars=100),
         "experiment_type": sanitize_text(raw.get("experimentType"), max_chars=100),
         "error_type": sanitize_text(raw.get("errorType"), max_chars=100),
@@ -40,23 +41,37 @@ def build_reasoning_knowledge_constraints(
     """Project trusted structured knowledge into a bounded pre-reasoning contract."""
 
     cases = [item for ref in references if (item := _safe_case_payload(ref)) is not None]
+    confirmed = [
+        item
+        for item in cases
+        if not item["is_test_data"]
+        and item["root_cause"].get("status") == "confirmed"
+        and isinstance(item["root_cause"].get("value"), str)
+        and item["root_cause"]["value"].strip()
+    ]
     return {
         "experiment_definition": experiment_context or {},
         "normal_conditions": [
-            {"case_id": item["case_id"], "normal_state": item["normal_state"]}
+            {
+                "case_id": item["case_id"],
+                "normal_state": item["normal_state"],
+                "is_test_data": item["is_test_data"],
+            }
             for item in cases
             if item["normal_state"]
         ],
         "standard_fault_mappings": [
             {
                 "case_id": item["case_id"],
+                "experiment_type": item["experiment_type"],
+                "is_test_data": item["is_test_data"],
                 "error_type": item["error_type"],
                 "possible_causes": item["possible_causes"],
-                "confirmed_root_cause": item["root_cause"],
+                "confirmed_root_cause": item["root_cause"] if item in confirmed else {},
             }
             for item in cases
         ],
-        "teacher_confirmed_cases": cases,
+        "teacher_confirmed_cases": confirmed,
     }
 
 
@@ -93,7 +108,16 @@ def validate_reasoning_against_knowledge(state: dict[str, Any]) -> dict[str, Any
     }
     next_action = state.get("next_verification_action")
     constraints = state.get("knowledge_constraints") or {}
-    cases = constraints.get("teacher_confirmed_cases") or []
+    cases = list(
+        {
+            item["case_id"]: item
+            for item in [
+                *(constraints.get("standard_fault_mappings") or []),
+                *(constraints.get("teacher_confirmed_cases") or []),
+            ]
+            if isinstance(item, dict) and item.get("case_id")
+        }.values()
+    )
     definition = constraints.get("experiment_definition") or {}
     template = definition.get("template") or {}
     experiment_types = {

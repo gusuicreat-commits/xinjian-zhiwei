@@ -157,7 +157,7 @@ def test_model_prose_cannot_replace_server_owned_fact_summary(claim):
 
 
 @pytest.mark.parametrize("field", ["summary", "steps", "limitations"])
-def test_forbidden_claim_gate_reads_rendered_explanation(monkeypatch, field):
+def test_pattern_scan_reads_rendered_output_without_judging_meaning(monkeypatch, field):
     original = runner.render_deterministic_explanation
 
     def mutated(core):
@@ -167,8 +167,89 @@ def test_forbidden_claim_gate_reads_rendered_explanation(monkeypatch, field):
 
     monkeypatch.setattr(runner, "render_deterministic_explanation", mutated)
     report = runner.run_evaluation()
-    assert report["forbidden_claims"]["hits"]
-    assert report["passed"] is False
+    assert report["pattern_scan"]["hits"]
+    assert report["pattern_scan"]["judgement"] is None
+    assert report["semantic_review"]["judgement"] is None
+    assert report["status"] == "incomplete"
+
+
+@pytest.mark.parametrize(
+    "summary,has_hits",
+    [
+        ("当前不能宣称真实硬件验证通过。", True),
+        ("本系统已经通过实物设备的验证，可以放心使用。", False),
+    ],
+)
+def test_negative_and_paraphrased_claims_cannot_get_a_keyword_verdict(
+    monkeypatch, summary, has_hits
+):
+    original = runner.render_deterministic_explanation
+    monkeypatch.setattr(
+        runner,
+        "render_deterministic_explanation",
+        lambda core: original(core).model_copy(update={"summary": summary}),
+    )
+    report = runner.run_evaluation()
+    assert bool(report["pattern_scan"]["hits"]) is has_hits
+    assert report["pattern_scan"]["judgement"] is None
+    assert report["code_checks_passed"] is True
+    assert report["status"] == "incomplete"
+    assert "passed" not in report  # No ambiguous overall green flag.
+    assert all(item["judgement"] is None for item in report["semantic_review"]["checks"])
+
+
+def test_exact_rule_error_still_fails_code_checks(monkeypatch):
+    original = runner._diagnose_case
+
+    def wrong_error(case):
+        result = original(case)
+        result["actual"] = ["FABRICATED_ERROR"]
+        return result
+
+    monkeypatch.setattr(runner, "_diagnose_case", wrong_error)
+    report = runner.run_evaluation()
+    assert report["code_checks_passed"] is False
+    assert report["status"] == "failed"
+
+
+def test_specific_pending_information_is_preserved_without_becoming_confirmed():
+    payload = explanation_input()
+    payload.workflow_state.update(
+        {
+            "missing_evidence": ["缺少供电测量记录。"],
+            "reasoning_status": "unknown",
+            "evidence_conflict": True,
+        }
+    )
+    result = _validate_explanation(json.dumps(explanation_output()), payload)
+    assert "SENSOR_READ_FAILED" in result.summary
+    assert "unknown" in result.summary
+    assert any("证据冲突" in item for item in result.limitations)
+    assert "推理提出的待核验项（未确认）：「缺少供电测量记录。」" in result.limitations
+
+
+def test_model_only_limitation_is_not_promoted_to_a_known_fact():
+    payload = explanation_input()
+    output = {**explanation_output(), "limitations": ["已确认供电正常。"]}
+    result = _validate_explanation(json.dumps(output), payload)
+    assert not any("已确认供电正常" in item for item in result.limitations)
+
+
+def test_semantic_catalog_is_binary_and_every_item_is_reported_unreviewed():
+    catalog = runner._load("semantic_rubrics.json")
+    assert catalog["allowed_judgements"] == ["符合", "不符合"]
+    items = catalog["rubrics"]
+    assert len({item["id"] for item in items}) == len(items)
+    assert all(0 < len(item["criterion"]) <= 400 for item in items)
+    assert all(item["criterion"].count("。") <= 3 for item in items)
+    report = runner.run_evaluation()
+    assert {item["id"] for item in report["semantic_review"]["checks"]} == {
+        item["id"] for item in items
+    }
+    assert all(
+        item["status"] == "not_run" and item["judgement"] is None
+        for item in report["semantic_review"]["checks"]
+    )
 
 
 def test_package_fault_sample_rejects_an_additional_error_type():
@@ -189,3 +270,24 @@ def test_post_reasoning_guard_independently_rejects_high_without_evidence():
     result = validate_reasoning_against_knowledge(state)
     assert result["checks"]["high_support_has_evidence"] is False
     assert result["status"] == "rejected"
+
+
+@pytest.mark.parametrize("causes", [[], [{"cause": "合成候选", "support_level": "low"}]])
+def test_unknown_reasoning_cannot_reintroduce_fault_tree_candidates(causes):
+    payload = explanation_input()
+    payload.workflow_state.update(reasoning_status="unknown", reasoned_causes=causes)
+    payload.fault_tree_guidance = [{"ranked_causes": [{"title": "合成候选"}]}]
+    output = explanation_output()
+    output["possible_causes"] = [{"cause": "合成候选", "support_level": "low"}]
+    with pytest.raises(ValueError, match="outside constrained reasoning"):
+        _validate_explanation(json.dumps(output), payload)
+
+
+def test_empty_ranked_reasoning_does_not_restore_legacy_candidates():
+    payload = explanation_input()
+    payload.workflow_state.update(reasoning_status="ranked", reasoned_causes=[])
+    payload.fault_tree_guidance = [{"ranked_causes": [{"title": "合成候选"}]}]
+    output = explanation_output()
+    output["possible_causes"] = [{"cause": "合成候选", "support_level": "low"}]
+    with pytest.raises(ValueError, match="outside constrained reasoning"):
+        _validate_explanation(json.dumps(output), payload)
