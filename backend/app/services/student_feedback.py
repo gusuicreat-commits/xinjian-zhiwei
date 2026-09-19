@@ -8,6 +8,8 @@ from sqlalchemy import create_engine, or_, select, text
 from sqlalchemy.pool import NullPool
 
 from app.models import DiagnosisFeedback, DiagnosisResult, DiagnosisWorkflowRun
+from app.services.data_scope import diagnosis_session
+from app.services.diagnosis_episode import EpisodeFeedbackConflict, lifecycle_lock
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
     WorkflowScopeViolation,
@@ -50,6 +52,9 @@ def feedback_lock(db, diagnosis_id):
 def _workflow_for_feedback_scope(db, device, diagnosis, session):
     if diagnosis is None or diagnosis.device_id != device.id:
         raise WorkflowScopeViolation("diagnosis is outside the authenticated device scope")
+    owner = diagnosis_session(db, diagnosis)
+    if owner is None or owner.id != session.id:
+        raise WorkflowScopeViolation("diagnosis has no consistent recorded feedback scope")
     workflow = db.scalar(
         select(DiagnosisWorkflowRun)
         .where(DiagnosisWorkflowRun.diagnosis_result_id == diagnosis.id)
@@ -64,16 +69,6 @@ def _workflow_for_feedback_scope(db, device, diagnosis, session):
             expected_student_user_id=session.student_user_id,
             expected_experiment_session_id=session.id,
         )
-    else:
-        # Only server-recorded creation scope is acceptable for legacy
-        # deterministic runs. Never infer old ownership from today's binding.
-        scope = (diagnosis.context_snapshot or {}).get("feedback_scope") or {}
-        if scope != {
-            "experiment_session_id": session.id,
-            "student_user_id": session.student_user_id,
-            "device_id": device.id,
-        }:
-            raise WorkflowScopeViolation("diagnosis has no matching recorded feedback scope")
     return workflow
 
 
@@ -181,14 +176,19 @@ def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, s
             if workflow is not None and workflow.status == "waiting_feedback" and graph is None:
                 raise RuntimeError("workflow unavailable; feedback was not written")
             needs_resume = workflow is not None and workflow.status == "waiting_feedback"
-            record = save_student_feedback(
-                db,
-                device,
-                diagnosis,
-                payload,
-                experiment_session_id=session.id,
-                processing_status="pending" if needs_resume else "applied",
-            )
+            try:
+                with lifecycle_lock(db, diagnosis):
+                    record = save_student_feedback(
+                        db,
+                        device,
+                        diagnosis,
+                        payload,
+                        experiment_session_id=session.id,
+                        processing_status="pending" if needs_resume else "applied",
+                    )
+            except EpisodeFeedbackConflict as exc:
+                db.rollback()
+                raise WorkflowConflict(str(exc)) from exc
         if workflow is not None and record.processing_status == "pending":
             # Existing terminal workflows may accept feedback without restarting.
             # A pending interrupted submission must first reconcile its checkpoint.

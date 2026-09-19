@@ -12,7 +12,7 @@ from app.db.session import get_db
 from app.models.base import utc_now
 from app.models.classroom import (
     AuditEvent,
-    DeviceBinding,
+    ExperimentAssignment,
     TeachingAssignment,
     User,
 )
@@ -29,10 +29,12 @@ from app.schemas.intervention import (
     InterventionTimelineItem,
 )
 from app.services.auth import user_access
+from app.services.data_scope import diagnosis_session
 from app.services.interventions import (
     InterventionConflict,
     apply_action,
     ensure_intervention_case,
+    public_resolution_summary,
     timeline,
 )
 
@@ -42,7 +44,13 @@ InterventionManager = Annotated[User, Depends(require_permission("intervention.m
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-def _case_response(case: InterventionCase) -> InterventionCaseResponse:
+def _case_response(db: Session, actor: User, case: InterventionCase) -> InterventionCaseResponse:
+    _assert_case_access(db, actor, case, allow_student=True)
+    summary = (
+        case.resolution_summary
+        if {"teacher", "admin"}.intersection(_roles(db, actor))
+        else public_resolution_summary(db, case)
+    )
     return InterventionCaseResponse(
         id=case.id,
         diagnosis_result_id=case.diagnosis_result_id,
@@ -50,7 +58,7 @@ def _case_response(case: InterventionCase) -> InterventionCaseResponse:
         assigned_teacher_user_id=case.assigned_teacher_user_id,
         status=case.status,
         version_no=case.version_no,
-        resolution_summary=case.resolution_summary,
+        resolution_summary=summary,
         is_test_data=case.is_test_data,
     )
 
@@ -98,38 +106,25 @@ def _assert_teacher_class_access(
         )
 
 
-def _accessible_binding_for_diagnosis(
-    db: Session,
-    actor: User,
-    diagnosis: DiagnosisResult,
-) -> DeviceBinding:
-    roles = _roles(db, actor)
-    query = select(DeviceBinding).where(
-        DeviceBinding.device_id == diagnosis.device_id,
-        DeviceBinding.is_active.is_(True),
+def _accessible_class_for_diagnosis(db: Session, actor: User, diagnosis: DiagnosisResult) -> str:
+    owner = diagnosis_session(db, diagnosis)
+    if owner is not None:
+        assignment = db.get(ExperimentAssignment, owner.experiment_assignment_id)
+        roles = _roles(db, actor)
+        if _teacher_has_class_access(db, actor, assignment.class_id) or (
+            "student" in roles
+            and owner.student_user_id == actor.id
+            and owner.status == "active"
+            and owner.ended_at is None
+        ):
+            return assignment.class_id
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "DIAGNOSIS_SCOPE_DENIED",
+            "message": "The diagnosis has no accessible recorded session scope",
+        },
     )
-    if "admin" in roles:
-        binding = db.scalar(query.order_by(DeviceBinding.created_at))
-    elif "teacher" in roles:
-        binding = db.scalar(
-            query.join(
-                TeachingAssignment,
-                TeachingAssignment.class_id == DeviceBinding.class_id,
-            ).where(TeachingAssignment.user_id == actor.id)
-        )
-    elif "student" in roles:
-        binding = db.scalar(query.where(DeviceBinding.student_user_id == actor.id))
-    else:
-        binding = None
-    if binding is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "DIAGNOSIS_SCOPE_DENIED",
-                "message": "The diagnosis is outside the current user's scope",
-            },
-        )
-    return binding
 
 
 def _assert_case_access(
@@ -143,20 +138,25 @@ def _assert_case_access(
     if "admin" in roles:
         return
     if "teacher" in roles:
+        diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
+        owner = diagnosis_session(db, diagnosis) if diagnosis is not None else None
+        if owner is not None:
+            assignment = db.get(ExperimentAssignment, owner.experiment_assignment_id)
+            if assignment.class_id != case.class_id:
+                raise HTTPException(status_code=403, detail="intervention recorded scope conflicts")
         _assert_teacher_class_access(db, actor, case.class_id)
         return
     if allow_student and "student" in roles:
         diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
-        if diagnosis is not None:
-            binding = db.scalar(
-                select(DeviceBinding.id).where(
-                    DeviceBinding.device_id == diagnosis.device_id,
-                    DeviceBinding.class_id == case.class_id,
-                    DeviceBinding.student_user_id == actor.id,
-                    DeviceBinding.is_active.is_(True),
-                )
-            )
-            if binding is not None:
+        owner = diagnosis_session(db, diagnosis) if diagnosis is not None else None
+        if (
+            owner is not None
+            and owner.student_user_id == actor.id
+            and owner.status == "active"
+            and owner.ended_at is None
+        ):
+            assignment = db.get(ExperimentAssignment, owner.experiment_assignment_id)
+            if assignment.class_id == case.class_id:
                 return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -180,15 +180,16 @@ def open_intervention(
     diagnosis = db.get(DiagnosisResult, diagnosis_id)
     if diagnosis is None:
         raise HTTPException(status_code=404, detail="diagnosis not found")
-    binding = _accessible_binding_for_diagnosis(db, actor, diagnosis)
-    case = ensure_intervention_case(
-        db,
-        diagnosis,
-        class_id=binding.class_id,
-        actor_user_id=actor.id,
-        source="authenticated_user_request",
-    )
+    class_id = _accessible_class_for_diagnosis(db, actor, diagnosis)
     try:
+        case = ensure_intervention_case(
+            db,
+            diagnosis,
+            class_id=class_id,
+            actor_user_id=actor.id,
+            source="authenticated_user_request",
+        )
+        _assert_case_access(db, actor, case, allow_student=True)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -197,7 +198,7 @@ def open_intervention(
         )
     if case is None:
         raise HTTPException(status_code=409, detail="intervention creation conflict")
-    return _case_response(case)
+    return _case_response(db, actor, case)
 
 
 @router.get("/interventions", response_model=list[InterventionCaseResponse])
@@ -212,7 +213,14 @@ def intervention_queue(
             TeachingAssignment,
             TeachingAssignment.class_id == InterventionCase.class_id,
         ).where(TeachingAssignment.user_id == actor.id)
-    return [_case_response(case) for case in db.scalars(query)]
+    results = []
+    for case in db.scalars(query):
+        try:
+            results.append(_case_response(db, actor, case))
+        except HTTPException as exc:
+            if exc.status_code != 403:
+                raise
+    return results
 
 
 @router.get(
@@ -228,7 +236,10 @@ def read_intervention(
     if case is None:
         raise HTTPException(status_code=404, detail="intervention not found")
     _assert_case_access(db, actor, case, allow_student=True)
-    return _case_response(case)
+    response = _case_response(db, actor, case)
+    if not {"teacher", "admin"}.intersection(_roles(db, actor)):
+        response.resolution_summary = public_resolution_summary(db, case)
+    return response
 
 
 @router.post(
@@ -266,7 +277,7 @@ def act_on_intervention(
         raise HTTPException(status_code=409, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return _case_response(updated)
+    return _case_response(db, actor, updated)
 
 
 @router.get(

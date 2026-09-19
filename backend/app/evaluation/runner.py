@@ -17,7 +17,7 @@ from app.diagnosis.schemas import (
     ExperimentTemplateContext,
     MetricRange,
 )
-from app.models import Device, DiagnosisEpisode, DiagnosisResult
+from app.models import Device, DeviceLog, DiagnosisEpisode, DiagnosisResult
 from app.services.diagnosis import diagnose
 from app.services.diagnosis_episode import upsert_episode
 from app.services.lightweight_diagnosis import (
@@ -116,9 +116,20 @@ def _evaluate_episode_aggregation() -> dict[str, Any]:
             db.add(device)
             db.flush()
             for index in range(2):
-                evaluated_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(
-                    seconds=index
+                evaluated_at = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=index)
+                # Each diagnostic attempt has a distinct persisted synthetic failure.
+                log = DeviceLog(
+                    device_id=device.id,
+                    level="ERROR",
+                    message="synthetic episode failure",
+                    event_code="SENSOR_READ_FAILED",
+                    occurred_at=evaluated_at,
+                    received_at=evaluated_at,
+                    is_test_data=True,
+                    raw_payload={},
                 )
+                db.add(log)
+                db.flush()
                 diagnosis = DiagnosisResult(
                     device_id=device.id,
                     evaluated_at=evaluated_at,
@@ -130,7 +141,13 @@ def _evaluate_episode_aggregation() -> dict[str, Any]:
                             "rule_id": "synthetic-read-failure",
                             "error_type": "SENSOR_READ_FAILED",
                             "summary": "synthetic",
-                            "evidence": [{"fact": "synthetic", "observed_value": 1}],
+                            "evidence": [
+                                {
+                                    "fact": "log_event_count",
+                                    "observed_value": 1,
+                                    "details": [{"log_id": log.id}],
+                                }
+                            ],
                         }
                     ],
                     evidence=[{"fact": "synthetic", "observed_value": 1}],

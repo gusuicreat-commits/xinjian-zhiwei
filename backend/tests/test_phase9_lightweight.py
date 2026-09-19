@@ -174,6 +174,7 @@ def test_ai_explanation_cache_prevents_duplicate_provider_call(
 ) -> None:
     diagnosis_id = _diagnose_failure(api_context)
     settings = Settings(
+        ai_enabled=True,
         ai_transport="openai-compatible",
         ai_provider="test-provider",
         ai_base_url="https://invalid.example/v1",

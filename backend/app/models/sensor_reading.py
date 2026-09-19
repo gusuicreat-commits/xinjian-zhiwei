@@ -18,6 +18,9 @@ class SensorReading(UuidPrimaryKeyMixin, Base):
     device_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
     )
+    experiment_session_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("experiment_sessions.id", ondelete="SET NULL"), index=True
+    )
     ingestion_request_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("ingestion_requests.id", ondelete="SET NULL"), index=True
     )

@@ -1,7 +1,16 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, ForeignKeyConstraint, Index, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -22,6 +31,19 @@ class DiagnosisResult(UuidPrimaryKeyMixin, Base):
 
     device_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    episode_id: Mapped[Optional[str]] = mapped_column(
+        String(36),
+        ForeignKey(
+            "diagnosis_episodes.id",
+            name="fk_diagnosis_results_episode",
+            ondelete="SET NULL",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    episode_evidence_revision: Mapped[Optional[int]] = mapped_column(
+        Integer, default=0, nullable=True
     )
     evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ruleset_version: Mapped[str] = mapped_column(String(100), nullable=False)

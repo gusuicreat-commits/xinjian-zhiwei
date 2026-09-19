@@ -26,12 +26,13 @@ if [ -z "${XINJIAN_EVAL_POSTGRES_DSN:-}" ]; then
 fi
 # The explicitly selected test database can also host the checkpoint durability test.
 TEST_DIAGNOSIS_CHECKPOINT_DSN=${TEST_DIAGNOSIS_CHECKPOINT_DSN:-$XINJIAN_EVAL_POSTGRES_DSN}
-export TEST_DIAGNOSIS_CHECKPOINT_DSN
+TEST_AI_QUOTA_POSTGRES_DSN=${TEST_AI_QUOTA_POSTGRES_DSN:-$XINJIAN_EVAL_POSTGRES_DSN}
+export TEST_DIAGNOSIS_CHECKPOINT_DSN TEST_AI_QUOTA_POSTGRES_DSN
 
 "$backend_python" scripts/prepare_evaluation_postgres.py
 "$backend_bin/ruff" check backend simulator scripts/prepare_evaluation_postgres.py
 PYTHONPATH=backend "$backend_bin/pytest" backend/tests
-simulator/.venv/bin/pytest simulator/tests
+PYTHONPATH=simulator "$backend_bin/pytest" simulator/tests
 PYTHONPATH=backend "$backend_python" -m app.cli.run_synthetic_evaluation >/dev/null
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_experiment_packages
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_structured_knowledge

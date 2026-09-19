@@ -2,7 +2,7 @@ import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_authenticated_device
@@ -19,6 +19,7 @@ from app.schemas.device import (
     SensorReadingCreate,
     TestRunCleanupResponse,
 )
+from app.services.data_scope import ScopeConflict, ScopeViolation, resolve_experiment_session
 from app.services.device_ingest import (
     ProtocolIngestError,
     calculate_device_status,
@@ -28,6 +29,25 @@ from app.services.device_ingest import (
     save_log,
     save_reading,
 )
+
+
+def validated_ingestion_session(
+    device: Annotated[Device, Depends(get_authenticated_device)],
+    db: Annotated[Session, Depends(get_db)],
+    session_id: Annotated[str | None, Header(alias="X-Experiment-Session-ID")] = None,
+) -> str | None:
+    if session_id is not None:
+        try:
+            resolve_experiment_session(db, device, session_id)
+        except ScopeViolation as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ScopeConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return session_id
+
+
+IngestionSession = Annotated[str | None, Depends(validated_ingestion_session)]
+
 
 router = APIRouter(prefix="/device", tags=["device"])
 AuthenticatedDevice = Annotated[Device, Depends(get_authenticated_device)]
@@ -45,6 +65,7 @@ def create_device_batch(
     request: Request,
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    session_id: IngestionSession,
 ) -> DeviceBatchIngestResponse:
     settings = get_settings()
     content_length = request.headers.get("content-length")
@@ -77,6 +98,7 @@ def create_device_batch(
             expected_protocol_version=settings.device_protocol_version,
             expected_schema_version=settings.device_schema_version,
             max_records=settings.device_ingest_max_records,
+            experiment_session_id=session_id,
             requests_per_minute=settings.device_ingest_requests_per_minute,
         )
     except ProtocolIngestError as error:
@@ -122,8 +144,9 @@ def create_device_log(
     payload: DeviceLogCreate,
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    session_id: IngestionSession,
 ) -> IngestResponse:
-    record = save_log(db, device, payload)
+    record = save_log(db, device, payload, experiment_session_id=session_id)
     return IngestResponse(id=record.id, device_id=device.device_key, accepted_at=record.received_at)
 
 
@@ -132,8 +155,9 @@ def create_sensor_reading(
     payload: SensorReadingCreate,
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    session_id: IngestionSession,
 ) -> IngestResponse:
-    record = save_reading(db, device, payload)
+    record = save_reading(db, device, payload, experiment_session_id=session_id)
     return IngestResponse(id=record.id, device_id=device.device_key, accepted_at=record.received_at)
 
 
@@ -142,8 +166,9 @@ def create_device_heartbeat(
     payload: DeviceHeartbeatCreate,
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    session_id: IngestionSession,
 ) -> IngestResponse:
-    record = save_heartbeat(db, device, payload)
+    record = save_heartbeat(db, device, payload, experiment_session_id=session_id)
     return IngestResponse(id=record.id, device_id=device.device_key, accepted_at=record.received_at)
 
 

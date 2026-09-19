@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
+from sqlalchemy import or_, select, update
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient, build_ai_client
+from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_payload
+from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
 from app.core.config import Settings
 from app.models.base import utc_now
 from app.models.diagnosis_feedback import DiagnosisFeedback
@@ -32,11 +37,45 @@ ALLOWED_AI_FIELDS = {
     "sourceIds",
 }
 DEFINITE_CAUSAL_TERMS = ("根因是", "确定为", "导致了", "必然导致")
-CASE_POLISH_PROMPT_VERSION = "knowledge-case-polish-v1"
+CASE_POLISH_PROMPT_VERSION = "knowledge-case-polish-v3"
 
 
 class CaseDraftError(ValueError):
     pass
+
+
+def _update_draft(
+    db: Session,
+    draft: KnowledgeCaseDraft,
+    *,
+    expected_status: str,
+    expected_version: int,
+    values: dict[str, Any],
+) -> None:
+    """Claim a revision in the same transaction as its audit/publication writes."""
+    if not draft.id or expected_version is None:
+        raise CaseDraftError("case draft must be persisted before updating")
+    try:
+        with db.no_autoflush:
+            result = db.execute(
+                update(KnowledgeCaseDraft)
+                .where(
+                    KnowledgeCaseDraft.id == draft.id,
+                    KnowledgeCaseDraft.status == expected_status,
+                    KnowledgeCaseDraft.version_no == expected_version,
+                )
+                .values(**values, version_no=expected_version + 1, updated_at=utc_now())
+                .execution_options(synchronize_session=False)
+            )
+        if result.rowcount != 1:
+            db.rollback()
+            raise CaseDraftError("case draft changed; reload before retrying")
+    except OperationalError as exc:
+        db.rollback()
+        code = getattr(exc.orig, "sqlstate", None)
+        if code in {"40001", "40P01"} or "locked" in str(exc.orig).lower():
+            raise CaseDraftError("case draft is being updated; reload before retrying") from exc
+        raise
 
 
 def _experiment_type(diagnosis: DiagnosisResult) -> str | None:
@@ -64,11 +103,7 @@ def build_case_draft(
         raise CaseDraftError("feedback does not belong to the diagnosis")
     experiment_type = _experiment_type(diagnosis)
     error_type = next(
-        (
-            str(item.get("error_type"))
-            for item in diagnosis.matched_rules
-            if item.get("error_type")
-        ),
+        (str(item.get("error_type")) for item in diagnosis.matched_rules if item.get("error_type")),
         None,
     )
     if not experiment_type or not error_type:
@@ -102,11 +137,7 @@ def build_case_draft(
     source_ids = list(
         dict.fromkeys(
             [feedback.id]
-            + [
-                str(item.get("rule_id"))
-                for item in diagnosis.matched_rules
-                if item.get("rule_id")
-            ]
+            + [str(item.get("rule_id")) for item in diagnosis.matched_rules if item.get("rule_id")]
             + [
                 str(ref)
                 for item in diagnosis.evidence
@@ -189,14 +220,22 @@ def apply_ai_assisted_polish(
     db: Session,
     draft: KnowledgeCaseDraft,
     polished_payload: dict[str, Any],
+    *,
+    expected_version: int | None = None,
+    expected_status: str | None = None,
+    ai_audit: dict[str, Any] | None = None,
 ) -> KnowledgeCaseDraft:
     """Accept wording improvements only when all fact-bearing fields are unchanged."""
 
+    original_status = expected_status or draft.status
+    version = draft.version_no if expected_version is None else expected_version
+    if original_status not in {"draft", "pending_review", "quality_checked"}:
+        raise CaseDraftError("reviewed case draft cannot be polished")
+    if not draft.quality_checks or not all(item.get("passed") for item in draft.quality_checks):
+        raise CaseDraftError("case draft failed quality checks")
     baseline = draft.template_payload or {}
     changed_fact_fields = [
-        field
-        for field in FACT_FIELDS
-        if polished_payload.get(field) != baseline.get(field)
+        field for field in FACT_FIELDS if polished_payload.get(field) != baseline.get(field)
     ]
     if changed_fact_fields:
         raise CaseDraftError(
@@ -228,12 +267,20 @@ def apply_ai_assisted_polish(
         raise CaseDraftError("unconfirmed root cause cannot use definite causal wording")
     merged["aiGeneratedFields"] = generated
     merged["reviewStatus"] = "pending"
-    draft.polished_payload = merged
-    draft.quality_checks = [
+    quality_checks = [
         *(draft.quality_checks or []),
         {"check": "ai_preserved_verified_facts", "passed": True},
     ]
-    draft.status = "quality_checked"
+    values = {
+        "polished_payload": merged,
+        "quality_checks": quality_checks,
+        "status": "quality_checked" if original_status == "draft" else "pending_review",
+    }
+    if ai_audit is not None:
+        values["ai_audit"] = ai_audit
+    _update_draft(
+        db, draft, expected_status=original_status, expected_version=version, values=values
+    )
     db.commit()
     db.refresh(draft)
     return draft
@@ -245,9 +292,28 @@ def generate_ai_assisted_polish(
     settings: Settings,
     *,
     ai_client: AIClient | None = None,
+    recheck_access: Callable[[], None] | None = None,
 ) -> KnowledgeCaseDraft:
     """Let AI fill expression-only fields and then enforce the fact boundary."""
 
+    if draft.status not in {"draft", "pending_review", "quality_checked"}:
+        raise CaseDraftError("reviewed case draft cannot be polished")
+    if not draft.quality_checks or not all(item.get("passed") for item in draft.quality_checks):
+        raise CaseDraftError("case draft failed quality checks")
+    expected_status, expected_version = draft.status, draft.version_no
+    diagnosis = db.get(DiagnosisResult, draft.diagnosis_result_id)
+    if diagnosis is None:
+        raise CaseDraftError("case draft requires a persisted diagnosis")
+    feedback = db.get(DiagnosisFeedback, draft.feedback_id)
+    if feedback is None or feedback.diagnosis_result_id != diagnosis.id:
+        raise CaseDraftError("case draft feedback does not belong to its diagnosis")
+    trusted_source_ids = {
+        feedback.id,
+        *(str(item["rule_id"]) for item in diagnosis.matched_rules if item.get("rule_id")),
+        *(str(ref) for item in diagnosis.evidence for ref in item.get("evidence_refs", []) if ref),
+    }
+    if set(draft.source_ids or []) != trusted_source_ids:
+        raise CaseDraftError("case draft source IDs do not match persisted facts")
     client = ai_client or build_ai_client(settings)
     if not settings.ai_enabled or not client.configured:
         raise CaseDraftError("AI case polishing is not configured")
@@ -262,25 +328,40 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
         "solution_record": draft.solution_record,
         "source_ids": draft.source_ids,
         "allowed_fields": draft.allowed_ai_fields,
-        "output_schema": AICasePolishFields.model_json_schema(),
     }
-    user_prompt = json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
-    prompt_hash = hashlib.sha256(
-        f"{system_prompt}\n{user_prompt}".encode()
-    ).hexdigest()
     try:
-        completion = client.complete_json(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
+        prompt_payload = sanitize_provider_payload(
+            prompt_payload,
+            allowed_fields=tuple(prompt_payload),
+            max_chars=settings.ai_knowledge_content_max_chars,
+            trusted_references={("source_ids", "*"): trusted_source_ids},
+            sensitive_sources=(
+                diagnosis.context_snapshot,
+                draft.fact_snapshot,
+                draft.solution_record,
+            ),
         )
-        generated = AICasePolishFields.model_validate_json(completion.content)
-    except Exception as exc:
-        raise CaseDraftError("AI case polish failed validation") from exc
+    except ProviderInputError as exc:
+        raise CaseDraftError("AI case polish input is unsafe") from exc
+    prompt_payload["output_schema"] = AICasePolishFields.model_json_schema()
+    user_prompt = json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
+    prompt_hash = hashlib.sha256(f"{system_prompt}\n{user_prompt}".encode()).hexdigest()
+    governor = GovernedAIInvocation(db, diagnosis, settings, call_stage="case_polish")
+    for attempt in range(settings.ai_max_retries + 1):
+        try:
+            completion = governor.complete_json(
+                client,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+            generated = AICasePolishFields.model_validate_json(completion.content)
+            break
+        except Exception as exc:
+            if isinstance(exc, AIQuotaDenied) or attempt == settings.ai_max_retries:
+                raise CaseDraftError("AI case polish failed validation or quota check") from exc
     polished = deepcopy(draft.template_payload or {})
-    polished["aiGeneratedFields"] = generated.model_dump(
-        mode="json", by_alias=True
-    )
-    draft.ai_audit = {
+    polished["aiGeneratedFields"] = generated.model_dump(mode="json", by_alias=True)
+    ai_audit = {
         "provider": client.provider,
         "model": client.model,
         "prompt_version": CASE_POLISH_PROMPT_VERSION,
@@ -288,18 +369,35 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
         "input_tokens": completion.input_tokens,
         "output_tokens": completion.output_tokens,
         "validation_status": "passed",
+        "attempt_count": governor.attempts,
+        "estimated_cost": governor.estimated_cost,
     }
-    return apply_ai_assisted_polish(db, draft, polished)
+    if recheck_access is not None:
+        recheck_access()
+    return apply_ai_assisted_polish(
+        db,
+        draft,
+        polished,
+        expected_version=expected_version,
+        expected_status=expected_status,
+        ai_audit=ai_audit,
+    )
 
 
-def submit_case_draft_for_review(
-    db: Session, draft: KnowledgeCaseDraft
-) -> KnowledgeCaseDraft:
+def submit_case_draft_for_review(db: Session, draft: KnowledgeCaseDraft) -> KnowledgeCaseDraft:
+    if draft.status not in {"draft", "quality_checked", "pending_review"}:
+        raise CaseDraftError("reviewed case draft cannot be resubmitted")
     if not draft.quality_checks or not all(
         bool(item.get("passed")) for item in draft.quality_checks
     ):
         raise CaseDraftError("case draft failed quality checks")
-    draft.status = "pending_review"
+    _update_draft(
+        db,
+        draft,
+        expected_status=draft.status,
+        expected_version=draft.version_no,
+        values={"status": "pending_review"},
+    )
     db.commit()
     db.refresh(draft)
     return draft
@@ -319,10 +417,22 @@ def approve_case_draft(
         raise CaseDraftError("case draft is not ready for teacher review")
     if db.get(KnowledgeCase, case_id) is not None:
         raise CaseDraftError("knowledge case id already exists")
+    if (
+        db.scalar(
+            select(KnowledgeCase.id)
+            .where(
+                or_(
+                    KnowledgeCase.source_draft_id == draft.id,
+                    KnowledgeCase.source_ref == f"diagnosis-case-draft:{draft.id}",
+                )
+            )
+            .limit(1)
+        )
+        is not None
+    ):
+        raise CaseDraftError("case draft has already been published")
     allowed_causes = {
-        str(item)
-        for item in (draft.template_payload or {}).get("possibleCauses", [])
-        if item
+        str(item) for item in (draft.template_payload or {}).get("possibleCauses", []) if item
     }
     allowed_causes.update(
         str(item.get("cause_id"))
@@ -380,16 +490,30 @@ def approve_case_draft(
         quality_check_passed=True,
         review_status="approved",
         source_ref=f"diagnosis-case-draft:{draft.id}",
+        source_draft_id=draft.id,
         version="1",
         is_test_data=draft.is_test_data,
     )
-    draft.status = "approved"
-    draft.root_cause = root_cause
-    draft.solution_record = solution_record
-    draft.quality_checks = quality_checks
-    draft.reviewer_ref = reviewer_ref
-    draft.reviewed_at = utc_now()
-    db.add(case)
-    db.commit()
+    try:
+        _update_draft(
+            db,
+            draft,
+            expected_status="pending_review",
+            expected_version=draft.version_no,
+            values={
+                "status": "approved",
+                "root_cause": root_cause,
+                "solution_record": solution_record,
+                "quality_checks": quality_checks,
+                "reviewer_ref": reviewer_ref,
+                "reviewed_at": confirmed_at,
+            },
+        )
+        db.add(case)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise CaseDraftError("knowledge case publication conflicts with an existing case") from exc
+    db.refresh(draft)
     db.refresh(case)
     return case

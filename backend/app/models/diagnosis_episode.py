@@ -23,6 +23,9 @@ class DiagnosisEpisode(UuidPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    evidence_revision: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     failure_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     latest_context_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     current_hint_level: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -34,5 +37,5 @@ class DiagnosisEpisode(UuidPrimaryKeyMixin, TimestampMixin, Base):
     resolution_source: Mapped[Optional[str]] = mapped_column(String(100))
 
     device = relationship("Device")
-    last_diagnosis_result = relationship("DiagnosisResult")
+    last_diagnosis_result = relationship("DiagnosisResult", foreign_keys=[last_diagnosis_result_id])
     ai_call_records = relationship("AICallRecord", back_populates="episode")

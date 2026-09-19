@@ -51,6 +51,9 @@ class AICallRecord(UuidPrimaryKeyMixin, Base):
     prompt_version: Mapped[str] = mapped_column(String(100), nullable=False)
     prompt_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
+    quota_managed: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False)
     duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     input_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)

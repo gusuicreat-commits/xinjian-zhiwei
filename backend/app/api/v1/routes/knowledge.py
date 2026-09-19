@@ -12,7 +12,15 @@ from app.knowledge.case_drafting import (
     approve_case_draft,
     generate_ai_assisted_polish,
 )
-from app.models.classroom import User
+from app.models.classroom import (
+    DeviceBinding,
+    ExperimentAssignment,
+    ExperimentSession,
+    TeachingAssignment,
+    User,
+)
+from app.models.diagnosis_feedback import DiagnosisFeedback
+from app.models.diagnosis_result import DiagnosisResult
 from app.models.knowledge import KnowledgeCaseDraft
 from app.schemas.knowledge import (
     KnowledgeChunkMergeRequest,
@@ -63,7 +71,7 @@ def _raise_http_error(exc: KnowledgeServiceError) -> None:
     ) from exc
 
 
-def _require_case_reviewer(db: Session, actor: User) -> None:
+def _require_case_reviewer(db: Session, actor: User) -> set[str]:
     roles, _ = user_access(db, actor.id)
     if not {"teacher", "formal_approver"}.intersection(roles):
         raise HTTPException(
@@ -73,11 +81,66 @@ def _require_case_reviewer(db: Session, actor: User) -> None:
                 "message": "Teacher or formal_approver role is required",
             },
         )
+    return set(roles)
+
+
+def _reviewable_case_drafts(actor: User, roles: set[str]):
+    query = select(KnowledgeCaseDraft)
+    if "formal_approver" in roles:
+        return query
+    # Use the recorded feedback session, not any current binding of a reused device.
+    return (
+        query.join(DiagnosisFeedback, DiagnosisFeedback.id == KnowledgeCaseDraft.feedback_id)
+        .join(DiagnosisResult, DiagnosisResult.id == KnowledgeCaseDraft.diagnosis_result_id)
+        .join(ExperimentSession, ExperimentSession.id == DiagnosisFeedback.experiment_session_id)
+        .join(
+            ExperimentAssignment,
+            ExperimentAssignment.id == ExperimentSession.experiment_assignment_id,
+        )
+        .join(TeachingAssignment, TeachingAssignment.class_id == ExperimentAssignment.class_id)
+        .where(
+            DiagnosisFeedback.diagnosis_result_id == DiagnosisResult.id,
+            DiagnosisFeedback.device_id == DiagnosisResult.device_id,
+            ExperimentSession.device_id == DiagnosisResult.device_id,
+            TeachingAssignment.user_id == actor.id,
+            select(DeviceBinding.id)
+            .where(
+                DeviceBinding.device_id == DiagnosisResult.device_id,
+                DeviceBinding.class_id == ExperimentAssignment.class_id,
+                DeviceBinding.student_user_id == ExperimentSession.student_user_id,
+                DeviceBinding.is_active.is_(True),
+            )
+            .exists(),
+        )
+    )
+
+
+def _require_case_scope(db: Session, actor: User, roles: set[str], draft_id: str) -> None:
+    if (
+        db.scalar(_reviewable_case_drafts(actor, roles).where(KnowledgeCaseDraft.id == draft_id))
+        is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "KNOWLEDGE_CASE_SCOPE_DENIED",
+                "message": "The case draft is outside the current user's scope",
+            },
+        )
+
+
+def _recheck_case_access(db: Session, actor: User, draft_id: str) -> None:
+    db.refresh(actor)
+    if not actor.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="reviewer is inactive")
+    roles = _require_case_reviewer(db, actor)
+    _require_case_scope(db, actor, roles, draft_id)
 
 
 def _draft_response(item: KnowledgeCaseDraft) -> KnowledgeCaseDraftResponse:
     return KnowledgeCaseDraftResponse(
         id=item.id,
+        version_no=item.version_no,
         diagnosis_result_id=item.diagnosis_result_id,
         feedback_id=item.feedback_id,
         experiment_type=item.experiment_type,
@@ -106,9 +169,9 @@ def read_pending_case_drafts(
     actor: CurrentUser,
     db: DatabaseSession,
 ) -> list[KnowledgeCaseDraftResponse]:
-    _require_case_reviewer(db, actor)
+    roles = _require_case_reviewer(db, actor)
     drafts = db.scalars(
-        select(KnowledgeCaseDraft)
+        _reviewable_case_drafts(actor, roles)
         .where(KnowledgeCaseDraft.status == "pending_review")
         .order_by(KnowledgeCaseDraft.created_at, KnowledgeCaseDraft.id)
     ).all()
@@ -125,12 +188,18 @@ def polish_diagnosis_case_draft(
     db: DatabaseSession,
     settings: AppSettings,
 ) -> KnowledgeCaseDraftResponse:
-    _require_case_reviewer(db, actor)
+    roles = _require_case_reviewer(db, actor)
     draft = db.get(KnowledgeCaseDraft, draft_id)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="case draft not found")
+    _require_case_scope(db, actor, roles, draft.id)
     try:
-        polished = generate_ai_assisted_polish(db, draft, settings)
+        polished = generate_ai_assisted_polish(
+            db,
+            draft,
+            settings,
+            recheck_access=lambda: _recheck_case_access(db, actor, draft_id),
+        )
     except CaseDraftError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return _draft_response(polished)
@@ -146,10 +215,11 @@ def approve_diagnosis_case_draft(
     actor: CurrentUser,
     db: DatabaseSession,
 ) -> KnowledgeCaseResponse:
-    _require_case_reviewer(db, actor)
+    roles = _require_case_reviewer(db, actor)
     draft = db.get(KnowledgeCaseDraft, draft_id)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="case draft not found")
+    _require_case_scope(db, actor, roles, draft.id)
     try:
         case = approve_case_draft(
             db,

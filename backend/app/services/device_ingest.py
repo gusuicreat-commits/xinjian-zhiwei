@@ -22,6 +22,7 @@ from app.schemas.device import (
     DeviceLogCreate,
     SensorReadingCreate,
 )
+from app.services.data_scope import ingestion_session_id
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,7 @@ def ingest_device_batch(
     expected_schema_version: str,
     max_records: int,
     requests_per_minute: int,
+    experiment_session_id: str | None = None,
 ) -> DeviceBatchIngestResponse:
     request_hash = _payload_hash(payload)
     existing = db.scalar(
@@ -252,6 +254,12 @@ def ingest_device_batch(
     for index, (record_type, parsed, time_quality, raw_payload) in enumerate(normalized):
         common = {
             "device_id": device.id,
+            "experiment_session_id": ingestion_session_id(
+                db,
+                device,
+                parsed.occurred_at if isinstance(parsed, DeviceLogCreate) else parsed.observed_at,
+                experiment_session_id,
+            ),
             "ingestion_request_id": ingestion.id,
             "protocol_version": payload.protocol_version,
             "schema_version": payload.schema_version,
@@ -354,9 +362,18 @@ def cleanup_test_run(db: Session, device: Device, test_run_id: str) -> dict[str,
     }
 
 
-def save_log(db: Session, device: Device, payload: DeviceLogCreate) -> DeviceLog:
+def save_log(
+    db: Session,
+    device: Device,
+    payload: DeviceLogCreate,
+    *,
+    experiment_session_id: str | None = None,
+) -> DeviceLog:
     record = DeviceLog(
         device_id=device.id,
+        experiment_session_id=ingestion_session_id(
+            db, device, payload.occurred_at, experiment_session_id
+        ),
         level=payload.level,
         message=payload.message,
         event_code=payload.event_code,
@@ -371,9 +388,18 @@ def save_log(db: Session, device: Device, payload: DeviceLogCreate) -> DeviceLog
     return record
 
 
-def save_reading(db: Session, device: Device, payload: SensorReadingCreate) -> SensorReading:
+def save_reading(
+    db: Session,
+    device: Device,
+    payload: SensorReadingCreate,
+    *,
+    experiment_session_id: str | None = None,
+) -> SensorReading:
     record = SensorReading(
         device_id=device.id,
+        experiment_session_id=ingestion_session_id(
+            db, device, payload.observed_at, experiment_session_id
+        ),
         sensor_type=payload.sensor_type,
         metric_key=payload.metric_key,
         value=payload.value,
@@ -389,10 +415,19 @@ def save_reading(db: Session, device: Device, payload: SensorReadingCreate) -> S
     return record
 
 
-def save_heartbeat(db: Session, device: Device, payload: DeviceHeartbeatCreate) -> DeviceHeartbeat:
+def save_heartbeat(
+    db: Session,
+    device: Device,
+    payload: DeviceHeartbeatCreate,
+    *,
+    experiment_session_id: str | None = None,
+) -> DeviceHeartbeat:
     received_at = utc_now()
     record = DeviceHeartbeat(
         device_id=device.id,
+        experiment_session_id=ingestion_session_id(
+            db, device, payload.observed_at, experiment_session_id
+        ),
         observed_at=payload.observed_at,
         firmware_version=payload.firmware_version,
         metadata_json=payload.metadata,

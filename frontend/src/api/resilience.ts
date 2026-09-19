@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-export type RequestFailureKind = 'offline' | 'backend' | 'unauthorized' | 'forbidden' | 'unknown'
+export type RequestFailureKind = 'offline' | 'backend' | 'unauthorized' | 'forbidden' | 'conflict' | 'unknown'
 
 export function classifyRequestFailure(error: unknown): RequestFailureKind {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline'
@@ -8,6 +8,7 @@ export function classifyRequestFailure(error: unknown): RequestFailureKind {
   if (!error.response || error.code === 'ECONNABORTED') return 'backend'
   if (error.response.status === 401) return 'unauthorized'
   if (error.response.status === 403) return 'forbidden'
+  if (error.response.status === 409) return 'conflict'
   if (error.response.status >= 500) return 'backend'
   return 'unknown'
 }
@@ -17,7 +18,8 @@ export function failureMessage(kind: RequestFailureKind): string {
     offline: '数据加载失败：当前浏览器离线，已保留上次数据；恢复网络后可重试。',
     backend: '数据加载失败：后端服务暂不可用，已保留上次数据，请稍后重试。',
     unauthorized: '数据加载失败：会话已失效，请重新登录。',
-    forbidden: '数据加载失败：当前账号没有访问该资源的权限。',
+    forbidden: '数据加载失败：实验会话或访问权限已变化，请重新登录。',
+    conflict: '数据加载失败：实验会话或记录已变化，请刷新；仍无法加载时请重新登录。',
     unknown: '数据加载失败：已保留上次数据，请重试。',
   }
   return messages[kind]

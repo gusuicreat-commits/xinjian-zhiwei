@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import select
@@ -10,13 +11,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient, build_ai_client
-from app.ai.context_sanitizer import sanitize_text
+from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_payload, sanitize_text
+from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
 from app.ai.schemas import AIReasonedCause, AIReasoningResult
 from app.core.config import Settings
 from app.models.ai_call_record import AICallRecord
 from app.models.diagnosis_result import DiagnosisResult
 
-REASONING_PROMPT_VERSION = "evidence-reasoning-v2.3"
+REASONING_PROMPT_VERSION = "evidence-reasoning-v2.5"
 REASONING_SYSTEM_PROMPT = """你是受约束的嵌入式实验原因排序器。
 error_type 是规则引擎已经确定的事实，不得修改。
 只能使用 candidate_causes 中已有的 cause_id，不得创造新故障。
@@ -66,18 +68,25 @@ def _support_level(score: float) -> str:
 def _fallback_reasoning(state: dict[str, Any], *, limitation: str) -> AIReasoningResult:
     candidates = list(state.get("fault_tree_candidates") or [])
     evidence = build_evidence_registry(state)
-    evidence_ids = {
+    evidence_ids = [
         item["id"] for item in evidence if item.get("status") not in {"unknown", "invalid"}
-    }
+    ]
     actions = list(state.get("allowed_verification_actions") or [])
     next_action = str(actions[0]["text"]) if actions and actions[0].get("text") else None
     ranked = []
+    seen_causes: set[str] = set()
+    truncated = False
     for item in candidates:
-        if not item.get("cause_id"):
+        if not item.get("cause_id") or item["cause_id"] in seen_causes:
             continue
-        refs = [ref for ref in item.get("evidence_refs") or [] if ref in evidence_ids]
+        seen_causes.add(item["cause_id"])
+        associated = set(item.get("evidence_refs") or [])
+        refs = [ref for ref in evidence_ids if ref in associated]
         # Never attach the first unrelated registry row to manufacture support.
         if not refs:
+            continue
+        truncated = truncated or len(refs) > 30 or len(ranked) >= 20
+        if len(ranked) >= 20:
             continue
         support = _support_level(max(0.0, min(1.0, float(item.get("score") or 0.0))))
         if state.get("evidence_conflict") and support == "high":
@@ -87,7 +96,7 @@ def _fallback_reasoning(state: dict[str, Any], *, limitation: str) -> AIReasonin
                 cause_id=str(item["cause_id"]),
                 cause=str(item.get("name") or "未知候选原因"),
                 support_level=support,
-                used_evidence_ids=refs,
+                used_evidence_ids=refs[:30],
                 reason="沿用故障树的证据关联；候选原因仍需独立验证。",
             )
         )
@@ -100,7 +109,8 @@ def _fallback_reasoning(state: dict[str, Any], *, limitation: str) -> AIReasonin
             if ranked
             else "现有证据不足以形成候选原因排序。"
         ),
-        limitations=[limitation],
+        limitations=[limitation] + (["受输出数量限制，仅展示部分候选或关联证据；完整记录保留。"]
+                                   if truncated else []),
         missing_evidence=[] if ranked else ["缺少可关联到候选原因的有效证据。"],
         next_verification_action=next_action,
         conflict=bool(state.get("evidence_conflict")),
@@ -175,19 +185,46 @@ def _validate_reasoning(
 
 def _reasoning_prompt(
     state: dict[str, Any],
+    *, sensitive_sources: Iterable[Any] = (),
 ) -> tuple[str, str, str, list[dict[str, str]]]:
     evidence = build_evidence_registry(state)
+    evidence_ids = {item["id"] for item in evidence}
+    candidates = [
+        {**item, "evidence_refs": [ref for ref in dict.fromkeys(item.get("evidence_refs") or [])
+                                  if ref in evidence_ids]}
+        for item in state.get("fault_tree_candidates") or []
+    ]
     payload = {
         "prompt_version": REASONING_PROMPT_VERSION,
         "error_type": state.get("error_type"),
         "device_status": state.get("device_status"),
         "experiment_context": state.get("experiment_context"),
-        "candidate_causes": state.get("fault_tree_candidates") or [],
+        "candidate_causes": candidates,
         "evidence_registry": evidence,
         "knowledge_constraints": state.get("knowledge_constraints") or {},
         "allowed_verification_actions": state.get("allowed_verification_actions") or [],
-        "output_json_schema": AIReasoningResult.model_json_schema(),
     }
+    references = {
+        ("candidate_causes", "*", "cause_id"): {
+            item["cause_id"] for item in candidates if item.get("cause_id")
+        },
+        ("candidate_causes", "*", "evidence_refs", "*"): evidence_ids,
+        ("evidence_registry", "*", "id"): evidence_ids,
+    }
+    for field in ("action_id", "text"):
+        references[("allowed_verification_actions", "*", field)] = {
+            item[field] for item in payload["allowed_verification_actions"] if item.get(field)
+        }
+    for field in ("normal_conditions", "standard_fault_mappings", "teacher_confirmed_cases"):
+        references[("knowledge_constraints", field, "*", "case_id")] = {
+            item["case_id"] for item in payload["knowledge_constraints"].get(field, [])
+            if item.get("case_id")
+        }
+    payload = sanitize_provider_payload(
+        payload, allowed_fields=tuple(payload), trusted_references=references,
+        sensitive_sources=(state, *sensitive_sources),
+    )
+    payload["output_json_schema"] = AIReasoningResult.model_json_schema()
     user_prompt = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     prompt_hash = hashlib.sha256(f"{REASONING_SYSTEM_PROMPT}\n{user_prompt}".encode()).hexdigest()
     return REASONING_SYSTEM_PROMPT, user_prompt, prompt_hash, evidence
@@ -245,7 +282,6 @@ def reason_about_causes(
             "deterministic_fallback"
         )
 
-    system_prompt, user_prompt, prompt_hash, evidence = _reasoning_prompt(state)
     started = time.monotonic()
     result: AIReasoningResult | None = None
     completion = None
@@ -253,20 +289,35 @@ def reason_about_causes(
     used_client = None
     error: Exception | None = None
     attempts = 0
-    for route, client in clients:
-        attempts += 1
-        try:
-            candidate = client.complete_json(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-            )
-            result = _validate_reasoning(candidate.content, state, evidence)
-            completion = candidate
-            used_route = route
-            used_client = client
+    governor = GovernedAIInvocation(db, diagnosis, settings, call_stage=call_stage)
+    try:
+        system_prompt, user_prompt, prompt_hash, evidence = _reasoning_prompt(
+            state, sensitive_sources=(diagnosis.context_snapshot or {},),
+        )
+    except (ValueError, TypeError, KeyError) as exc:
+        error = (exc if isinstance(exc, ProviderInputError)
+                 else ProviderInputError("AI_INPUT_INVALID"))
+        system_prompt, user_prompt = "", ""
+        prompt_hash = hashlib.sha256(error.code.encode()).hexdigest()
+        evidence = build_evidence_registry(state)
+    for route, client in ([] if error else clients):
+        for _ in range(settings.ai_max_retries + 1):
+            try:
+                candidate = governor.complete_json(
+                    client, system_prompt=system_prompt, user_prompt=user_prompt,
+                )
+                result = _validate_reasoning(candidate.content, state, evidence)
+                completion = candidate
+                used_route = route
+                used_client = client
+                break
+            except Exception as exc:  # Provider and schema failures share one safe fallback.
+                error = exc
+                if isinstance(exc, AIQuotaDenied):
+                    break
+        if result is not None or isinstance(error, AIQuotaDenied):
             break
-        except Exception as exc:  # Provider and schema failures share one safe fallback.
-            error = exc
+    attempts = governor.attempts
     mode = "ai" if result is not None else "deterministic_fallback"
     if result is None:
         result = _fallback_reasoning(
@@ -276,6 +327,7 @@ def reason_about_causes(
     duration_ms = int((time.monotonic() - started) * 1000)
     record = AICallRecord(
         diagnosis_result_id=diagnosis.id,
+        episode_id=governor.episode.id if governor.episode else None,
         workflow_run_id=workflow_run_id,
         call_stage=call_stage,
         provider=used_client.provider if used_client else clients[0][1].provider,
@@ -284,6 +336,7 @@ def reason_about_causes(
         prompt_version=REASONING_PROMPT_VERSION,
         prompt_hash=prompt_hash,
         status="succeeded" if mode == "ai" else "failed",
+        quota_managed=True,
         attempt_count=attempts,
         duration_ms=duration_ms,
         input_snapshot={
@@ -301,8 +354,10 @@ def reason_about_causes(
         route=used_route,
         route_path=used_route or "deterministic_fallback",
         latency_ms=duration_ms,
+        estimated_cost=governor.estimated_cost,
         validation_status="passed" if mode == "ai" else "fallback",
-        fallback_reason=type(error).__name__ if error else None,
+        fallback_reason=(error.code if isinstance(error, (AIQuotaDenied, ProviderInputError))
+                         else type(error).__name__ if error else None),
         error_code="AI_REASONING_FAILED" if error else None,
         error_message=type(error).__name__ if error else None,
         is_test_data=diagnosis.is_test_data,

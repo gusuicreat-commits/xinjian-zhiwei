@@ -89,6 +89,8 @@ class KnowledgeChunk(UuidPrimaryKeyMixin, Base):
     )
 
     document = relationship("KnowledgeDocument", back_populates="chunks")
+
+
 class KnowledgeReview(UuidPrimaryKeyMixin, Base):
     __tablename__ = "knowledge_reviews"
     __table_args__ = (Index("ix_knowledge_reviews_document_created", "document_id", "created_at"),)
@@ -112,6 +114,7 @@ class KnowledgeCase(TimestampMixin, Base):
 
     __tablename__ = "knowledge_cases"
     __table_args__ = (
+        UniqueConstraint("source_draft_id", name="uq_knowledge_cases_source_draft_id"),
         Index(
             "ix_knowledge_cases_match",
             "experiment_type",
@@ -131,28 +134,21 @@ class KnowledgeCase(TimestampMixin, Base):
     teacher_notes: Mapped[Optional[str]] = mapped_column(Text)
     facts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     root_cause_value: Mapped[Optional[str]] = mapped_column(String(200))
-    root_cause_status: Mapped[str] = mapped_column(
-        String(20), default="unknown", nullable=False
-    )
+    root_cause_status: Mapped[str] = mapped_column(String(20), default="unknown", nullable=False)
     confirmed_by: Mapped[Optional[str]] = mapped_column(String(200))
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    solution_record: Mapped[dict[str, Any]] = mapped_column(
-        JSON, default=dict, nullable=False
-    )
-    ai_generated_fields: Mapped[dict[str, Any]] = mapped_column(
-        JSON, default=dict, nullable=False
-    )
-    source_type: Mapped[str] = mapped_column(
-        String(30), default="curated_template", nullable=False
-    )
+    solution_record: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    ai_generated_fields: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(30), default="curated_template", nullable=False)
     facts_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    quality_check_passed: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
+    quality_check_passed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     review_status: Mapped[str] = mapped_column(
         String(20), default="draft", index=True, nullable=False
     )
     source_ref: Mapped[str] = mapped_column(String(500), nullable=False)
+    source_draft_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("knowledge_case_drafts.id", ondelete="RESTRICT"), nullable=True
+    )
     version: Mapped[str] = mapped_column(String(50), default="1", nullable=False)
     is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
@@ -181,22 +177,15 @@ class KnowledgeCaseDraft(UuidPrimaryKeyMixin, TimestampMixin, Base):
     fact_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     template_payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     polished_payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
-    quality_checks: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSON, default=list, nullable=False
-    )
+    quality_checks: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
     root_cause: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    solution_record: Mapped[dict[str, Any]] = mapped_column(
-        JSON, default=dict, nullable=False
-    )
+    solution_record: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     source_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
-    allowed_ai_fields: Mapped[list[str]] = mapped_column(
-        JSON, default=list, nullable=False
-    )
+    allowed_ai_fields: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     facts_locked: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     ai_audit: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(30), default="draft", index=True, nullable=False
-    )
+    status: Mapped[str] = mapped_column(String(30), default="draft", index=True, nullable=False)
+    version_no: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     reviewer_ref: Mapped[Optional[str]] = mapped_column(String(200))
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

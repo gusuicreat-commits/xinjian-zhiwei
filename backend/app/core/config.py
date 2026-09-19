@@ -1,3 +1,4 @@
+import math
 from functools import lru_cache
 from typing import Any, Literal, Optional
 
@@ -229,8 +230,8 @@ class Settings(BaseSettings):
     )
     @classmethod
     def validate_ai_cost(cls, value: Optional[float]) -> Optional[float]:
-        if value is not None and value < 0:
-            raise ValueError("AI cost and budget values must not be negative")
+        if value is not None and (not math.isfinite(value) or value < 0):
+            raise ValueError("AI cost and budget values must be finite and non-negative")
         return value
 
     @field_validator(

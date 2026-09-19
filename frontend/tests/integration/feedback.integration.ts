@@ -203,7 +203,7 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
   expect(workflow.status).toBe('waiting_feedback')
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20260912_0027')
+  expect(persisted.migration).toBe('20260917_0029')
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.knowledge.case_drafting import CaseDraftError, build_case_draft
 from app.models.ai_call_record import AICallRecord
-from app.models.classroom import DeviceBinding, ExperimentAssignment, ExperimentSession
+from app.models.classroom import ExperimentAssignment, ExperimentSession
 from app.models.device import Device
 from app.models.device_log import DeviceLog
 from app.models.diagnosis_episode import DiagnosisEpisode
@@ -28,31 +28,54 @@ from app.schemas.student import (
     StudentReadingItem,
 )
 from app.services.ai_diagnosis import get_ai_status, serialize_ai_call
+from app.services.data_scope import (
+    diagnosis_session,
+    find_active_experiment_session,
+    resolve_experiment_session,
+)
 from app.services.device_ingest import calculate_device_status
 from app.services.device_state_explanation import build_device_state_explanation
-from app.services.interventions import ensure_intervention_case
+from app.services.diagnosis_episode import apply_episode_feedback
+from app.services.interventions import ensure_intervention_case, public_resolution_summary
 
 
-def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResponse:
+def build_student_dashboard(
+    db: Session, device: Device, experiment_session_id: str | None = None
+) -> StudentDashboardResponse:
+    session = (
+        resolve_experiment_session(db, device, experiment_session_id)
+        if experiment_session_id is not None
+        else find_active_experiment_session(db, device)
+    )
+    session_id = session.id if session else None
     logs = db.scalars(
         select(DeviceLog)
-        .where(DeviceLog.device_id == device.id)
+        .where(DeviceLog.device_id == device.id, DeviceLog.experiment_session_id == session_id)
         .order_by(DeviceLog.occurred_at.desc(), DeviceLog.id.desc())
         .limit(100)
     ).all()
     recent_readings = db.scalars(
         select(SensorReading)
-        .where(SensorReading.device_id == device.id)
+        .where(
+            SensorReading.device_id == device.id, SensorReading.experiment_session_id == session_id
+        )
         .order_by(SensorReading.observed_at.desc(), SensorReading.id.desc())
         .limit(500)
     ).all()
     readings = list(reversed(recent_readings))
-    diagnosis = db.scalar(
-        select(DiagnosisResult)
-        .where(DiagnosisResult.device_id == device.id)
-        .order_by(DiagnosisResult.created_at.desc(), DiagnosisResult.id.desc())
-        .limit(1)
-    )
+    if session is None:
+        logs, readings = [], []
+    diagnosis = None
+    if session is not None:
+        for candidate in db.scalars(
+            select(DiagnosisResult)
+            .where(DiagnosisResult.device_id == device.id)
+            .order_by(DiagnosisResult.created_at.desc(), DiagnosisResult.id.desc())
+        ):
+            owner = diagnosis_session(db, candidate)
+            if owner is not None and owner.id == session.id:
+                diagnosis = candidate
+                break
     guidance = []
     feedback = None
     ai_call = None
@@ -66,7 +89,10 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
         ).all()
         feedback = db.scalar(
             select(DiagnosisFeedback)
-            .where(DiagnosisFeedback.diagnosis_result_id == diagnosis.id)
+            .where(
+                DiagnosisFeedback.diagnosis_result_id == diagnosis.id,
+                DiagnosisFeedback.experiment_session_id == session_id,
+            )
             .order_by(DiagnosisFeedback.created_at.desc(), DiagnosisFeedback.id.desc())
             .limit(1)
         )
@@ -81,13 +107,17 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
         )
         episode = db.scalar(
             select(DiagnosisEpisode)
-            .where(DiagnosisEpisode.last_diagnosis_result_id == diagnosis.id)
+            .where(DiagnosisEpisode.id == diagnosis.episode_id)
             .order_by(DiagnosisEpisode.updated_at.desc())
             .limit(1)
         )
         intervention = db.scalar(
             select(InterventionCase)
-            .where(InterventionCase.diagnosis_result_id == diagnosis.id)
+            .where(
+                InterventionCase.diagnosis_result_id == diagnosis.id,
+                InterventionCase.class_id
+                == db.get(ExperimentAssignment, session.experiment_assignment_id).class_id,
+            )
             .order_by(InterventionCase.updated_at.desc())
             .limit(1)
         )
@@ -187,7 +217,7 @@ def build_student_dashboard(db: Session, device: Device) -> StudentDashboardResp
                 status=intervention.status,
                 version_no=intervention.version_no,
                 assigned_teacher_user_id=intervention.assigned_teacher_user_id,
-                resolution_summary=intervention.resolution_summary,
+                resolution_summary=public_resolution_summary(db, intervention),
                 updated_at=intervention.updated_at,
             )
             if intervention is not None
@@ -234,46 +264,21 @@ def save_student_feedback(
     )
     db.add(record)
     db.flush()
-    episode = db.scalar(
-        select(DiagnosisEpisode)
-        .where(
-            DiagnosisEpisode.device_id == device.id,
-            DiagnosisEpisode.last_diagnosis_result_id == diagnosis.id,
-            DiagnosisEpisode.status.in_(("open", "escalated")),
-        )
-        .order_by(DiagnosisEpisode.updated_at.desc())
-        .limit(1)
-    )
-    if episode is not None:
-        if payload.action == "resolved":
-            episode.status = "resolved"
-            episode.resolved_at = datetime.now(timezone.utc)
-            episode.resolution_source = "student_feedback"
-        elif payload.action == "request_teacher_help":
-            episode.status = "escalated"
-            episode.current_hint_level = 4
+    apply_episode_feedback(db, diagnosis, record)
     if payload.action == "request_teacher_help":
         session = db.get(ExperimentSession, experiment_session_id)
         assignment = db.get(ExperimentAssignment, session.experiment_assignment_id)
-        binding = db.scalar(
-            select(DeviceBinding)
-            .where(
-                DeviceBinding.device_id == device.id,
-                DeviceBinding.is_active.is_(True),
-                DeviceBinding.student_user_id == session.student_user_id,
-                DeviceBinding.class_id == assignment.class_id,
-            )
-            .order_by(DeviceBinding.created_at)
-            .limit(1)
+        case = ensure_intervention_case(
+            db,
+            diagnosis,
+            class_id=assignment.class_id,
+            actor_user_id=session.student_user_id,
+            source="student_device_feedback",
         )
-        if binding is not None and binding.student_user_id is not None:
-            ensure_intervention_case(
-                db,
-                diagnosis,
-                class_id=binding.class_id,
-                actor_user_id=binding.student_user_id,
-                source="student_device_feedback",
-            )
+        if case.class_id != assignment.class_id:
+            from app.services.data_scope import ScopeConflict
+
+            raise ScopeConflict("intervention recorded scope conflicts")
     if payload.action == "resolved":
         guidance = list(
             db.scalars(

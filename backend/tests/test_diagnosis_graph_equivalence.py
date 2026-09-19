@@ -54,6 +54,7 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
             db.add(
                 DeviceLog(
                     device_id=device.id,
+                    experiment_session_id=api_context["experiment_session_id"],
                     level="error",
                     message="synthetic graph equivalence event",
                     event_code=case["event"],
@@ -65,6 +66,7 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
         db.add(
             SensorReading(
                 device_id=device.id,
+                experiment_session_id=api_context["experiment_session_id"],
                 sensor_type="synthetic-sensor",
                 metric_key="synthetic_metric",
                 value=case["value"],
@@ -82,6 +84,7 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
             evaluated_at=EVALUATED_AT,
             lookback_seconds=60,
             experiment_template=template,
+            experiment_session_id=api_context["experiment_session_id"],
         )
         direct = diagnose(direct_context)
         graph = build_diagnosis_graph(InMemorySaver())

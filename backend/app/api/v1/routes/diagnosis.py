@@ -21,11 +21,13 @@ from app.diagnosis.schemas import (
 )
 from app.experiment_packages.loader import ExperimentPackageLoadError
 from app.experiments.loader import ExperimentDefinitionLoadError
+from app.models.classroom import ExperimentSession
 from app.models.device import Device
 from app.models.diagnosis_evidence import DiagnosisEvidence
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 from app.services.ai_diagnosis import explain_diagnosis, get_ai_status
+from app.services.data_scope import diagnosis_session, find_active_experiment_session
 from app.services.diagnosis import build_diagnosis_context, diagnose, save_diagnosis_result
 from app.services.diagnosis_episode import upsert_episode
 from app.services.diagnosis_workflow import (
@@ -51,6 +53,32 @@ ReviewAccess = Annotated[None, Depends(require_review_access)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
 
 
+def current_diagnosis_session(
+    device: AuthenticatedDevice,
+    db: DatabaseSession,
+    session_id: Annotated[Optional[str], Header(alias="X-Experiment-Session-ID")] = None,
+):
+    try:
+        session = (resolve_experiment_session(db, device, session_id)
+                   if session_id is not None else find_active_experiment_session(db, device))
+        if session is None:
+            raise WorkflowConflict("diagnosis requires one active experiment session")
+        return session
+    except WorkflowScopeViolation as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WorkflowConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+CurrentDiagnosisSession = Annotated[ExperimentSession, Depends(current_diagnosis_session)]
+
+
+def _assert_diagnosis_scope(db, diagnosis, session):
+    owner = diagnosis_session(db, diagnosis)
+    if owner is None or owner.id != session.id:
+        raise HTTPException(status_code=403, detail="diagnosis is outside the current session")
+
+
 def _guidance_response(record: GuidanceHistory, device_key: str) -> GuidanceRecordResponse:
     evaluation = history_to_evaluation(record)
     return GuidanceRecordResponse(
@@ -74,21 +102,15 @@ def run_device_diagnosis(
     device: AuthenticatedDevice,
     db: DatabaseSession,
     settings: AppSettings,
-    experiment_session_id: Annotated[Optional[str], Header(alias="X-Experiment-Session-ID")] = None,
+    session: CurrentDiagnosisSession,
 ) -> DiagnosisRunResponse:
     if device_id != device.device_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="device id mismatch")
-    feedback_scope = None
-    if experiment_session_id:
-        try:
-            session = resolve_experiment_session(db, device, experiment_session_id)
-        except (WorkflowConflict, WorkflowScopeViolation) as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        feedback_scope = {
-            "experiment_session_id": session.id,
-            "student_user_id": session.student_user_id,
-            "device_id": device.id,
-        }
+    feedback_scope = {
+        "experiment_session_id": session.id,
+        "student_user_id": session.student_user_id,
+        "device_id": device.id,
+    }
     try:
         context = build_diagnosis_context(
             db,
@@ -98,6 +120,7 @@ def run_device_diagnosis(
             experiment_id=payload.experiment_id,
             experiment_version=payload.experiment_version,
             experiment_version_id=payload.experiment_version_id,
+            experiment_session_id=session.id,
         )
     except (ExperimentDefinitionLoadError, ExperimentPackageLoadError) as exc:
         raise HTTPException(
@@ -162,12 +185,14 @@ def run_guidance(
     diagnosis_result_id: str,
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    session: CurrentDiagnosisSession,
 ) -> GuidanceRunResponse:
     diagnosis_result = db.scalar(
         select(DiagnosisResult).where(DiagnosisResult.id == diagnosis_result_id)
     )
     if diagnosis_result is None or diagnosis_result.device_id != device.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="diagnosis not found")
+    _assert_diagnosis_scope(db, diagnosis_result, session)
     records = generate_guidance(db, device, diagnosis_result)
     return GuidanceRunResponse(
         items=[_guidance_response(record, device.device_key) for record in records]
@@ -182,10 +207,12 @@ def get_diagnosis_evidence(
     diagnosis_result_id: str,
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    session: CurrentDiagnosisSession,
 ) -> list[DiagnosisEvidenceResponse]:
     diagnosis_result = db.get(DiagnosisResult, diagnosis_result_id)
     if diagnosis_result is None or diagnosis_result.device_id != device.id:
         raise HTTPException(status_code=404, detail="diagnosis not found")
+    _assert_diagnosis_scope(db, diagnosis_result, session)
     rows = list(
         db.scalars(
             select(DiagnosisEvidence)
@@ -223,6 +250,7 @@ def run_ai_explanation(
     diagnosis_result_id: str,
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    session: CurrentDiagnosisSession,
     settings: AppSettings,
     payload: Optional[AIExplanationRequest] = None,
 ) -> AIExplanationResponse:
@@ -231,6 +259,7 @@ def run_ai_explanation(
     )
     if diagnosis_result is None or diagnosis_result.device_id != device.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="diagnosis not found")
+    _assert_diagnosis_scope(db, diagnosis_result, session)
     generate_guidance(db, device, diagnosis_result)
     return explain_diagnosis(
         db,
@@ -249,11 +278,15 @@ def get_device_guidance(
     device_id: str,
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    session: CurrentDiagnosisSession,
 ) -> list[GuidanceRecordResponse]:
     if device_id != device.device_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="device id mismatch")
     return [
-        _guidance_response(record, device.device_key) for record in list_device_guidance(db, device)
+        _guidance_response(record, device.device_key)
+        for record in list_device_guidance(db, device)
+        if (owner := diagnosis_session(db, db.get(DiagnosisResult, record.diagnosis_result_id)))
+        is not None and owner.id == session.id
     ]
 
 

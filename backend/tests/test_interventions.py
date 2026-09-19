@@ -2,13 +2,13 @@ from uuid import uuid4
 
 import pytest
 
+from app.core.config import Settings
 from app.core.security import hash_password
 from app.models import (
     Classroom,
     Course,
     Device,
     DeviceBinding,
-    DiagnosisEpisode,
     DiagnosisResult,
     ExperimentAssignment,
     ExperimentSession,
@@ -17,6 +17,8 @@ from app.models import (
     User,
 )
 from app.models.base import utc_now
+from app.models.intervention import InterventionEvent
+from app.services.diagnosis_episode import upsert_episode
 from app.services.interventions import InterventionConflict, apply_action, timeline
 from app.services.rbac import assign_role, ensure_rbac_catalog
 
@@ -165,6 +167,21 @@ def test_student_request_teacher_queue_scope_and_unconfirmed_flow(
                 is_active=True,
             )
         )
+        assignment = ExperimentAssignment(
+            class_id=classroom.id, title="合成处置作业", status="published", is_test_data=True
+        )
+        db.add(assignment)
+        db.flush()
+        experiment_session = ExperimentSession(
+            experiment_assignment_id=assignment.id,
+            student_user_id=student.id,
+            device_id=device.id,
+            status="active",
+            started_at=utc_now(),
+            is_test_data=True,
+        )
+        db.add(experiment_session)
+        db.flush()
         diagnosis = DiagnosisResult(
             device_id=device.id,
             evaluated_at=utc_now(),
@@ -173,7 +190,14 @@ def test_student_request_teacher_queue_scope_and_unconfirmed_flow(
             input_fingerprint="1" * 64,
             matched_rules=[{"fault_code": "SYNTHETIC"}],
             evidence=[{"kind": "synthetic-fixture"}],
-            context_snapshot={"is_test_data": True},
+            context_snapshot={
+                "is_test_data": True,
+                "feedback_scope": {
+                    "experiment_session_id": experiment_session.id,
+                    "student_user_id": student.id,
+                    "device_id": device.id,
+                },
+            },
             is_test_data=True,
         )
         db.add(diagnosis)
@@ -251,8 +275,12 @@ def test_student_request_teacher_queue_scope_and_unconfirmed_flow(
         assert diagnosis.evidence == original_evidence
 
 
+@pytest.mark.parametrize("is_private", [False, True])
+@pytest.mark.parametrize("legacy_summary", [False, True])
 def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
     api_context: dict[str, object],
+    is_private: bool,
+    legacy_summary: bool,
 ) -> None:
     with api_context["session_factory"]() as db:
         roles = ensure_rbac_catalog(db)
@@ -335,20 +363,9 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
         )
         db.add(diagnosis)
         db.flush()
-        now = utc_now()
-        db.add(
-            DiagnosisEpisode(
-                device_id=device.id,
-                primary_error_code="SYNTHETIC_HELP",
-                status="open",
-                started_at=now,
-                last_seen_at=now,
-                failure_count=1,
-                latest_context_fingerprint="4" * 64,
-                current_hint_level=1,
-                last_diagnosis_result_id=diagnosis.id,
-            )
-        )
+        episode = upsert_episode(db, device, diagnosis, [], Settings())
+        assert episode is not None
+        assert diagnosis.episode_id == episode.id
         db.commit()
         diagnosis_id = diagnosis.id
 
@@ -406,14 +423,47 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
             "action": "resolve",
             "expected_version": claimed.json()["version_no"],
             "note": "已指导重新连接传感器并确认读数恢复。",
-            "is_private": False,
+            "is_private": is_private,
         },
     )
     assert resolved.status_code == 200
+    expected_summary = None if is_private else "已指导重新连接传感器并确认读数恢复。"
+    assert resolved.json()["resolution_summary"] == expected_summary
+    if legacy_summary:
+        with api_context["session_factory"]() as db:
+            case = db.get(InterventionCase, case_id)
+            case.resolution_summary = "已指导重新连接传感器并确认读数恢复。"
+            db.commit()
     final_dashboard = client.get("/api/v1/student/dashboard", headers=api_context["headers"]).json()
     assert final_dashboard["intervention"]["status"] == "resolved"
-    assert (
-        final_dashboard["intervention"]["resolution_summary"]
-        == "已指导重新连接传感器并确认读数恢复。"
-    )
+    assert final_dashboard["intervention"]["resolution_summary"] == expected_summary
     assert final_dashboard["episode"]["status"] == "resolved"
+    student_login = client.post(
+        "/api/v1/auth/session",
+        json={"username": "feedback-workflow-student", "password": "synthetic-password"},
+    )
+    assert student_login.status_code == 200
+    student_headers = {"Authorization": f"Bearer {student_login.json()['access_token']}"}
+    case_response = client.get(
+        f"/api/v1/teacher-workflow/interventions/{case_id}", headers=student_headers
+    )
+    assert case_response.status_code == 200
+    assert case_response.json()["resolution_summary"] == expected_summary
+    events = client.get(
+        f"/api/v1/teacher-workflow/interventions/{case_id}/timeline", headers=teacher_headers
+    )
+    assert events.status_code == 200
+    resolution = next(item for item in events.json() if item["action"] == "resolve")
+    assert resolution["note"] == "已指导重新连接传感器并确认读数恢复。"
+    assert resolution["is_private"] is is_private
+    if legacy_summary:
+        # Legacy summaries with no auditable public resolve event are not student-safe.
+        with api_context["session_factory"]() as db:
+            db.query(InterventionEvent).filter_by(case_id=case_id, action="resolve").delete()
+            db.commit()
+        dashboard = client.get("/api/v1/student/dashboard", headers=api_context["headers"])
+        assert dashboard.json()["intervention"]["resolution_summary"] is None
+        case_response = client.get(
+            f"/api/v1/teacher-workflow/interventions/{case_id}", headers=student_headers
+        )
+        assert case_response.json()["resolution_summary"] is None

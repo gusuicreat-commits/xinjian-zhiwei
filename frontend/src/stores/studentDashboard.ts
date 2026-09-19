@@ -197,6 +197,10 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       state.value = 'error'
       failureKind.value = classifyRequestFailure(error)
       errorMessage.value = failureMessage(failureKind.value)
+      if (['unauthorized', 'forbidden', 'conflict'].includes(failureKind.value)) {
+        dashboard.value = null
+        workflow.value = null
+      }
     } finally {
       await recoveryLoaded
     }
@@ -230,6 +234,11 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
         throw new FeedbackRequestError('反馈已被拒绝，未被接受；请检查实验会话并刷新诊断后再提交。')
       }
       if (activeSessionScope === scope) await refreshFeedbackRecovery(credentials)
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        throw new FeedbackRequestError(
+          '记录已变化，反馈尚未确认；请刷新最新诊断。原提交记录已保留，请勿自动重新提交。',
+        )
+      }
       throw new FeedbackRequestError(
         '反馈结果尚未确认，请在“上一条反馈待确认”中继续确认原反馈；系统会沿用原提交记录。',
       )

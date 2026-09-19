@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -83,13 +84,29 @@ class OpenAICompatibleClient:
             user_prompt=user_prompt,
         )
         response = self._post("/chat/completions", payload)
+        return self._parse_completion(response)
+
+    def complete_json_once(self, *, system_prompt: str, user_prompt: str) -> AICompletion:
+        """Issue one physical request; the governed caller owns retry quotas."""
+        payload = self.build_request_payload(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+        )
+        return self._parse_completion(self._post_once("/chat/completions", payload))
+
+    @staticmethod
+    def _parse_completion(response: dict[str, Any]) -> AICompletion:
         try:
             content = response["choices"][0]["message"]["content"]
-            usage = response.get("usage") or {}
+            usage = response.get("usage")
         except (KeyError, IndexError, TypeError) as exc:
             raise AIProviderError("AI Provider returned an unsupported response shape") from exc
         if not isinstance(content, str) or not content.strip():
             raise AIProviderError("AI Provider returned empty content")
+        if usage is None:
+            usage = {}
+        if not isinstance(usage, dict):
+            raise AIProviderError("AI Provider returned unsupported usage metadata")
         return AICompletion(
             content=content,
             input_tokens=_optional_int(usage.get("prompt_tokens")),
@@ -97,20 +114,26 @@ class OpenAICompatibleClient:
         )
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
         last_error: Exception | None = None
         for _ in range(self._max_retries + 1):
             try:
-                with httpx.Client(timeout=self._timeout_seconds) as client:
-                    response = client.post(f"{self._base_url}{path}", headers=headers, json=payload)
-                response.raise_for_status()
-                body = response.json()
-                if not isinstance(body, dict):
-                    raise AIProviderError("Provider response must be a JSON object")
-                return body
-            except (httpx.HTTPError, ValueError, AIProviderError) as exc:
+                return self._post_once(path, payload)
+            except AIProviderError as exc:
                 last_error = exc
         raise AIProviderError("AI Provider request failed after configured retries") from last_error
+
+    def _post_once(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+        try:
+            with httpx.Client(timeout=self._timeout_seconds) as client:
+                response = client.post(f"{self._base_url}{path}", headers=headers, json=payload)
+            response.raise_for_status()
+            body = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise AIProviderError("AI Provider request failed") from exc
+        if not isinstance(body, dict):
+            raise AIProviderError("Provider response must be a JSON object")
+        return body
 
 
 def build_ai_client(settings: Settings) -> AIClient:
@@ -165,4 +188,13 @@ def build_cloud_ai_client(settings: Settings) -> AIClient:
 
 
 def _optional_int(value: Any) -> int | None:
-    return int(value) if isinstance(value, (int, float)) else None
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or (isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()))
+        or value < 0
+    ):
+        raise AIProviderError("AI Provider returned invalid token usage")
+    return int(value)

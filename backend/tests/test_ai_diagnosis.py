@@ -92,6 +92,7 @@ def test_injected_provider_returns_validated_structured_explanation(
 ) -> None:
     diagnosis_id = _create_diagnosis(api_context)
     settings = Settings(
+        ai_enabled=True,
         ai_transport="openai-compatible",
         ai_provider="phase9-test-provider",
         ai_base_url="https://provider.invalid/v1",
@@ -144,6 +145,7 @@ def test_injected_provider_returns_validated_structured_explanation(
 def test_untrusted_ai_evidence_fails_closed(api_context: dict[str, Any]) -> None:
     diagnosis_id = _create_diagnosis(api_context)
     settings = Settings(
+        ai_enabled=True,
         ai_transport="openai-compatible",
         ai_provider="phase9-test-provider",
         ai_base_url="https://provider.invalid/v1",
@@ -189,6 +191,7 @@ def test_graph_supplied_knowledge_is_reused_without_second_retrieval(
 ) -> None:
     diagnosis_id = _create_diagnosis(api_context)
     settings = Settings(
+        ai_enabled=True,
         ai_transport="openai-compatible",
         ai_provider="phase9-test-provider",
         ai_base_url="https://provider.invalid/v1",
@@ -251,6 +254,7 @@ def test_workflow_ai_replay_reuses_audit_without_second_provider_call(
 ) -> None:
     diagnosis_id = _create_diagnosis(api_context)
     settings = Settings(
+        ai_enabled=True,
         ai_transport="openai-compatible",
         ai_provider="phase9-test-provider",
         ai_base_url="https://provider.invalid/v1",

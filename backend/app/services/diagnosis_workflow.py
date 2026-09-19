@@ -28,16 +28,17 @@ from app.models.classroom import (
 from app.models.device import Device
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_workflow import DiagnosisWorkflowRun
+from app.services.data_scope import (
+    ScopeConflict as WorkflowConflict,
+)
+from app.services.data_scope import (
+    ScopeViolation as WorkflowScopeViolation,
+)
+from app.services.data_scope import (
+    find_active_experiment_session,
+    resolve_experiment_session,
+)
 from app.services.experiment_packages import load_experiment_package_runtime
-
-
-class WorkflowConflict(ValueError):
-    pass
-
-
-class WorkflowScopeViolation(PermissionError):
-    pass
-
 
 _TERMINAL_STATUSES = {"completed", "rejected"}
 
@@ -113,49 +114,6 @@ def _config(workflow: DiagnosisWorkflowRun) -> dict[str, Any]:
     if workflow.graph_thread_id != expected:
         raise WorkflowScopeViolation("workflow thread_id does not match diagnosis_id")
     return {"configurable": {"thread_id": expected}}
-
-
-def resolve_experiment_session(
-    db: Session,
-    device: Device,
-    experiment_session_id: str,
-    *,
-    require_active: bool = True,
-) -> ExperimentSession:
-    """Resolve a server-owned student/session/device tuple without trusting client IDs."""
-
-    session = db.get(ExperimentSession, experiment_session_id)
-    if session is None or session.device_id != device.id:
-        raise WorkflowScopeViolation("experiment session is outside the authenticated device scope")
-    if require_active and session.status != "active":
-        raise WorkflowConflict("experiment session is not active")
-    assignment = db.get(ExperimentAssignment, session.experiment_assignment_id)
-    student = db.get(User, session.student_user_id)
-    if assignment is None or student is None or not student.is_active:
-        raise WorkflowScopeViolation("experiment session ownership is no longer valid")
-    return session
-
-
-def find_active_experiment_session(db: Session, device: Device) -> ExperimentSession | None:
-    candidates = list(
-        db.scalars(
-            select(ExperimentSession)
-            .where(
-                ExperimentSession.device_id == device.id,
-                ExperimentSession.status == "active",
-            )
-            .order_by(ExperimentSession.started_at.desc(), ExperimentSession.id.desc())
-        )
-    )
-    valid: list[ExperimentSession] = []
-    for item in candidates:
-        try:
-            valid.append(resolve_experiment_session(db, device, item.id))
-        except (WorkflowConflict, WorkflowScopeViolation):
-            continue
-    if len(valid) > 1:
-        raise WorkflowConflict("multiple active experiment sessions exist for this device")
-    return valid[0] if valid else None
 
 
 def assert_workflow_ownership(

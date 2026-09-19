@@ -57,9 +57,16 @@ def create_student_session(
 
 @router.get("/dashboard", response_model=StudentDashboardResponse)
 def get_student_dashboard(
-    device: AuthenticatedDevice, db: DatabaseSession
+    device: AuthenticatedDevice,
+    db: DatabaseSession,
+    experiment_session_id: Annotated[str | None, Header(alias="X-Experiment-Session-ID")] = None,
 ) -> StudentDashboardResponse:
-    return build_student_dashboard(db, device)
+    try:
+        return build_student_dashboard(db, device, experiment_session_id)
+    except WorkflowScopeViolation as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WorkflowConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post(

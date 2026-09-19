@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable, Mapping
 from typing import Any
 
 from app.ai.schemas import AIDiagnosisInput, AIKnowledgeReference
@@ -12,7 +12,7 @@ from app.core.config import Settings
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 
-PRIVACY_PROFILE = "phase9.5-allowlist-v1"
+PRIVACY_PROFILE = "provider-allowlist-v3"
 SENSITIVE_KEY_PARTS = {
     "authorization",
     "apikey",
@@ -62,6 +62,16 @@ TEXT_PATTERNS = (
 LOG_KEYS = ("level", "event_code", "occurred_at", "message")
 CAUSE_KEYS = ("cause_id", "title", "score", "confidence")
 HINT_KEYS = ("cause_id", "level", "text")
+DEVICE_KEYS = {"deviceid", "devicekey", "anonymousdeviceid"}
+ReferenceAllowlist = Mapping[tuple[str, ...], Collection[str]]
+
+
+class ProviderInputError(ValueError):
+    """Safe error classification: never expose the rejected value in an audit."""
+
+    def __init__(self, code: str = "AI_INPUT_UNSAFE_REFERENCE"):
+        self.code = code
+        super().__init__(code)
 
 
 def anonymous_device_id(device_id: str | None) -> str:
@@ -75,17 +85,23 @@ def _normalized_key(value: Any) -> str:
 
 
 def _is_sensitive_key(key: Any) -> bool:
-    normalized = _normalized_key(key)
-    return any(part in normalized for part in SENSITIVE_KEY_PARTS)
+    normalized = _normalized_key(key).replace("_", "")
+    return any(part.replace("_", "") in normalized for part in SENSITIVE_KEY_PARTS)
+
+
+def _scalar_secrets(value: Any) -> set[str]:
+    if isinstance(value, (str, int, float)):
+        return {str(value)} if str(value) else set()
+    items = value.values() if isinstance(value, dict) else value if isinstance(value, list) else []
+    return {secret for item in items for secret in _scalar_secrets(item)}
 
 
 def _sensitive_values(value: Any) -> set[str]:
     found: set[str] = set()
     if isinstance(value, dict):
         for key, item in value.items():
-            if _is_sensitive_key(key):
-                if isinstance(item, (str, int, float)) and len(str(item)) >= 3:
-                    found.add(str(item))
+            if _is_sensitive_key(key) or _normalized_key(key).replace("_", "") in DEVICE_KEYS:
+                found.update(_scalar_secrets(item))
             else:
                 found.update(_sensitive_values(item))
     elif isinstance(value, list):
@@ -115,7 +131,24 @@ def _safe_value(
     *,
     sensitive_values: Iterable[str],
     max_chars: int = 500,
+    field_name: str = "",
+    path: tuple[str, ...] = (),
+    trusted_references: ReferenceAllowlist | None = None,
 ) -> Any:
+    if trusted_references is not None and path in trusted_references:
+        if value is None:
+            return None
+        if (
+            not isinstance(value, str)
+            or value not in trusted_references[path]
+            or sanitize_text(value, sensitive_values=sensitive_values,
+                             max_chars=len(value)) != value
+        ):
+            raise ProviderInputError()
+        return value
+    field_key = _normalized_key(field_name).replace("_", "")
+    if field_key in DEVICE_KEYS and isinstance(value, str):
+        return value if re.fullmatch(r"anon-[a-f0-9]{16}", value) else anonymous_device_id(value)
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
@@ -130,8 +163,12 @@ def _safe_value(
                 item,
                 sensitive_values=sensitive_values,
                 max_chars=max_chars,
+                path=(*path, "*"),
+                trusted_references=trusted_references,
             )
-            for item in value[:50]
+            for item in (
+                value if trusted_references and (*path, "*") in trusted_references else value[:50]
+            )
         ]
     if isinstance(value, dict):
         return {
@@ -139,6 +176,9 @@ def _safe_value(
                 item,
                 sensitive_values=sensitive_values,
                 max_chars=max_chars,
+                field_name=str(key),
+                path=(*path, str(key)),
+                trusted_references=trusted_references,
             )
             for key, item in value.items()
             if not _is_sensitive_key(key)
@@ -147,6 +187,35 @@ def _safe_value(
         value,
         sensitive_values=sensitive_values,
         max_chars=max_chars,
+    )
+
+
+def sanitize_provider_payload(
+    payload: dict[str, Any],
+    *,
+    allowed_fields: Iterable[str],
+    max_chars: int = 1000,
+    trusted_references: ReferenceAllowlist | None = None,
+    sensitive_sources: Iterable[Any] = (),
+) -> dict[str, Any]:
+    """Project business data for a Provider without mutating its source snapshot.
+
+    Callers own the top-level field allowlist and append the trusted output
+    schema afterwards. Sensitive values are collected before projection so
+    secrets in omitted fields are also redacted from retained prose. Reference
+    IDs remain exact only at verified paths ("*" denotes a list element) and
+    within the caller's authoritative allowlist. Other IDs are ordinary data.
+    Secrets are collected from the raw sources before projection, never sent.
+    """
+    allowed = set(allowed_fields)
+    secrets = _sensitive_values(payload)
+    for source in sensitive_sources:
+        secrets.update(_sensitive_values(source))
+    return _safe_value(
+        {key: value for key, value in payload.items() if key in allowed},
+        sensitive_values=secrets,
+        max_chars=max_chars,
+        trusted_references=trusted_references,
     )
 
 
@@ -207,7 +276,9 @@ def _aggregate_readings(context: dict[str, Any]) -> list[dict[str, Any]]:
         )
         groups[key].append(item)
     result = []
-    for (sensor_type, metric_key, unit), items in sorted(groups.items()):
+    for (sensor_type, metric_key, unit), items in sorted(
+        groups.items(), key=lambda item: (*item[0][:2], item[0][2] is not None, item[0][2] or "")
+    ):
         numeric = [
             float(item["value"]) for item in items if isinstance(item.get("value"), (int, float))
         ]
@@ -319,6 +390,27 @@ def _safe_knowledge(
     settings: Settings,
     sensitive_values: set[str],
 ) -> list[AIKnowledgeReference]:
+    def safe_content(reference: AIKnowledgeReference) -> str:
+        content = reference.content
+        try:
+            structured = json.loads(content)
+        except (TypeError, ValueError):
+            return sanitize_text(
+                content,
+                sensitive_values=sensitive_values,
+                max_chars=settings.ai_knowledge_content_max_chars,
+            )
+        cleaned = _safe_value(
+            structured,
+            sensitive_values=sensitive_values | _sensitive_values(structured),
+            max_chars=settings.ai_knowledge_content_max_chars,
+            trusted_references={
+                ("caseId",): {reference.case_id or reference.chunk_id},
+                ("case_id",): {reference.case_id or reference.chunk_id},
+            },
+        )
+        return json.dumps(cleaned, ensure_ascii=False)[:settings.ai_knowledge_content_max_chars]
+
     return [
         item.model_copy(
             update={
@@ -345,11 +437,7 @@ def _safe_knowledge(
                     sensitive_values=sensitive_values,
                     max_chars=200,
                 ),
-                "content": sanitize_text(
-                    item.content,
-                    sensitive_values=sensitive_values,
-                    max_chars=settings.ai_knowledge_content_max_chars,
-                ),
+                "content": safe_content(item),
             }
         )
         for item in knowledge
@@ -368,9 +456,14 @@ def build_safe_ai_input(
 ) -> AIDiagnosisInput:
     context = dict(record.context_snapshot or {})
     sensitive_values = _sensitive_values(context) | _sensitive_values(workflow_state or {})
+    for reference in knowledge:
+        try:
+            sensitive_values.update(_sensitive_values(json.loads(reference.content)))
+        except (TypeError, ValueError):
+            pass
     experiment = context.get("experiment_template") or {}
     safe_knowledge = _safe_knowledge(knowledge, settings, sensitive_values)
-    return AIDiagnosisInput(
+    payload = AIDiagnosisInput(
         diagnosis_result_id=record.id,
         episode_id=episode_id,
         anonymous_device_id=anonymous_device_id(context.get("device_id")),
@@ -396,40 +489,19 @@ def build_safe_ai_input(
         rule_matches=_safe_rule_matches(record.matched_rules, sensitive_values),
         fault_tree_guidance=_safe_guidance(guidance, sensitive_values),
         knowledge=safe_knowledge,
-        workflow_state=_safe_value(
-            {
-                key: (workflow_state or {}).get(key)
-                for key in (
-                    "device_status",
-                    "experiment_type",
-                    "logs",
-                    "sensor_data",
-                    "sensor_values",
-                    "experiment_context",
-                    "error_type",
-                    "evidence",
-                    "possible_causes",
-                    "reasoned_causes",
-                    "reasoning_status",
-    "reasoning_summary",
-    "missing_evidence",
-    "next_verification_action",
-    "evidence_conflict",
-    "evidence_registry",
-    "allowed_verification_actions",
-    "knowledge_validation",
-                    "knowledge_context",
-                    "hint_level",
-                    "student_feedback",
-                    "historical_failures",
-                    "need_teacher_help",
-                    "diagnosis_status",
-                )
-                if key in (workflow_state or {})
-            },
-            sensitive_values=sensitive_values,
-            max_chars=500,
-        ),
+        workflow_state={
+            key: (workflow_state or {}).get(key)
+            for key in (
+                "device_status", "experiment_type", "logs", "sensor_data", "sensor_values",
+                "experiment_context", "error_type", "evidence", "possible_causes",
+                "reasoned_causes", "reasoning_status", "reasoning_summary", "missing_evidence",
+                "next_verification_action", "evidence_conflict", "evidence_registry",
+                "allowed_verification_actions", "knowledge_validation", "knowledge_context",
+                "hint_level", "student_feedback", "historical_failures", "need_teacher_help",
+                "diagnosis_status",
+            )
+            if key in (workflow_state or {})
+        },
         allowed_evidence=[
             sanitize_text(
                 f"{item.get('fact')}: {item.get('observed_value')}",
@@ -449,6 +521,47 @@ def build_safe_ai_input(
         output_language=settings.ai_output_language,
         is_test_data=record.is_test_data,
     )
+    state = workflow_state or {}
+    references: dict[tuple[str, ...], Collection[str]] = {
+        ("diagnosis_result_id",): {record.id},
+        ("knowledge", "*", "chunk_id"): {item.chunk_id for item in knowledge},
+        ("knowledge", "*", "case_id"): {
+            item.case_id for item in knowledge if item.case_id is not None
+        },
+        ("knowledge", "*", "locator", "case_id"): {item.chunk_id for item in knowledge},
+        ("rule_matches", "*", "rule_id"): {
+            item["rule_id"] for item in record.matched_rules if item.get("rule_id")
+        },
+    }
+    if episode_id is not None:
+        references[("episode_id",)] = {episode_id}
+    evidence_ids = {item["id"] for item in state.get("evidence_registry", []) if item.get("id")}
+    cause_ids = {
+        cause["cause_id"] for item in guidance for cause in item.ranked_causes
+        if cause.get("cause_id")
+    }
+    # Workflow values came from the graph's independently validated reasoning.
+    cause_ids.update(item["cause_id"] for item in state.get("reasoned_causes", [])
+                     if item.get("cause_id"))
+    for field in ("reasoned_causes", "possible_causes"):
+        references[("workflow_state", field, "*", "cause_id")] = cause_ids
+        references[("workflow_state", field, "*", "used_evidence_ids", "*")] = evidence_ids
+    references[("workflow_state", "evidence_registry", "*", "id")] = evidence_ids
+    actions = state.get("allowed_verification_actions", [])
+    for field in ("action_id", "text"):
+        references[("workflow_state", "allowed_verification_actions", "*", field)] = {
+            item[field] for item in actions if item.get(field)
+        }
+    references[("fault_tree_guidance", "*", "hints", "*", "text")] = {
+        hint["text"] for item in guidance for hint in item.hints if hint.get("text")
+    }
+    raw = payload.model_dump(mode="json")
+    safe = sanitize_provider_payload(
+        raw, allowed_fields=tuple(raw), trusted_references=references,
+        sensitive_sources=(context, state, {"secret": list(sensitive_values)}),
+        max_chars=max(2000, settings.ai_knowledge_content_max_chars),
+    )
+    return AIDiagnosisInput.model_validate(safe)
 
 
 def audit_snapshot(payload: AIDiagnosisInput) -> dict[str, Any]:

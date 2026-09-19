@@ -14,6 +14,7 @@ from app.diagnosis.lightweight_schemas import (
     DiagnosisCore,
 )
 from app.models.ai_call_record import AICallRecord
+from app.models.ai_usage_reservation import AIUsageReservation
 from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
@@ -217,11 +218,12 @@ def budget_allowed(
     since = datetime.now(timezone.utc) - timedelta(hours=1)
     hourly = (
         db.scalar(
-            select(func.count(AICallRecord.id))
+            select(func.coalesce(func.sum(AICallRecord.attempt_count), 0))
             .join(DiagnosisResult, DiagnosisResult.id == AICallRecord.diagnosis_result_id)
             .where(
                 DiagnosisResult.device_id == device_id,
                 AICallRecord.status.in_(("succeeded", "failed")),
+                AICallRecord.quota_managed.is_(False),
                 or_(
                     AICallRecord.cache_status.is_(None),
                     AICallRecord.cache_status != "hit",
@@ -231,6 +233,12 @@ def budget_allowed(
         )
         or 0
     )
+    hourly += db.scalar(
+        select(func.count(AIUsageReservation.id)).where(
+            AIUsageReservation.device_id == device_id,
+            AIUsageReservation.created_at >= since,
+        )
+    ) or 0
     if hourly >= settings.ai_calls_per_device_hour:
         return False, "DEVICE_HOURLY_CALL_LIMIT"
     if settings.ai_daily_budget is not None:
@@ -240,11 +248,20 @@ def budget_allowed(
                 select(func.coalesce(func.sum(AICallRecord.estimated_cost), 0.0)).where(
                     AICallRecord.created_at >= day,
                     AICallRecord.attempt_count > 0,
+                    AICallRecord.quota_managed.is_(False),
                 )
             )
             or 0.0
         )
-        if float(spent) >= settings.ai_daily_budget:
+        spent += db.scalar(
+            select(func.coalesce(func.sum(AIUsageReservation.accounted_cost), 0.0)).where(
+                AIUsageReservation.created_at >= day,
+            )
+        ) or 0.0
+        if (
+            float(spent) >= settings.ai_daily_budget
+            or float(spent) + (projected_call_cost or 0.0) > settings.ai_daily_budget
+        ):
             return False, "DAILY_BUDGET_LIMIT"
     return True, None
 

@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.diagnosis.fault_tree import evaluate_fault_tree
 from app.diagnosis.fault_tree_loader import (
     load_fault_trees,
@@ -15,6 +15,13 @@ from app.models.base import utc_now
 from app.models.device import Device
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
+from app.services.diagnosis_episode import (
+    confirmed_recovery,
+    diagnosis_scope,
+    failure_evidence_keys,
+    lifecycle_lock,
+    upsert_episode,
+)
 
 
 def _aware(value: datetime) -> datetime:
@@ -35,20 +42,74 @@ def _restore_diagnosis(record: DiagnosisResult) -> tuple[DiagnosisContext, Diagn
     )
 
 
-def _latest_history(db: Session, device_id: str, fault_tree_id: str) -> Optional[GuidanceHistory]:
-    return db.scalar(
+def _matching_history(
+    db: Session, diagnosis: DiagnosisResult, tree_id: str, tree_hash: str, window_seconds: int
+) -> list[GuidanceHistory]:
+    since = _aware(diagnosis.evaluated_at) - timedelta(seconds=window_seconds)
+    rows = db.scalars(
         select(GuidanceHistory)
+        .join(DiagnosisResult)
         .where(
-            GuidanceHistory.device_id == device_id,
-            GuidanceHistory.fault_tree_id == fault_tree_id,
+            GuidanceHistory.device_id == diagnosis.device_id,
+            GuidanceHistory.fault_tree_id == tree_id,
+            GuidanceHistory.fault_tree_hash == tree_hash,
+            DiagnosisResult.episode_id == diagnosis.episode_id,
+            DiagnosisResult.evaluated_at >= since,
         )
         .order_by(GuidanceHistory.created_at.desc(), GuidanceHistory.id.desc())
-        .limit(1)
-    )
+    ).all()
+    rows = [
+        row for row in rows if diagnosis_scope(row.diagnosis_result) == diagnosis_scope(diagnosis)
+    ]
+    if rows:
+        intervening = db.scalars(
+            select(DiagnosisResult).where(
+                DiagnosisResult.device_id == diagnosis.device_id,
+                DiagnosisResult.evaluated_at > rows[0].diagnosis_result.evaluated_at,
+                DiagnosisResult.evaluated_at <= diagnosis.evaluated_at,
+            )
+        ).all()
+        if any(confirmed_recovery(item, rows[0].diagnosis_result) for item in intervening):
+            return []
+    return rows
 
 
-def generate_guidance(
-    db: Session, device: Device, diagnosis_result: DiagnosisResult
+def _tree_evidence_keys(diagnosis, tree):
+    error_types = {
+        item.params.get("error_type")
+        for item in tree.trigger
+        if item.fact == "diagnosis_error_count"
+    }
+    keys = failure_evidence_keys(diagnosis, error_types) if error_types else set()
+    for criterion in tree.trigger:
+        if criterion.fact == "log_event_count":
+            keys.update(
+                f"log_id:{item['id']}"
+                for item in diagnosis.context_snapshot.get("logs", [])
+                if item.get("event_code") == criterion.params.get("event_code")
+            )
+        elif criterion.fact == "event_type_count":
+            keys.update(
+                f"event_id:{item['id']}"
+                for item in diagnosis.context_snapshot.get("events", [])
+                if item.get("type") == criterion.params.get("event_type")
+            )
+        elif criterion.fact == "expected_behavior_violation_count":
+            # The corresponding rule already persists the matched behavior references.
+            keys.update(failure_evidence_keys(diagnosis, error_types))
+    return keys
+
+
+def generate_guidance(db, device, diagnosis_result, *, settings=None):
+    with lifecycle_lock(db, diagnosis_result):
+        episode = upsert_episode(db, device, diagnosis_result, [], settings or get_settings())
+        records = _generate_guidance(db, device, diagnosis_result, episode=episode)
+        upsert_episode(db, device, diagnosis_result, records, settings or get_settings())
+        return records
+
+
+def _generate_guidance(
+    db: Session, device: Device, diagnosis_result: DiagnosisResult, *, episode=None
 ) -> list[GuidanceHistory]:
     existing = db.scalars(
         select(GuidanceHistory)
@@ -78,23 +139,27 @@ def generate_guidance(
         )
         if probe is None:
             continue
-        previous = _latest_history(db, device.id, tree.id)
-        previous_gap = (
-            (evaluated_at - _aware(previous.created_at)).total_seconds()
-            if previous is not None
-            else None
+        history = _matching_history(
+            db, diagnosis_result, tree.id, tree_hash, tree.continuity_window_seconds
         )
-        if (
-            previous is not None
-            and previous_gap is not None
-            and 0 <= previous_gap <= tree.continuity_window_seconds
-        ):
-            failure_count = previous.failure_count + 1
+        previous = history[0] if history else None
+        if previous is not None:
+            known = set().union(
+                *(_tree_evidence_keys(item.diagnosis_result, tree) for item in history)
+            )
+            new_failure = bool(_tree_evidence_keys(diagnosis_result, tree) - known)
+            failure_count = previous.failure_count + int(new_failure)
             first_detected_at = _aware(previous.first_detected_at)
         else:
             failure_count = 1
             first_detected_at = evaluated_at
-        duration = max(0, int((evaluated_at - first_detected_at).total_seconds()))
+        duration = (
+            previous.anomaly_duration_seconds
+            if previous is not None and episode is not None and episode.status == "resolved"
+            else max(0, int((evaluated_at - first_detected_at).total_seconds()))
+        )
+        if previous is not None:
+            duration = max(duration, previous.anomaly_duration_seconds)
         evaluation = evaluate_fault_tree(
             tree,
             context,

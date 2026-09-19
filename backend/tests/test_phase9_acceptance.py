@@ -127,6 +127,7 @@ def _low_confidence_diagnosis(api_context: dict[str, Any]) -> str:
 
 def _ai_settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {
+        "ai_enabled": True,
         "ai_transport": "openai-compatible",
         "ai_provider": "phase9-mock-provider",
         "ai_base_url": "https://invalid.example/v1",

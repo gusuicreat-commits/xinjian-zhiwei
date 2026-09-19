@@ -36,6 +36,7 @@ from app.services.diagnosis import (
     diagnose,
     save_diagnosis_result,
 )
+from app.services.diagnosis_episode import upsert_episode
 from app.services.guidance import generate_guidance
 from app.services.lightweight_diagnosis import (
     build_diagnosis_core,
@@ -220,6 +221,7 @@ def context_builder(
         experiment_id=state.get("experiment_id"),
         experiment_version=state.get("experiment_version"),
         experiment_version_id=state.get("experiment_version_id"),
+        experiment_session_id=state.get("experiment_session_id"),
     )
     last_seen_at = context.last_seen_at
     if last_seen_at is None:
@@ -336,6 +338,7 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
             experiment_id=state.get("experiment_id"),
             experiment_version=state.get("experiment_version"),
             experiment_version_id=state.get("experiment_version_id"),
+        experiment_session_id=state.get("experiment_session_id"),
         )
         outcome = diagnose(context)
         record = save_diagnosis_result(
@@ -494,7 +497,12 @@ def fault_tree_analyzer(
             select(DiagnosisEvidence).where(DiagnosisEvidence.diagnosis_id == diagnosis.id)
         )
     )
-    guidance = generate_guidance(runtime.context.db, runtime.context.device, diagnosis)
+    guidance = generate_guidance(
+        runtime.context.db, runtime.context.device, diagnosis, settings=runtime.context.settings
+    )
+    # Establish durable budget ownership before the first reasoning Provider call.
+    upsert_episode(runtime.context.db, runtime.context.device, diagnosis, guidance,
+                   runtime.context.settings)
     core = build_diagnosis_core(diagnosis, guidance)
     deterministic = render_deterministic_explanation(core)
     diagnosis.deterministic_core = core.model_dump(mode="json")

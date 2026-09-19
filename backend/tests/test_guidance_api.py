@@ -1,10 +1,8 @@
-from datetime import timedelta
 from typing import Any
 
 from app.api.dependencies import require_review_access
 from app.main import app
-from app.models import Device, DiagnosisResult, GuidanceHistory
-from app.services.guidance import generate_guidance
+from app.models import GuidanceHistory
 
 
 def create_sensor_failure_diagnosis(api_context: dict[str, Any]) -> dict[str, Any]:
@@ -59,31 +57,13 @@ def test_guidance_api_persists_ranked_reasons_and_is_idempotent(
 def test_repeated_failures_escalate_and_appear_in_intervention_list(
     api_context: dict[str, Any],
 ) -> None:
-    diagnosis_payload = create_sensor_failure_diagnosis(api_context)
+    # Each iteration contributes a new persisted failed observation.
+    for _ in range(10):
+        diagnosis_payload = create_sensor_failure_diagnosis(api_context)
     with api_context["session_factory"]() as db:
-        device = db.query(Device).filter_by(device_key="phase2-test-device").one()
-        base = db.get(DiagnosisResult, diagnosis_payload["id"])
-        assert base is not None
-        histories = generate_guidance(db, device, base)
-        assert histories[0].hint_level == 1
-        last = histories[0]
-        for index in range(2, 11):
-            repeated = DiagnosisResult(
-                device_id=device.id,
-                evaluated_at=base.evaluated_at + timedelta(minutes=index - 1),
-                ruleset_version=base.ruleset_version,
-                ruleset_hash=base.ruleset_hash,
-                input_fingerprint=f"{index:064d}",
-                matched_rules=base.matched_rules,
-                evidence=base.evidence,
-                context_snapshot=base.context_snapshot,
-                is_test_data=True,
-            )
-            db.add(repeated)
-            db.commit()
-            db.refresh(repeated)
-            last = generate_guidance(db, device, repeated)[0]
-
+        last = (
+            db.query(GuidanceHistory).filter_by(diagnosis_result_id=diagnosis_payload["id"]).one()
+        )
         assert last.failure_count == 10
         assert last.hint_level == 4
         assert last.teacher_intervention_required is True
@@ -105,3 +85,21 @@ def test_intervention_list_fails_closed_without_configuration(
     response = api_context["client"].get("/api/v1/diagnosis/interventions")
 
     assert response.status_code == 503
+
+
+def test_rerunning_same_telemetry_does_not_escalate(api_context):
+    create_sensor_failure_diagnosis(api_context)
+    for _ in range(10):
+        response = api_context["client"].post(
+            "/api/v1/diagnosis/devices/phase2-test-device/run",
+            headers=api_context["headers"],
+            json={"lookback_seconds": 60},
+        )
+        assert response.status_code == 201
+        result = response.json()
+        assert result["episode"]["failure_count"] == 1
+        assert result["episode"]["current_hint_level"] == 1
+        with api_context["session_factory"]() as db:
+            guidance = db.query(GuidanceHistory).filter_by(diagnosis_result_id=result["id"]).one()
+            assert guidance.failure_count == 1
+            assert guidance.hint_level == 1

@@ -283,7 +283,7 @@ def test_safe_context_removes_identity_secrets_and_unrelated_logs() -> None:
     assert payload.sensor_readings[0]["maximum"] == 22
     audit = json.dumps(audit_snapshot(payload), ensure_ascii=False)
     assert "device-secret-value" not in audit
-    assert "phase9.5-allowlist-v1" in audit
+    assert "provider-allowlist-v3" in audit
 
 
 def test_single_deepseek_route_cache_and_timeout_fallback(

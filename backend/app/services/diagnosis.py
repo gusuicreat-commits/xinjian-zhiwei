@@ -40,6 +40,7 @@ def build_diagnosis_context(
     experiment_id: Optional[str] = None,
     experiment_version: Optional[str] = None,
     experiment_version_id: Optional[str] = None,
+    experiment_session_id: Optional[str] = None,
 ) -> DiagnosisContext:
     definition: ExperimentDefinition | None = None
     definition_hash: str | None = None
@@ -59,16 +60,31 @@ def build_diagnosis_context(
     logs = db.scalars(
         select(DeviceLog)
         .where(DeviceLog.device_id == device.id, DeviceLog.occurred_at >= since)
+        .where(
+            DeviceLog.experiment_session_id == experiment_session_id
+            if experiment_session_id
+            else True
+        )
         .order_by(DeviceLog.occurred_at, DeviceLog.id)
     ).all()
     heartbeats = db.scalars(
         select(DeviceHeartbeat)
         .where(DeviceHeartbeat.device_id == device.id, DeviceHeartbeat.observed_at >= since)
+        .where(
+            DeviceHeartbeat.experiment_session_id == experiment_session_id
+            if experiment_session_id
+            else True
+        )
         .order_by(DeviceHeartbeat.observed_at, DeviceHeartbeat.id)
     ).all()
     readings = db.scalars(
         select(SensorReading)
         .where(SensorReading.device_id == device.id, SensorReading.observed_at >= since)
+        .where(
+            SensorReading.experiment_session_id == experiment_session_id
+            if experiment_session_id
+            else True
+        )
         .order_by(SensorReading.observed_at, SensorReading.id)
     ).all()
     context_logs = [

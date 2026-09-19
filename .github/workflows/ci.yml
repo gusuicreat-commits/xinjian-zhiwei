@@ -26,6 +26,7 @@ jobs:
       APP_ENV: test
       DATABASE_URL: postgresql+psycopg://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
       TEST_DIAGNOSIS_CHECKPOINT_DSN: postgresql://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
+      TEST_AI_QUOTA_POSTGRES_DSN: postgresql://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
       XINJIAN_EVAL_POSTGRES_DSN: postgresql://xinjian_ci:ci-password-not-for-production@127.0.0.1:5432/xinjian_ci
     steps:
       - uses: actions/checkout@v4

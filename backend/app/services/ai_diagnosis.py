@@ -16,7 +16,13 @@ from app.ai.clients import (
     AIProviderError,
     build_ai_client,
 )
-from app.ai.context_sanitizer import audit_snapshot, build_safe_ai_input
+from app.ai.context_sanitizer import (
+    ProviderInputError,
+    anonymous_device_id,
+    audit_snapshot,
+    build_safe_ai_input,
+)
+from app.ai.governance import AIQuotaDenied, GovernedAIInvocation, estimate_prompt_tokens
 from app.ai.output_contract import OUTPUT_CONTRACT_VERSION, explanation_contract
 from app.ai.prompts import build_prompts
 from app.ai.schemas import (
@@ -294,6 +300,7 @@ def _save_record(
         prompt_version=settings.ai_prompt_version,
         prompt_hash=prompt_hash,
         status=status,
+        quota_managed=True,
         attempt_count=attempt_count,
         duration_ms=duration_ms,
         input_snapshot={
@@ -559,19 +566,48 @@ def explain_diagnosis(
     diagnosis.deterministic_explanation = deterministic.model_dump(mode="json")
     episode = upsert_episode(db, device, diagnosis, guidance, settings)
     policy = decide_ai_policy(core, settings, episode=episode, user_question=user_question)
-    payload = _build_input(
-        diagnosis,
-        guidance,
-        knowledge,
-        settings,
-        episode_id=episode.id if episode else None,
-        user_question=user_question,
-        workflow_state=workflow_state,
-    )
+
+    def without_provider(code: str, notice: str) -> AIExplanationResponse:
+        # Minimal local audit only: neither telemetry aggregation nor Provider
+        # Schema construction is a prerequisite for a deterministic diagnosis.
+        local = AIDiagnosisInput(
+            diagnosis_result_id=diagnosis.id, episode_id=episode.id if episode else None,
+            anonymous_device_id=anonymous_device_id(device.device_key), device_state={},
+            logs=[], sensor_readings=[], heartbeats=[], fault_tree_guidance=[], knowledge=[],
+            rule_matches=[{"rule_id": item.get("rule_id"), "error_type": item.get("error_type")}
+                          for item in diagnosis.matched_rules],
+            allowed_evidence=[], is_test_data=diagnosis.is_test_data,
+        )
+        return _skipped_response(
+            db, diagnosis=diagnosis, settings=settings, payload=local,
+            prompt_hash=hashlib.sha256(f"provider-not-called:{code}".encode()).hexdigest(),
+            knowledge=[], episode=episode, trigger_reason=policy.reason, error_code=code,
+            error_message=None, notice=notice, deterministic_result=deterministic.model_dump(
+                mode="json"), started=started, workflow_run_id=workflow_run_id,
+            call_stage=call_stage,
+        )
+
+    if not settings.ai_enabled or not ai.configured:
+        return without_provider("AI_NOT_CONFIGURED", "AI 未启用或未配置，当前返回确定性诊断。")
+    try:
+        payload = _build_input(
+            diagnosis,
+            guidance,
+            knowledge,
+            settings,
+            episode_id=episode.id if episode else None,
+            user_question=user_question,
+            workflow_state=workflow_state,
+        )
+        system_prompt, user_prompt, prompt_hash = build_prompts(payload, settings.ai_prompt_version)
+    except (ValueError, TypeError, KeyError) as exc:
+        return without_provider(
+            exc.code if isinstance(exc, ProviderInputError) else "AI_INPUT_INVALID",
+            "AI 输入未通过外发边界检查，当前返回确定性诊断。",
+        )
     # Persist and return only the allowlisted/redacted representation produced by
     # the privacy boundary, never the original retrieved chunk objects.
     knowledge = list(payload.knowledge)
-    _, _, prompt_hash = build_prompts(payload, settings.ai_prompt_version)
     fault_tree_version = guidance[0].fault_tree_version if guidance else None
     cache_fingerprint = explanation_fingerprint(
         core,
@@ -594,9 +630,7 @@ def explain_diagnosis(
     elif not policy.should_call:
         skip_code = policy.reason
         notice = "确定性结果已足够，本次无需调用 AI。"
-    estimated_input_tokens = (
-        len(json.dumps(payload.model_dump(mode="json"), ensure_ascii=False)) // 4
-    )
+    estimated_input_tokens = estimate_prompt_tokens(system_prompt, user_prompt)
     if skip_code:
         return _skipped_response(
             db,
@@ -681,7 +715,7 @@ def explain_diagnosis(
             deterministic_result=deterministic.model_dump(mode="json"),
         )
 
-    if not ai.configured:
+    if not settings.ai_enabled or not ai.configured:
         return _skipped_response(
             db,
             diagnosis=diagnosis,
@@ -764,28 +798,42 @@ def explain_diagnosis(
             call_stage=call_stage,
         )
 
-    system_prompt, user_prompt, prompt_hash = build_prompts(payload, settings.ai_prompt_version)
     last_error: Exception | None = None
     completion = None
     explanation = None
     attempts = 0
     route = settings.ai_provider or "provider"
     attempted_routes: list[str] = []
+    governor = GovernedAIInvocation(db, diagnosis, settings, call_stage=call_stage, episode=episode)
     for candidate_route, candidate in clients:
         route = candidate_route
         ai = candidate
         attempted_routes.append(candidate_route)
         for _ in range(settings.ai_max_retries + 1):
-            attempts += 1
             try:
-                completion = ai.complete_json(system_prompt=system_prompt, user_prompt=user_prompt)
+                completion = governor.complete_json(
+                    ai, system_prompt=system_prompt, user_prompt=user_prompt,
+                )
                 explanation = _validate_explanation(completion.content, payload)
+                break
+            except AIQuotaDenied as exc:
+                last_error = exc
                 break
             except (AIProviderError, ValidationError, ValueError, json.JSONDecodeError) as exc:
                 last_error = exc
                 user_prompt = f"{user_prompt}\n上一次输出未通过结构或证据校验，请仅返回合法 JSON。"
-        if explanation is not None:
+        if explanation is not None or isinstance(last_error, AIQuotaDenied):
             break
+    attempts = governor.attempts
+    if not attempts and isinstance(last_error, AIQuotaDenied):
+        return _skipped_response(
+            db, diagnosis=diagnosis, settings=settings, payload=payload, prompt_hash=prompt_hash,
+            knowledge=knowledge, episode=episode, trigger_reason=policy.reason,
+            error_code=last_error.code, error_message=None,
+            notice="AI 调用配额检查未通过，当前返回确定性诊断。",
+            deterministic_result=deterministic.model_dump(mode="json"), started=started,
+            workflow_run_id=workflow_run_id, call_stage=call_stage,
+        )
     duration_ms = int((time.monotonic() - started) * 1000)
     local_fallback = len(clients) > 1 and route == "cloud"
     if explanation is None:
@@ -816,7 +864,7 @@ def explain_diagnosis(
             fallback_reason=(
                 "LOCAL_AND_CLOUD_FAILED" if len(clients) > 1 else "DETERMINISTIC_TEMPLATE"
             ),
-            estimated_cost=projected_cost,
+            estimated_cost=governor.estimated_cost,
             provider=ai.provider,
             model_name=ai.model,
             transport=client_transport,
@@ -836,8 +884,6 @@ def explain_diagnosis(
             ),
             "call_record_id": saved.id,
         }
-        if episode:
-            episode.ai_call_count += 1
         db.commit()
         return _response(
             saved,
@@ -876,15 +922,7 @@ def explain_diagnosis(
         route_path=route_path,
         validation_status="passed",
         fallback_reason="LOCAL_FAILED_CLOUD_USED" if local_fallback else None,
-        estimated_cost=estimate_ai_cost(
-            (
-                completion.input_tokens
-                if completion and completion.input_tokens
-                else estimated_input_tokens
-            ),
-            completion.output_tokens if completion and completion.output_tokens else 0,
-            settings,
-        ),
+        estimated_cost=governor.estimated_cost,
         provider=ai.provider,
         model_name=ai.model,
         transport=client_transport,
@@ -917,8 +955,6 @@ def explain_diagnosis(
         "cache_status": "miss",
         "call_record_id": saved.id,
     }
-    if episode:
-        episode.ai_call_count += 1
     db.commit()
     return _response(
         saved,

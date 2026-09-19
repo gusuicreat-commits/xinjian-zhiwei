@@ -1,5 +1,6 @@
 from app.models.ai_call_record import AICallRecord
 from app.models.ai_explanation_cache import AIExplanationCache
+from app.models.ai_usage_reservation import AIUsageReservation
 from app.models.classroom import (
     AuditEvent,
     AuthSession,
@@ -46,6 +47,7 @@ from app.models.sensor_reading import SensorReading
 __all__ = [
     "AICallRecord",
     "AIExplanationCache",
+    "AIUsageReservation",
     "AuditEvent",
     "AuthSession",
     "Classroom",

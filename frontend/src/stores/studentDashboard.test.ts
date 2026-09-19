@@ -67,6 +67,33 @@ describe('student feedback submission boundaries', () => {
     vi.mocked(createDiagnosisFeedback).mockResolvedValue(feedback)
   })
 
+  it.each([401, 403, 409])('clears previously visible data on scope failure %i', async (status) => {
+    const store = await loadedStore()
+    expect(store.dashboard).not.toBeNull()
+    vi.mocked(getStudentDashboard).mockRejectedValueOnce(httpError(status))
+    await store.load(credentials)
+    expect(store.dashboard).toBeNull()
+    expect(store.workflow).toBeNull()
+    expect(store.errorMessage).toMatch(/重新登录|刷新/)
+    expect(getStudentDashboard).toHaveBeenCalledTimes(2)
+  })
+
+  it('accepts a safe empty dashboard and removes the old diagnosis', async () => {
+    const store = await loadedStore()
+    const empty = structuredClone(reviewStudentDashboard)
+    empty.diagnosis = null
+    empty.guidance = []
+    empty.logs = []
+    empty.readings = []
+    empty.feedback = null
+    empty.intervention = null
+    vi.mocked(getStudentDashboard).mockResolvedValueOnce(empty)
+    await store.load(credentials)
+    expect(store.state).toBe('ready')
+    expect(store.dashboard?.diagnosis).toBeNull()
+    expect(store.dashboard?.logs).toEqual([])
+  })
+
   it('retries a 503 with the same payload, then gives a deliberate new feedback a new ID', async () => {
     vi.mocked(createDiagnosisFeedback).mockRejectedValueOnce(httpError(503))
     const store = await loadedStore()

@@ -98,7 +98,7 @@ def apply_action(
         elif action == "resolve":
             if not note:
                 raise ValueError("resolve requires a resolution note")
-            resolution = note
+            resolution = None if is_private else note
     result = db.execute(
         update(InterventionCase)
         .where(
@@ -150,6 +150,20 @@ def apply_action(
     if updated is None:
         raise RuntimeError("updated intervention disappeared")
     return updated
+
+
+def public_resolution_summary(db: Session, case: InterventionCase) -> Optional[str]:
+    """Project only an explicitly public resolution, including for legacy cases."""
+
+    event = db.scalar(
+        select(InterventionEvent)
+        .where(InterventionEvent.case_id == case.id, InterventionEvent.action == "resolve")
+        .order_by(InterventionEvent.created_at.desc(), InterventionEvent.id.desc())
+        .limit(1)
+    )
+    if event is None or event.is_private:
+        return None
+    return event.note
 
 
 def timeline(

@@ -18,7 +18,7 @@
 
 ## 如何运行
 
-完整本机门禁仍用 `scripts/verify.sh`，需要有效的 `BACKEND_PYTHON`、模拟器环境和专用 `XINJIAN_EVAL_POSTGRES_DSN`。流程部分也可单独运行：
+完整本机门禁仍用 `scripts/verify.sh`，需要有效的 `BACKEND_PYTHON`（含后端及模拟器测试依赖）和专用 `XINJIAN_EVAL_POSTGRES_DSN`。流程部分也可单独运行：
 
 ```sh
 PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
@@ -47,3 +47,5 @@ CI 摘要放 Job Summary，文件作为 artifact 保留 **14 天**，不提交�
 - [GitHub Job Summary](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#adding-a-job-summary)：通过 `GITHUB_STEP_SUMMARY` 展示 Markdown 摘要。
 
 源码和输入指纹仍保留。语义审阅、硬件验证未执行时必须如实标记，不因为软件流程通过而变成通过。当前摘要只汇报这次流程评测，不自动借用历史前端或全量测试数量。
+
+本轮第二轮修复取证使用固定命名：`output/audits/remediation-r2-latest.md`（修复和验收摘要）、`output/audits/r2-history-inventory.json`（只读历史清单）、`output/audits/remediation-r2-evidence.zip`（测试日志与源码指纹）。历史清单只含ID和固定原因，不保存私密正文；同一记录可对应多个待核查项。

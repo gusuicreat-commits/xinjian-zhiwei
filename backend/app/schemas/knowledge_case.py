@@ -28,9 +28,7 @@ class KnowledgeCaseDefinition(StrictKnowledgeCaseModel):
     confirmed_by: str | None = Field(alias="confirmedBy", default=None)
     confirmed_at: datetime | None = Field(alias="confirmedAt", default=None)
     solution_record: dict[str, Any] = Field(alias="solutionRecord", default_factory=dict)
-    ai_generated_fields: dict[str, Any] = Field(
-        alias="aiGeneratedFields", default_factory=dict
-    )
+    ai_generated_fields: dict[str, Any] = Field(alias="aiGeneratedFields", default_factory=dict)
     source_type: str = Field(alias="sourceType", default="curated_template")
     facts_locked: bool = Field(alias="factsLocked", default=False)
     quality_check_passed: bool = Field(alias="qualityCheckPassed", default=False)
@@ -41,13 +39,16 @@ class KnowledgeCaseDefinition(StrictKnowledgeCaseModel):
     version: str = Field(default="1", min_length=1, max_length=50)
     is_test_data: bool = Field(alias="isTestData", default=False)
 
-
     @model_validator(mode="after")
     def reject_test_data_approval(self) -> KnowledgeCaseDefinition:
         if self.source_type == "test_data" and (
-            not self.is_test_data or self.review_status == "approved"
-            or self.root_cause_status != "unknown" or self.confirmed_by or self.confirmed_at
-            or self.facts_locked or self.quality_check_passed
+            not self.is_test_data
+            or self.review_status == "approved"
+            or self.root_cause_status != "unknown"
+            or self.confirmed_by
+            or self.confirmed_at
+            or self.facts_locked
+            or self.quality_check_passed
         ):
             raise ValueError("test_data must remain unverified, unapproved and unconfirmed")
         return self
@@ -102,6 +103,7 @@ class MatchedKnowledgeCase(StrictKnowledgeCaseModel):
 
 class KnowledgeCaseDraftResponse(StrictKnowledgeCaseModel):
     id: str
+    version_no: int = Field(default=1, ge=1)
     diagnosis_result_id: str
     feedback_id: str
     experiment_type: str
@@ -133,11 +135,7 @@ class KnowledgeCaseDraftApproveRequest(StrictKnowledgeCaseModel):
 
 class AICasePolishFields(StrictKnowledgeCaseModel):
     title: str = Field(min_length=1, max_length=300)
-    symptom_description: str = Field(
-        alias="symptomDescription", min_length=1, max_length=2000
-    )
+    symptom_description: str = Field(alias="symptomDescription", min_length=1, max_length=2000)
     teaching_note: str = Field(alias="teachingNote", min_length=1, max_length=4000)
-    solution_summary: str = Field(
-        alias="solutionSummary", min_length=1, max_length=2000
-    )
+    solution_summary: str = Field(alias="solutionSummary", min_length=1, max_length=2000)
     source_ids: list[str] = Field(alias="sourceIds", min_length=1, max_length=100)
