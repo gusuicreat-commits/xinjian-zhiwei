@@ -1,4 +1,5 @@
 from typing import Any, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,6 +15,7 @@ class InterventionActionRequest(BaseModel):
         "mark_unconfirmed",
         "close",
     ]
+    request_id: Optional[UUID] = None
     expected_version: int = Field(ge=1)
     note: Optional[str] = Field(default=None, max_length=4000)
     target_teacher_user_id: Optional[str] = None
@@ -23,12 +25,20 @@ class InterventionActionRequest(BaseModel):
 class InterventionCaseResponse(BaseModel):
     id: str
     diagnosis_result_id: str
+    episode_id: Optional[str] = None
     class_id: Optional[str]
     assigned_teacher_user_id: Optional[str]
     status: str
     version_no: int
     resolution_summary: Optional[str]
     is_test_data: bool
+
+
+class ProblemResolutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID
+    expected_revision: int = Field(ge=1)
+    recovery_diagnosis_id: Optional[UUID] = None
 
 
 class ClassroomMessageCreate(BaseModel):

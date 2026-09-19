@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.diagnosis.lightweight_schemas import DeviceStateExplanation
 from app.knowledge.case_drafting import CaseDraftError, build_case_draft
 from app.models.ai_call_record import AICallRecord
 from app.models.classroom import ExperimentAssignment, ExperimentSession
@@ -35,7 +36,8 @@ from app.services.data_scope import (
 )
 from app.services.device_ingest import calculate_device_status
 from app.services.device_state_explanation import build_device_state_explanation
-from app.services.diagnosis_episode import apply_episode_feedback
+from app.services.diagnosis_episode import apply_episode_feedback, diagnosis_issues, issue_links
+from app.services.experiment_packages import teaching_available
 from app.services.interventions import ensure_intervention_case, public_resolution_summary
 
 
@@ -114,14 +116,37 @@ def build_student_dashboard(
         intervention = db.scalar(
             select(InterventionCase)
             .where(
-                InterventionCase.diagnosis_result_id == diagnosis.id,
+                or_(
+                    InterventionCase.episode_id == diagnosis.episode_id
+                    if diagnosis.episode_id
+                    else False,
+                    (InterventionCase.diagnosis_result_id == diagnosis.id)
+                    & InterventionCase.episode_id.is_(None),
+                ),
                 InterventionCase.class_id
                 == db.get(ExperimentAssignment, session.experiment_assignment_id).class_id,
             )
             .order_by(InterventionCase.updated_at.desc())
             .limit(1)
         )
+    interventions = []
+    if diagnosis is not None:
+        target_ids = [link.episode_id for link in issue_links(db, diagnosis)]
+        interventions = list(
+            db.scalars(
+                select(InterventionCase)
+                .where(
+                    InterventionCase.episode_id.in_(target_ids),
+                    InterventionCase.class_id
+                    == db.get(ExperimentAssignment, session.experiment_assignment_id).class_id,
+                )
+                .order_by(InterventionCase.updated_at.desc(), InterventionCase.id.desc())
+            )
+        )
     settings = get_settings()
+    teaching_ready = diagnosis is None or teaching_available(db, diagnosis)
+    if not teaching_ready:
+        guidance, ai_call = [], None
     device_status = calculate_device_status(device, settings.device_offline_after_seconds)
     device_state_explanation = build_device_state_explanation(
         device=device,
@@ -134,11 +159,31 @@ def build_student_dashboard(
             ai_call.output_json if ai_call is not None and ai_call.status == "succeeded" else None
         ),
     )
+    if not teaching_ready:
+        device_state_explanation = DeviceStateExplanation(
+            status_title="实验教学建议已暂停",
+            status_summary="此实验包已撤回或与当前引擎不兼容。",
+            meaning="历史观察继续保留，旧教学建议不能继续使用。",
+            next_step="请保留现场并联系教师，不自动切换到其他实验版本。",
+            source="rule",
+        )
     return StudentDashboardResponse(
+        issues=diagnosis_issues(db, diagnosis) if diagnosis else [],
         generated_at=datetime.now(timezone.utc),
         task=CurrentTaskSummary(
-            configured=False,
-            notice="尚未配置真实学生账号和实验任务；当前仅展示设备测试数据。",
+            configured=session is not None,
+            title=(
+                db.get(ExperimentAssignment, session.experiment_assignment_id).title
+                if session
+                else None
+            ),
+            notice=(
+                "当前为明确标记的测试实验。"
+                if session and session.is_test_data
+                else "正在查看当前实验会话。"
+                if session
+                else "当前没有有效实验会话，尚无可显示的实验数据。"
+            ),
         ),
         device=StudentDeviceStatus(
             device_id=device.device_key,
@@ -178,9 +223,9 @@ def build_student_dashboard(
                 matches=diagnosis.matched_rules,
                 evidence=diagnosis.evidence,
                 is_test_data=diagnosis.is_test_data,
-                deterministic_result=diagnosis.deterministic_core,
-                explanation=diagnosis.deterministic_explanation,
-                ai_enhancement=diagnosis.ai_enhancement,
+                deterministic_result=diagnosis.deterministic_core if teaching_ready else None,
+                explanation=diagnosis.deterministic_explanation if teaching_ready else None,
+                ai_enhancement=diagnosis.ai_enhancement if teaching_ready else None,
             )
             if diagnosis is not None
             else None
@@ -188,6 +233,7 @@ def build_student_dashboard(
         guidance=[
             StudentGuidanceItem(
                 id=item.id,
+                episode_id=item.episode_id,
                 tree_id=item.fault_tree_id,
                 tree_title=item.fault_tree_title,
                 tree_status=item.fault_tree_status,
@@ -203,6 +249,7 @@ def build_student_dashboard(
         feedback=(
             StudentFeedbackItem(
                 id=feedback.id,
+                episode_id=feedback.episode_id,
                 action=feedback.action,
                 note=feedback.note,
                 is_test_data=feedback.is_test_data,
@@ -211,9 +258,22 @@ def build_student_dashboard(
             if feedback is not None
             else None
         ),
+        interventions=[
+            StudentInterventionSummary(
+                id=item.id,
+                episode_id=item.episode_id,
+                status=item.status,
+                version_no=item.version_no,
+                assigned_teacher_user_id=item.assigned_teacher_user_id,
+                resolution_summary=public_resolution_summary(db, item),
+                updated_at=item.updated_at,
+            )
+            for item in interventions
+        ],
         intervention=(
             StudentInterventionSummary(
                 id=intervention.id,
+                episode_id=intervention.episode_id,
                 status=intervention.status,
                 version_no=intervention.version_no,
                 assigned_teacher_user_id=intervention.assigned_teacher_user_id,
@@ -255,6 +315,7 @@ def save_student_feedback(
     record = DiagnosisFeedback(
         device_id=device.id,
         diagnosis_result_id=diagnosis.id,
+        episode_id=str(payload.episode_id) if payload.episode_id else None,
         action=payload.action,
         note=payload.note,
         request_id=str(payload.request_id),
@@ -274,12 +335,40 @@ def save_student_feedback(
             class_id=assignment.class_id,
             actor_user_id=session.student_user_id,
             source="student_device_feedback",
+            episode_id=record.episode_id,
         )
         if case.class_id != assignment.class_id:
             from app.services.data_scope import ScopeConflict
 
             raise ScopeConflict("intervention recorded scope conflicts")
-    if payload.action == "resolved":
+    if payload.action == "resolved" and record.episode_id:
+        from app.models.intervention import InterventionEvent
+
+        session = db.get(ExperimentSession, experiment_session_id)
+        for case in db.scalars(
+            select(InterventionCase).where(
+                InterventionCase.episode_id == record.episode_id,
+                InterventionCase.status.in_(["claimed", "unconfirmed"]),
+                InterventionCase.assigned_teacher_user_id.is_not(None),
+            )
+        ):
+            db.add(
+                InterventionEvent(
+                    case_id=case.id,
+                    actor_user_id=session.student_user_id,
+                    action="student_reported_resolved",
+                    from_status=case.status,
+                    to_status=case.status,
+                    note="学生报告问题已解决；尚未等同复测恢复。",
+                    is_private=False,
+                    metadata_json={
+                        "feedback_id": record.id,
+                        "episode_id": record.episode_id,
+                        "recipient_user_id": case.assigned_teacher_user_id,
+                    },
+                )
+            )
+    if payload.action == "resolved" and len(issue_links(db, diagnosis)) <= 1:
         guidance = list(
             db.scalars(
                 select(GuidanceHistory)

@@ -27,12 +27,20 @@ from app.schemas.intervention import (
     InterventionActionRequest,
     InterventionCaseResponse,
     InterventionTimelineItem,
+    ProblemResolutionRequest,
 )
 from app.services.auth import user_access
-from app.services.data_scope import diagnosis_session
+from app.services.data_scope import (
+    ScopeConflict,
+    ScopeViolation,
+    assert_student_session_access,
+    diagnosis_session,
+    teacher_has_class_access,
+)
 from app.services.interventions import (
     InterventionConflict,
     apply_action,
+    apply_problem_resolution,
     ensure_intervention_case,
     public_resolution_summary,
     timeline,
@@ -48,12 +56,13 @@ def _case_response(db: Session, actor: User, case: InterventionCase) -> Interven
     _assert_case_access(db, actor, case, allow_student=True)
     summary = (
         case.resolution_summary
-        if {"teacher", "admin"}.intersection(_roles(db, actor))
+        if _teacher_has_class_access(db, actor, case.class_id)
         else public_resolution_summary(db, case)
     )
     return InterventionCaseResponse(
         id=case.id,
         diagnosis_result_id=case.diagnosis_result_id,
+        episode_id=case.episode_id,
         class_id=case.class_id,
         assigned_teacher_user_id=case.assigned_teacher_user_id,
         status=case.status,
@@ -68,27 +77,8 @@ def _roles(db: Session, actor: User) -> set[str]:
     return set(roles)
 
 
-def _teacher_has_class_access(
-    db: Session,
-    actor: Optional[User],
-    class_id: str,
-) -> bool:
-    if actor is None:
-        return False
-    roles = _roles(db, actor)
-    if "admin" in roles:
-        return True
-    if "teacher" not in roles:
-        return False
-    return (
-        db.scalar(
-            select(TeachingAssignment.id).where(
-                TeachingAssignment.class_id == class_id,
-                TeachingAssignment.user_id == actor.id,
-            )
-        )
-        is not None
-    )
+def _teacher_has_class_access(db, actor, class_id):
+    return teacher_has_class_access(db, actor, class_id)
 
 
 def _assert_teacher_class_access(
@@ -110,61 +100,32 @@ def _accessible_class_for_diagnosis(db: Session, actor: User, diagnosis: Diagnos
     owner = diagnosis_session(db, diagnosis)
     if owner is not None:
         assignment = db.get(ExperimentAssignment, owner.experiment_assignment_id)
-        roles = _roles(db, actor)
-        if _teacher_has_class_access(db, actor, assignment.class_id) or (
-            "student" in roles
-            and owner.student_user_id == actor.id
-            and owner.status == "active"
-            and owner.ended_at is None
-        ):
+        if _teacher_has_class_access(db, actor, assignment.class_id):
             return assignment.class_id
-    raise HTTPException(
-        status_code=403,
-        detail={
-            "code": "DIAGNOSIS_SCOPE_DENIED",
-            "message": "The diagnosis has no accessible recorded session scope",
-        },
-    )
+        try:
+            assert_student_session_access(db, actor, owner)
+            return assignment.class_id
+        except (ScopeConflict, ScopeViolation):
+            pass
+    raise HTTPException(status_code=403, detail="diagnosis recorded scope is not accessible")
 
 
-def _assert_case_access(
-    db: Session,
-    actor: User,
-    case: InterventionCase,
-    *,
-    allow_student: bool,
-) -> None:
-    roles = _roles(db, actor)
-    if "admin" in roles:
+def _assert_case_access(db, actor, case, *, allow_student):
+    diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
+    owner = diagnosis_session(db, diagnosis) if diagnosis is not None else None
+    if owner is not None:
+        assignment = db.get(ExperimentAssignment, owner.experiment_assignment_id)
+        if assignment.class_id != case.class_id:
+            raise HTTPException(status_code=403, detail="intervention recorded scope conflicts")
+    if _teacher_has_class_access(db, actor, case.class_id):
         return
-    if "teacher" in roles:
-        diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
-        owner = diagnosis_session(db, diagnosis) if diagnosis is not None else None
-        if owner is not None:
-            assignment = db.get(ExperimentAssignment, owner.experiment_assignment_id)
-            if assignment.class_id != case.class_id:
-                raise HTTPException(status_code=403, detail="intervention recorded scope conflicts")
-        _assert_teacher_class_access(db, actor, case.class_id)
-        return
-    if allow_student and "student" in roles:
-        diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
-        owner = diagnosis_session(db, diagnosis) if diagnosis is not None else None
-        if (
-            owner is not None
-            and owner.student_user_id == actor.id
-            and owner.status == "active"
-            and owner.ended_at is None
-        ):
-            assignment = db.get(ExperimentAssignment, owner.experiment_assignment_id)
-            if assignment.class_id == case.class_id:
-                return
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail={
-            "code": "INTERVENTION_SCOPE_DENIED",
-            "message": "The intervention is outside the current user's scope",
-        },
-    )
+    if allow_student and owner is not None:
+        try:
+            assert_student_session_access(db, actor, owner)
+            return
+        except (ScopeConflict, ScopeViolation):
+            pass
+    raise HTTPException(status_code=403, detail="intervention recorded scope is not accessible")
 
 
 @router.post(
@@ -176,6 +137,7 @@ def open_intervention(
     diagnosis_id: str,
     actor: CurrentUser,
     db: DatabaseSession,
+    episode_id: Optional[str] = None,
 ) -> InterventionCaseResponse:
     diagnosis = db.get(DiagnosisResult, diagnosis_id)
     if diagnosis is None:
@@ -188,13 +150,23 @@ def open_intervention(
             class_id=class_id,
             actor_user_id=actor.id,
             source="authenticated_user_request",
+            episode_id=episode_id,
         )
         _assert_case_access(db, actor, case, allow_student=True)
         db.commit()
+    except InterventionConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except IntegrityError:
         db.rollback()
-        case = db.scalar(
-            select(InterventionCase).where(InterventionCase.diagnosis_result_id == diagnosis_id)
+        # Re-resolve the actual winning object and reapply all access checks.
+        case = ensure_intervention_case(
+            db,
+            diagnosis,
+            class_id=class_id,
+            actor_user_id=actor.id,
+            source="authenticated_user_request",
+            episode_id=episode_id,
         )
     if case is None:
         raise HTTPException(status_code=409, detail="intervention creation conflict")
@@ -223,6 +195,30 @@ def intervention_queue(
     return results
 
 
+@router.post("/interventions/{case_id}/problem-resolution")
+def resolve_intervention_problem(
+    case_id: str, payload: ProblemResolutionRequest, actor: InterventionManager, db: DatabaseSession
+):
+    case = db.get(InterventionCase, case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="intervention not found")
+    _assert_case_access(db, actor, case, allow_student=False)
+    try:
+        return apply_problem_resolution(
+            db,
+            case,
+            actor,
+            request_id=str(payload.request_id),
+            expected_revision=payload.expected_revision,
+            recovery_diagnosis_id=str(payload.recovery_diagnosis_id)
+            if payload.recovery_diagnosis_id
+            else None,
+        )
+    except InterventionConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get(
     "/interventions/{case_id}",
     response_model=InterventionCaseResponse,
@@ -237,7 +233,7 @@ def read_intervention(
         raise HTTPException(status_code=404, detail="intervention not found")
     _assert_case_access(db, actor, case, allow_student=True)
     response = _case_response(db, actor, case)
-    if not {"teacher", "admin"}.intersection(_roles(db, actor)):
+    if not _teacher_has_class_access(db, actor, case.class_id):
         response.resolution_summary = public_resolution_summary(db, case)
     return response
 
@@ -267,6 +263,7 @@ def act_on_intervention(
             db,
             case,
             actor,
+            request_id=str(payload.request_id) if payload.request_id else None,
             action=payload.action,
             expected_version=payload.expected_version,
             note=payload.note,

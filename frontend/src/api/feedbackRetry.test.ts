@@ -59,3 +59,29 @@ it('retains the original note and will not erase a different prepared payload', 
   completeFeedbackRequest(credentials, 'diagnosis-note', first)
   expect(listLocalFeedbackRequests(credentials)).toEqual([])
 })
+
+it('a server receipt can confirm an old implicit single-problem request without accepting another explicit target', () => {
+  sessionStorage.clear()
+  const pending = getOrCreateFeedbackRequest(credentials, 'legacy-diagnosis', 'resolved')
+  const target = '655b30d0-27e4-4280-8769-c00f039fc88d'
+  completeFeedbackRequest(credentials, 'legacy-diagnosis', { ...pending, episode_id: target }, true)
+  expect(listLocalFeedbackRequests(credentials)).toEqual([])
+  const explicit = getOrCreateFeedbackRequest(
+    credentials,
+    'new-diagnosis',
+    'resolved',
+    null,
+    target,
+  )
+  completeFeedbackRequest(
+    credentials,
+    'new-diagnosis',
+    {
+      ...explicit,
+      episode_id: '755b30d0-27e4-4280-8769-c00f039fc88d',
+    },
+    true,
+  )
+  expect(listLocalFeedbackRequests(credentials)).toHaveLength(1)
+  sessionStorage.clear()
+})

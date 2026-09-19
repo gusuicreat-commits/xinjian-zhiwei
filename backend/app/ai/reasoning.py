@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient, build_ai_client
 from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_payload, sanitize_text
-from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
+from app.ai.governance import AIQuotaDenied, GovernedAIInvocation, current_delivery_scope
 from app.ai.schemas import AIReasonedCause, AIReasoningResult
 from app.core.config import Settings
 from app.models.ai_call_record import AICallRecord
@@ -109,8 +109,8 @@ def _fallback_reasoning(state: dict[str, Any], *, limitation: str) -> AIReasonin
             if ranked
             else "现有证据不足以形成候选原因排序。"
         ),
-        limitations=[limitation] + (["受输出数量限制，仅展示部分候选或关联证据；完整记录保留。"]
-                                   if truncated else []),
+        limitations=[limitation]
+        + (["受输出数量限制，仅展示部分候选或关联证据；完整记录保留。"] if truncated else []),
         missing_evidence=[] if ranked else ["缺少可关联到候选原因的有效证据。"],
         next_verification_action=next_action,
         conflict=bool(state.get("evidence_conflict")),
@@ -185,13 +185,18 @@ def _validate_reasoning(
 
 def _reasoning_prompt(
     state: dict[str, Any],
-    *, sensitive_sources: Iterable[Any] = (),
+    *,
+    sensitive_sources: Iterable[Any] = (),
 ) -> tuple[str, str, str, list[dict[str, str]]]:
     evidence = build_evidence_registry(state)
     evidence_ids = {item["id"] for item in evidence}
     candidates = [
-        {**item, "evidence_refs": [ref for ref in dict.fromkeys(item.get("evidence_refs") or [])
-                                  if ref in evidence_ids]}
+        {
+            **item,
+            "evidence_refs": [
+                ref for ref in dict.fromkeys(item.get("evidence_refs") or []) if ref in evidence_ids
+            ],
+        }
         for item in state.get("fault_tree_candidates") or []
     ]
     payload = {
@@ -217,11 +222,14 @@ def _reasoning_prompt(
         }
     for field in ("normal_conditions", "standard_fault_mappings", "teacher_confirmed_cases"):
         references[("knowledge_constraints", field, "*", "case_id")] = {
-            item["case_id"] for item in payload["knowledge_constraints"].get(field, [])
+            item["case_id"]
+            for item in payload["knowledge_constraints"].get(field, [])
             if item.get("case_id")
         }
     payload = sanitize_provider_payload(
-        payload, allowed_fields=tuple(payload), trusted_references=references,
+        payload,
+        allowed_fields=tuple(payload),
+        trusted_references=references,
         sensitive_sources=(state, *sensitive_sources),
     )
     payload["output_json_schema"] = AIReasoningResult.model_json_schema()
@@ -256,6 +264,23 @@ def reason_about_causes(
 ) -> tuple[AIReasoningResult, str]:
     """Rank only fault-tree candidates; return a deterministic fallback on any failure."""
 
+    if not settings.ai_enabled:
+        return _fallback_reasoning(
+            state, limitation="AI 已关闭，使用确定性结果。"
+        ), "deterministic_fallback"
+    constraints = state.get("knowledge_constraints") or {}
+    case_ids = tuple(
+        {
+            item["case_id"]
+            for field in ("normal_conditions", "standard_fault_mappings", "teacher_confirmed_cases")
+            for item in constraints.get(field, [])
+            if item.get("case_id")
+        }
+    )
+    governor = GovernedAIInvocation(
+        db, diagnosis, settings, call_stage=call_stage, knowledge_case_ids=case_ids
+    )
+
     existing = db.scalar(
         select(AICallRecord).where(
             AICallRecord.workflow_run_id == workflow_run_id,
@@ -264,10 +289,12 @@ def reason_about_causes(
     )
     if existing and existing.output_json:
         try:
+            current_delivery_scope(db, diagnosis)
+            governor._check_knowledge()
             replay = _validate_reasoning(
                 json.dumps(existing.output_json), state, build_evidence_registry(state)
             )
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AIQuotaDenied):
             return _fallback_reasoning(
                 state, limitation="历史推理不符合当前证据约束。"
             ), "deterministic_fallback"
@@ -289,22 +316,25 @@ def reason_about_causes(
     used_client = None
     error: Exception | None = None
     attempts = 0
-    governor = GovernedAIInvocation(db, diagnosis, settings, call_stage=call_stage)
     try:
         system_prompt, user_prompt, prompt_hash, evidence = _reasoning_prompt(
-            state, sensitive_sources=(diagnosis.context_snapshot or {},),
+            state,
+            sensitive_sources=(diagnosis.context_snapshot or {},),
         )
     except (ValueError, TypeError, KeyError) as exc:
-        error = (exc if isinstance(exc, ProviderInputError)
-                 else ProviderInputError("AI_INPUT_INVALID"))
+        error = (
+            exc if isinstance(exc, ProviderInputError) else ProviderInputError("AI_INPUT_INVALID")
+        )
         system_prompt, user_prompt = "", ""
         prompt_hash = hashlib.sha256(error.code.encode()).hexdigest()
         evidence = build_evidence_registry(state)
-    for route, client in ([] if error else clients):
+    for route, client in [] if error else clients:
         for _ in range(settings.ai_max_retries + 1):
             try:
                 candidate = governor.complete_json(
-                    client, system_prompt=system_prompt, user_prompt=user_prompt,
+                    client,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
                 )
                 result = _validate_reasoning(candidate.content, state, evidence)
                 completion = candidate
@@ -356,8 +386,13 @@ def reason_about_causes(
         latency_ms=duration_ms,
         estimated_cost=governor.estimated_cost,
         validation_status="passed" if mode == "ai" else "fallback",
-        fallback_reason=(error.code if isinstance(error, (AIQuotaDenied, ProviderInputError))
-                         else type(error).__name__ if error else None),
+        fallback_reason=(
+            error.code
+            if isinstance(error, (AIQuotaDenied, ProviderInputError))
+            else type(error).__name__
+            if error
+            else None
+        ),
         error_code="AI_REASONING_FAILED" if error else None,
         error_message=type(error).__name__ if error else None,
         is_test_data=diagnosis.is_test_data,

@@ -9,6 +9,7 @@ import {
   getOrCreateFeedbackRequest,
   listLocalFeedbackRequests,
   sameFeedbackPayload,
+  matchesServerFeedback,
 } from '@/api/feedbackRetry'
 import {
   createDiagnosisFeedback,
@@ -65,7 +66,12 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     const server: FeedbackRecoveryTarget[] = (feedbackRecovery.value?.pending ?? []).map(
       (item) => ({
         diagnosis_result_id: item.diagnosis_result_id,
-        payload: { request_id: item.request_id, action: item.action, note: item.note },
+        payload: {
+          request_id: item.request_id,
+          action: item.action,
+          note: item.note,
+          ...(item.episode_id ? { episode_id: item.episode_id } : {}),
+        },
         source: 'server',
         created_at: item.created_at,
       }),
@@ -77,7 +83,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
           !server.some(
             (item) =>
               item.diagnosis_result_id === local.diagnosis_result_id &&
-              sameFeedbackPayload(item.payload, local.payload),
+              matchesServerFeedback(local.payload, item.payload),
           ),
       ),
     ]
@@ -103,9 +109,10 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     credentials: DeviceCredentials,
     diagnosisId: string,
     payload: StudentFeedbackCreate,
+    authoritativeReceipt = false,
   ): void {
     try {
-      completeFeedbackRequest(credentials, diagnosisId, payload)
+      completeFeedbackRequest(credentials, diagnosisId, payload, authoritativeReceipt)
     } catch {
       // A server-confirmed result stays confirmed even when browser storage is unavailable.
       if (activeSessionScope === feedbackSessionScope(credentials)) {
@@ -132,7 +139,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       feedbackRecovery.value = recovery
       if (recovery.latest_applied) {
         const applied = recovery.latest_applied
-        clearMatchingLocal(credentials, applied.diagnosis_result_id, applied)
+        clearMatchingLocal(credentials, applied.diagnosis_result_id, applied, true)
       }
       readLocalFeedback(credentials)
       feedbackRecoveryState.value = 'ready'
@@ -248,6 +255,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   async function submitFeedback(
     credentials: DeviceCredentials,
     action: FeedbackAction,
+    episodeId: string | null = null,
   ): Promise<boolean> {
     if (feedbackLoading.value) return false
     if (!dashboard.value?.diagnosis || activeSessionScope !== feedbackSessionScope(credentials)) {
@@ -280,7 +288,13 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
         throw new FeedbackRequestError(
           localFeedbackError.value || '请先在“上一条反馈待确认”中继续确认原反馈，再提交新的反馈。',
         )
-      const payload = getOrCreateFeedbackRequest(scopedCredentials, diagnosisId, action)
+      const payload = getOrCreateFeedbackRequest(
+        scopedCredentials,
+        diagnosisId,
+        action,
+        null,
+        episodeId,
+      )
       readLocalFeedback(scopedCredentials)
       return await sendFeedback(scopedCredentials, diagnosisId, payload)
     } finally {

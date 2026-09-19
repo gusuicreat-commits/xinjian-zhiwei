@@ -69,6 +69,9 @@ class TeacherLogItem(StrictTeacherModel):
 
 
 class TeacherInterventionItem(StrictTeacherModel):
+    episode_id: Optional[str] = None
+    problem_status: Optional[str] = None
+    evidence_revision: Optional[int] = None
     case_id: Optional[str] = None
     source: Literal["student_request", "manual_request", "automatic_guidance"]
     status: Literal[

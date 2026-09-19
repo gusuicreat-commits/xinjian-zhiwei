@@ -37,6 +37,7 @@ from app.services.data_scope import (
 from app.services.data_scope import (
     find_active_experiment_session,
     resolve_experiment_session,
+    session_package_version_id,
 )
 from app.services.experiment_packages import load_experiment_package_runtime
 
@@ -331,13 +332,9 @@ def start_workflow(
     assignment = db.get(ExperimentAssignment, resolved_session.experiment_assignment_id)
     if assignment is None:
         raise WorkflowScopeViolation("experiment assignment no longer exists")
-    package_version_id = payload.experiment_version_id or assignment.experiment_version_id
-    if (
-        payload.experiment_version_id
-        and assignment.experiment_version_id
-        and payload.experiment_version_id != assignment.experiment_version_id
-    ):
-        raise WorkflowScopeViolation("requested package version differs from the assignment")
+    package_version_id = session_package_version_id(
+        db, resolved_session, payload.experiment_version_id
+    )
     package_runtime = None
     if package_version_id:
         package_runtime = load_experiment_package_runtime(db, package_version_id)
@@ -653,6 +650,7 @@ def resume_workflow_with_feedback(
         raise WorkflowConflict("workflow is not waiting for student feedback")
     decision = {
         "id": feedback.id,
+        "episode_id": feedback.episode_id,
         "action": feedback.action,
         "note": sanitize_text(feedback.note, max_chars=1000) if feedback.note else None,
         "created_at": feedback.created_at.isoformat(),
@@ -744,6 +742,14 @@ def serialize_workflow(
     audience: str = "teacher",
 ) -> DiagnosisWorkflowResponse:
     is_student = audience == "student"
+    from sqlalchemy.orm import object_session
+
+    from app.services.experiment_packages import teaching_available
+
+    bound_db = object_session(workflow)
+    teaching_ready = not is_student or (
+        bound_db is not None and teaching_available(bound_db, workflow)
+    )
     public_review_request = workflow.review_request
     if is_student:
         public_review_request = (
@@ -776,9 +782,10 @@ def serialize_workflow(
         node_metrics=[] if is_student else workflow.node_metrics,
         retrieval_audit={} if is_student else workflow.retrieval_audit,
         resume_count=workflow.resume_count,
-        final_result=workflow.final_result,
+        final_result=workflow.final_result if teaching_ready else None,
         error_messages=workflow.error_messages,
-        review_request=public_review_request,
+        review_request=public_review_request if teaching_ready else None,
+        teaching_available=teaching_ready,
         reviews=[
             DiagnosisWorkflowReviewResponse(
                 id=item.id,

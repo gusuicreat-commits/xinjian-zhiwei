@@ -200,6 +200,15 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
     },
     global: {
       stubs: {
+        ElSelect: {
+          props: ['modelValue'],
+          emits: ['update:modelValue'],
+          template: `<select :value="modelValue" @change="$emit('update:modelValue', $event.target.value)"><slot/></select>`,
+        },
+        ElOption: {
+          props: ['value', 'label'],
+          template: '<option :value="value">{{ label }}</option>',
+        },
         ElCard: { template: '<section><slot name="header"/><slot/></section>' },
         ElEmpty: { props: ['description'], template: '<div>{{ description }}</div>' },
         ElResult: {
@@ -252,7 +261,7 @@ describe('DiagnosisPanel', () => {
     expect(wrapper.text()).toContain('连续重试')
 
     await wrapper.findAll('button').at(-1)?.trigger('click')
-    expect(wrapper.emitted('feedback')).toEqual([['request_teacher_help']])
+    expect(wrapper.emitted('feedback')).toEqual([['request_teacher_help', null]])
   })
 
   it('shows the public teacher resolution returned by the workflow', () => {
@@ -268,7 +277,7 @@ describe('DiagnosisPanel', () => {
         updated_at: '2026-07-20T08:10:00Z',
       },
     })
-    expect(wrapper.text()).toContain('教师已标记为解决')
+    expect(wrapper.text()).toContain('教师已完成工单处理（不代表硬件复测通过）')
   })
 
   it('shows only student-facing workflow progress and guidance', () => {
@@ -384,4 +393,32 @@ it('explains and disables starting a workflow without an experiment session', as
   expect(wrapper.text()).toContain('请先连接有效的实验会话')
   await button.trigger('click')
   expect(wrapper.emitted('requestWorkflow')).toBeUndefined()
+})
+
+it('keeps same-error component guidance separate until a problem is selected', async () => {
+  const wrapper = mountPanel({
+    diagnosis,
+    issues: ['a', 'b'].map((id) => ({
+      id,
+      error_type: 'read_failed',
+      status: 'open',
+      failure_count: 1,
+      resolution_source: null,
+      scope: { kind: 'component', keys: [id] },
+    })),
+    guidance: ['a', 'b'].map((id) => ({
+      ...guidance,
+      id,
+      episode_id: id,
+      hints: [{ cause_id: id, level: 1, text: `只检查部件${id}` }],
+    })),
+  })
+  expect(wrapper.text()).not.toContain('只检查部件a')
+  expect(wrapper.text()).not.toContain('只检查部件b')
+  await wrapper.find('select').setValue('a')
+  expect(wrapper.text()).toContain('只检查部件a')
+  expect(wrapper.text()).not.toContain('只检查部件b')
+  const button = wrapper.findAll('button').find((item) => item.text() === '仍未解决')!
+  await button.trigger('click')
+  expect(wrapper.emitted('feedback')?.[0]).toEqual(['unresolved', 'a'])
 })

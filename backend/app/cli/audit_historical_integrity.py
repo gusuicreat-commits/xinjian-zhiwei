@@ -17,6 +17,10 @@ _NEW_COLUMNS = {
     "knowledge_case_drafts": "version_no",
     "diagnosis_results": "episode_evidence_revision",
     "diagnosis_episodes": "evidence_revision",
+    "experiment_sessions": "experiment_version_id",
+    "guidance_history": "episode_id",
+    "intervention_cases": "episode_id",
+    "ai_usage_reservations": "attribution",
 }
 
 
@@ -92,8 +96,14 @@ def audit_historical_integrity(db: Session) -> dict:
                 "student_user_id",
                 "device_id",
                 "experiment_assignment_id",
+                "experiment_version_id",
+                "is_test_data",
+                "status",
             )
         }
+        for session in sessions.values():
+            if session.get("experiment_version_id") is None and not session.get("is_test_data"):
+                add("experiment_sessions", session["id"], "missing_pinned_package")
         assignments = {row["id"]: row for row in rows("experiment_assignments", "id", "class_id")}
         workflows = {}
         for row in rows(
@@ -153,8 +163,9 @@ def audit_historical_integrity(db: Session) -> dict:
             elif assignments[owner["experiment_assignment_id"]]["class_id"] != case["class_id"]:
                 add("intervention_cases", case["id"], "conflicting_class_scope")
         histories = {}
-        for row in rows("guidance_history", "diagnosis_result_id", "failure_count"):
-            histories.setdefault(row["diagnosis_result_id"], []).append(row["failure_count"])
+        for row in rows("guidance_history", "diagnosis_result_id", "failure_count", "episode_id"):
+            key = row.get("episode_id") or row["diagnosis_result_id"]
+            histories.setdefault(key, []).append(row["failure_count"])
         for episode in rows(
             "diagnosis_episodes",
             "id",
@@ -162,8 +173,10 @@ def audit_historical_integrity(db: Session) -> dict:
             "failure_count",
             "status",
             "resolved_at",
+            "scope_key",
         ):
-            counts = histories.get(episode["last_diagnosis_result_id"], [])
+            key = episode["id"] if episode.get("scope_key") else episode["last_diagnosis_result_id"]
+            counts = histories.get(key, [])
             if counts and max(counts) != episode["failure_count"]:
                 add("diagnosis_episodes", episode["id"], "guidance_failure_count_mismatch")
             if episode["status"] == "resolved" and episode["resolved_at"] is None:

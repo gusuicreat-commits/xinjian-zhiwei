@@ -286,6 +286,7 @@ class DiagnosisRunResponse(StrictModel):
     explanation: Optional[dict[str, Any]] = None
     ai_enhancement: Optional[dict[str, Any]] = None
     episode: Optional[dict[str, Any]] = None
+    issues: list[dict[str, Any]] = Field(default_factory=list)
     experiment_id: Optional[str] = None
     experiment_version: Optional[str] = None
     experiment_version_id: Optional[str] = None

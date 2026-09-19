@@ -195,7 +195,9 @@ def test_new_evidence_racing_resolution_has_one_lifecycle_order(lifecycle_storag
         current = db.get(DiagnosisEpisode, second_episode)
         if outcome == "resolved":
             assert old.status == "resolved"
-            assert current.id != old.id
+            # Both samples predate closure: delivery after closure is history,
+            # not a new period of physical failure.
+            assert current.id == old.id
             assert current.failure_count == 1
         else:
             assert current.id == old.id

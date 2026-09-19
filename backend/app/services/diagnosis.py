@@ -21,12 +21,14 @@ from app.experiment_packages.loader import ExperimentPackageLoadError
 from app.experiments.loader import experiment_definition_hash, load_experiment_definition
 from app.experiments.schemas import ExperimentDefinition
 from app.models.base import utc_now
+from app.models.classroom import ExperimentSession
 from app.models.device import Device
 from app.models.device_heartbeat import DeviceHeartbeat
 from app.models.device_log import DeviceLog
 from app.models.diagnosis_evidence import DiagnosisEvidence
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.sensor_reading import SensorReading
+from app.services.data_scope import session_package_version_id
 from app.services.experiment_packages import load_experiment_package_runtime
 
 
@@ -45,6 +47,13 @@ def build_diagnosis_context(
     definition: ExperimentDefinition | None = None
     definition_hash: str | None = None
     package_runtime = None
+    if experiment_session_id:
+        session = db.get(ExperimentSession, experiment_session_id)
+        if session is None or session.device_id != device.id:
+            raise ExperimentPackageLoadError("invalid recorded session scope")
+        experiment_version_id = session_package_version_id(db, session, experiment_version_id)
+        if session.experiment_version_id and experiment_template is not None:
+            raise ExperimentPackageLoadError("session package cannot be overridden by a template")
     if experiment_version_id is not None:
         package_runtime = load_experiment_package_runtime(db, experiment_version_id)
         definition = package_runtime.definition

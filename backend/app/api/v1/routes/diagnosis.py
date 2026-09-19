@@ -1,11 +1,15 @@
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.schemas import AIExplanationRequest, AIExplanationResponse, AIStatusResponse
-from app.api.dependencies import get_authenticated_device, require_review_access
+from app.api.dependencies import (
+    get_student_device,
+    require_review_access,
+    revalidate_student_access,
+)
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.diagnosis.fault_tree_schemas import (
@@ -29,12 +33,13 @@ from app.models.guidance_history import GuidanceHistory
 from app.services.ai_diagnosis import explain_diagnosis, get_ai_status
 from app.services.data_scope import diagnosis_session, find_active_experiment_session
 from app.services.diagnosis import build_diagnosis_context, diagnose, save_diagnosis_result
-from app.services.diagnosis_episode import upsert_episode
+from app.services.diagnosis_episode import diagnosis_issues, upsert_episode
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
     WorkflowScopeViolation,
     resolve_experiment_session,
 )
+from app.services.experiment_packages import load_experiment_package_runtime
 from app.services.guidance import (
     generate_guidance,
     history_to_evaluation,
@@ -47,7 +52,7 @@ from app.services.lightweight_diagnosis import (
 )
 
 router = APIRouter(prefix="/diagnosis", tags=["diagnosis"])
-AuthenticatedDevice = Annotated[Device, Depends(get_authenticated_device)]
+AuthenticatedDevice = Annotated[Device, Depends(get_student_device)]
 DatabaseSession = Annotated[Session, Depends(get_db)]
 ReviewAccess = Annotated[None, Depends(require_review_access)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
@@ -56,13 +61,25 @@ AppSettings = Annotated[Settings, Depends(get_settings)]
 def current_diagnosis_session(
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    request: Request,
     session_id: Annotated[Optional[str], Header(alias="X-Experiment-Session-ID")] = None,
 ):
     try:
-        session = (resolve_experiment_session(db, device, session_id)
-                   if session_id is not None else find_active_experiment_session(db, device))
+        selected = request.state.student_experiment_session
+        session = (
+            resolve_experiment_session(db, device, selected.id)
+            if selected
+            else find_active_experiment_session(db, device)
+        )
         if session is None:
             raise WorkflowConflict("diagnosis requires one active experiment session")
+        if session.experiment_version_id:
+            try:
+                load_experiment_package_runtime(db, session.experiment_version_id)
+            except ExperimentPackageLoadError as exc:
+                raise WorkflowConflict(
+                    "experiment package is unavailable; contact the teacher"
+                ) from exc
         return session
     except WorkflowScopeViolation as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -122,6 +139,8 @@ def run_device_diagnosis(
             experiment_version_id=payload.experiment_version_id,
             experiment_session_id=session.id,
         )
+    except WorkflowScopeViolation as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (ExperimentDefinitionLoadError, ExperimentPackageLoadError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
@@ -170,6 +189,7 @@ def run_device_diagnosis(
             else None
         ),
         experiment_id=record.experiment_id,
+        issues=diagnosis_issues(db, record),
         experiment_version=record.experiment_version,
         experiment_version_id=record.experiment_version_id,
         knowledge_scope=record.knowledge_scope,
@@ -248,6 +268,7 @@ def read_ai_status(settings: AppSettings) -> AIStatusResponse:
 )
 def run_ai_explanation(
     diagnosis_result_id: str,
+    request: Request,
     device: AuthenticatedDevice,
     db: DatabaseSession,
     session: CurrentDiagnosisSession,
@@ -261,13 +282,20 @@ def run_ai_explanation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="diagnosis not found")
     _assert_diagnosis_scope(db, diagnosis_result, session)
     generate_guidance(db, device, diagnosis_result)
-    return explain_diagnosis(
+    response = explain_diagnosis(
         db,
         device,
         diagnosis_result,
         settings,
         user_question=payload.user_question if payload else None,
     )
+    revalidate_student_access(request, db)
+    if diagnosis_result.experiment_version_id:
+        try:
+            load_experiment_package_runtime(db, diagnosis_result.experiment_version_id)
+        except ExperimentPackageLoadError as exc:
+            raise HTTPException(status_code=409, detail="experiment package was withdrawn") from exc
+    return response
 
 
 @router.get(
@@ -286,7 +314,8 @@ def get_device_guidance(
         _guidance_response(record, device.device_key)
         for record in list_device_guidance(db, device)
         if (owner := diagnosis_session(db, db.get(DiagnosisResult, record.diagnosis_result_id)))
-        is not None and owner.id == session.id
+        is not None
+        and owner.id == session.id
     ]
 
 

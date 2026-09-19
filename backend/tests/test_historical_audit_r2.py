@@ -84,13 +84,18 @@ def test_inventory_on_real_migration_schema_is_read_only_and_private(migration_d
     assert "guidance_failure_count_mismatch" in reasons
     assert "resolved_without_timestamp" in reasons
     if not revision.endswith("0029"):
-        assert report["schema_finding_count"] == (9 if revision.endswith("0027") else 8)
+        assert report["schema_finding_count"] == (13 if revision.endswith("0027") else 12)
         assert any(
             item["reason"] == "source_draft_unique_constraint_not_enabled"
             for item in report["schema_findings"]
         )
     else:
-        assert report["schema_findings"] == []
+        assert {item["table"] for item in report["schema_findings"]} == {
+            "experiment_sessions",
+            "guidance_history",
+            "intervention_cases",
+            "ai_usage_reservations",
+        }
 
 
 def test_current_sqlite_inventory_accepts_read_only_connection(api_context):

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -11,11 +11,31 @@ from app.models.base import TimestampMixin, UuidPrimaryKeyMixin
 class InterventionCase(UuidPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "intervention_cases"
     __table_args__ = (
-        UniqueConstraint("diagnosis_result_id", name="uq_intervention_case_diagnosis"),
+        Index(
+            "uq_intervention_legacy_diagnosis",
+            "diagnosis_result_id",
+            unique=True,
+            postgresql_where=text("episode_id IS NULL"),
+            sqlite_where=text("episode_id IS NULL"),
+        ),
+        Index(
+            "uq_intervention_active_episode",
+            "episode_id",
+            unique=True,
+            postgresql_where=text(
+                "episode_id IS NOT NULL AND status IN ('open','claimed','unconfirmed')"
+            ),
+            sqlite_where=text(
+                "episode_id IS NOT NULL AND status IN ('open','claimed','unconfirmed')"
+            ),
+        ),
     )
 
     diagnosis_result_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("diagnosis_results.id", ondelete="CASCADE"), nullable=False
+    )
+    episode_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("diagnosis_episodes.id", ondelete="RESTRICT")
     )
     class_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("classes.id", ondelete="SET NULL"), index=True

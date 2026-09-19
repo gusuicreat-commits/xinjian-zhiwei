@@ -95,6 +95,8 @@ class Settings(BaseSettings):
     )
     ai_output_language: str = "zh-CN"
     ai_max_cost_per_call: Optional[float] = None
+    ai_budget_currency: str = Field(default="unspecified", min_length=1, max_length=20)
+    ai_price_version: str = Field(default="unconfigured", min_length=1, max_length=100)
     ai_low_confidence_threshold: float = 0.65
     ai_input_cost_per_1k_tokens: Optional[float] = None
     ai_output_cost_per_1k_tokens: Optional[float] = None

@@ -62,7 +62,9 @@ def test_diagnosis_run_produces_deterministic_result_and_aggregates_episode(
     second = _diagnose_failure(api_context)
     assert first != second
     with api_context["session_factory"]() as db:
-        episodes = db.query(DiagnosisEpisode).all()
+        episodes = (
+            db.query(DiagnosisEpisode).filter_by(primary_error_code="SENSOR_READ_FAILED").all()
+        )
         assert len(episodes) == 1
         assert episodes[0].last_diagnosis_result_id == second
         record = db.get(DiagnosisResult, second)

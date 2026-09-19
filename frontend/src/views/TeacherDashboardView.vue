@@ -17,6 +17,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { pendingInterventionCommand, reportTeacherProblemResolved } from '@/api/teacher'
 import TeacherDeviceChart from '@/components/TeacherDeviceChart.vue'
 import TeacherErrorRankingChart from '@/components/TeacherErrorRankingChart.vue'
 import TeacherErrorTrendChart from '@/components/TeacherErrorTrendChart.vue'
@@ -172,15 +173,61 @@ function latestReview(item: TeacherDiagnosisWorkflow) {
 const interventionStatusLabels: Record<TeacherIntervention['status'], string> = {
   open: '待认领',
   claimed: '处理中',
-  resolved: '已解决',
+  resolved: '处理完成',
   unconfirmed: '待补充证据',
   closed: '已关闭',
   recommended: '建议介入',
 }
 
+async function reportProblemResolved(item: TeacherIntervention): Promise<void> {
+  if (
+    !sessionStore.session ||
+    !sessionStore.accessToken ||
+    !item.case_id ||
+    item.evidence_revision == null
+  )
+    return
+  try {
+    await ElMessageBox.confirm(
+      '记录教师报告的问题已解决。这不会声明硬件已通过复测，也不会自动关闭工单。若上次请求未确认，将继续确认原请求。',
+      '报告问题状态',
+      {
+        confirmButtonText: '记录教师报告',
+        cancelButtonText: '取消',
+      },
+    )
+    await reportTeacherProblemResolved(
+      sessionStore.accessToken,
+      sessionStore.session.user_id,
+      item.case_id,
+      item.evidence_revision,
+    )
+    await dashboardStore.load(sessionStore.accessToken)
+    ElMessage.success('问题状态已记录，工单处理状态保持独立')
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return
+    ElMessage.error('结果尚未确认或证据已更新，请刷新并核对原请求；不要重复提交新请求。')
+  }
+}
+
 async function handleIntervention(item: TeacherIntervention): Promise<void> {
   if (!sessionStore.accessToken || !item.case_id || item.version_no === null) return
   try {
+    const pending =
+      sessionStore.session && pendingInterventionCommand(sessionStore.session.user_id, item.case_id)
+    if (pending) {
+      await ElMessageBox.confirm(
+        '此工单有一次结果尚未确认的操作。将查询或继续原操作，不会发起新的处理。',
+        '确认上次工单操作',
+        {
+          confirmButtonText: '确认原操作',
+          cancelButtonText: '取消',
+        },
+      )
+      await dashboardStore.act(sessionStore.accessToken, item.case_id, pending.payload)
+      ElMessage.success('原操作已确认，请查看最新工单状态')
+      return
+    }
     if (item.status === 'open') {
       await dashboardStore.act(sessionStore.accessToken, item.case_id, {
         action: 'claim',
@@ -193,9 +240,9 @@ async function handleIntervention(item: TeacherIntervention): Promise<void> {
     if (item.status === 'claimed') {
       const result = await ElMessageBox.prompt(
         '请填写将同步给学生的处理结果。',
-        '解决教师协助工单',
+        '完成教师协助工单',
         {
-          confirmButtonText: '标记为已解决',
+          confirmButtonText: '标记处理完成',
           cancelButtonText: '取消',
           inputPlaceholder: '例如：已指导重新连接传感器并确认读数恢复',
           inputValidator: (value) => Boolean(value.trim()) || '请填写处理结果',
@@ -534,7 +581,10 @@ onBeforeUnmount(() => {
               <div v-if="dashboard.interventions.length" class="teacher-action-list">
                 <div
                   v-for="item in dashboard.interventions"
-                  :key="item.diagnosis_result_id"
+                  :key="
+                    item.case_id ??
+                    `${item.diagnosis_result_id}:${item.episode_id ?? item.tree_title}`
+                  "
                   class="teacher-action-item"
                   @click="selectDevice(item.device_id)"
                 >
@@ -552,6 +602,17 @@ onBeforeUnmount(() => {
                     </small></span
                   >
                   <div class="intervention-action-copy">
+                    <small v-if="item.episode_id"
+                      >问题：{{
+                        item.problem_status === 'resolved' ? '已报告解决' : '待处理'
+                      }}</small
+                    >
+                    <el-button
+                      v-if="item.case_id && item.episode_id && item.problem_status !== 'resolved'"
+                      size="small"
+                      @click.stop="reportProblemResolved(item)"
+                      >报告问题已解决</el-button
+                    >
                     <em :class="`intervention-${item.status}`">{{
                       interventionStatusLabels[item.status]
                     }}</em>
@@ -569,7 +630,7 @@ onBeforeUnmount(() => {
                         item.status === 'open'
                           ? '认领'
                           : item.status === 'claimed'
-                            ? '解决'
+                            ? '处理完成'
                             : '关闭'
                       }}
                     </el-button>
@@ -734,7 +795,9 @@ onBeforeUnmount(() => {
               </header>
               <Management />
               <div>
-                <b>{{ dashboard.knowledge_cases.configured ? '结构化案例可用' : '等待审核案例' }}</b>
+                <b>{{
+                  dashboard.knowledge_cases.configured ? '结构化案例可用' : '等待审核案例'
+                }}</b>
                 <p>{{ dashboard.knowledge_cases.notice }}</p>
                 <p>
                   案例 {{ dashboard.knowledge_cases.case_count ?? 0 }} · 已审核

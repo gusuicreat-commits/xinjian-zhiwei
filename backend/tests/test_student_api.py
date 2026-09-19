@@ -16,7 +16,8 @@ def test_student_session_and_empty_dashboard_use_real_device_auth(
     assert session.json()["auth_mode"] == "device_credential_placeholder"
     assert dashboard.status_code == 200
     payload = dashboard.json()
-    assert payload["task"]["configured"] is False
+    assert payload["task"]["configured"] is True
+    assert "测试" in payload["task"]["notice"]
     assert payload["device"]["status"] == "never_seen"
     assert payload["logs"] == []
     assert payload["readings"] == []
@@ -102,6 +103,7 @@ def test_student_dashboard_exposes_diagnosis_guidance_and_feedback(
             "request_id": str(uuid4()),
             "action": "request_teacher_help",
             "note": "Phase 6 test feedback",
+            "episode_id": diagnosis.json()["episode"]["id"],
         },
     )
     dashboard = client.get("/api/v1/student/dashboard", headers=headers)

@@ -5,6 +5,12 @@ from app.models import DiagnosisEpisode, DiagnosisResult, GuidanceHistory
 
 
 def log(ctx, occurred_at=None):
+    heartbeat = ctx["client"].post(
+        "/api/v1/device/heartbeat",
+        headers=ctx["headers"],
+        json={"observed_at": datetime.now(timezone.utc).isoformat(), "is_test_data": True},
+    )
+    assert heartbeat.status_code == 201
     response = ctx["client"].post(
         "/api/v1/device/logs",
         headers=ctx["headers"],
@@ -174,6 +180,10 @@ def test_unbound_historical_feedback_does_not_guess_or_write_ownership(api_conte
         diagnosis = db.get(DiagnosisResult, result["id"])
         diagnosis.episode_id = None
         diagnosis.episode_evidence_revision = None
+        diagnosis.issue_model_version = None
+        from app.models.diagnosis_episode import DiagnosisIssue
+
+        db.query(DiagnosisIssue).filter_by(diagnosis_result_id=diagnosis.id).delete()
         db.commit()
     for action in ("resolved", "request_teacher_help", "unresolved"):
         response = feedback(api_context, result, action)

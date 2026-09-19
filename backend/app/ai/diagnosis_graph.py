@@ -9,7 +9,7 @@ from typing import Any, Literal
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient
@@ -27,6 +27,7 @@ from app.models.base import utc_now
 from app.models.classroom import ExperimentSession
 from app.models.device import Device
 from app.models.diagnosis_evidence import DiagnosisEvidence
+from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.diagnosis_workflow import DiagnosisWorkflowReview, DiagnosisWorkflowRun
 from app.models.guidance_history import GuidanceHistory
@@ -36,7 +37,7 @@ from app.services.diagnosis import (
     diagnose,
     save_diagnosis_result,
 )
-from app.services.diagnosis_episode import upsert_episode
+from app.services.diagnosis_episode import diagnosis_issues, upsert_episode
 from app.services.guidance import generate_guidance
 from app.services.lightweight_diagnosis import (
     build_diagnosis_core,
@@ -338,7 +339,7 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
             experiment_id=state.get("experiment_id"),
             experiment_version=state.get("experiment_version"),
             experiment_version_id=state.get("experiment_version_id"),
-        experiment_session_id=state.get("experiment_session_id"),
+            experiment_session_id=state.get("experiment_session_id"),
         )
         outcome = diagnose(context)
         record = save_diagnosis_result(
@@ -501,8 +502,9 @@ def fault_tree_analyzer(
         runtime.context.db, runtime.context.device, diagnosis, settings=runtime.context.settings
     )
     # Establish durable budget ownership before the first reasoning Provider call.
-    upsert_episode(runtime.context.db, runtime.context.device, diagnosis, guidance,
-                   runtime.context.settings)
+    upsert_episode(
+        runtime.context.db, runtime.context.device, diagnosis, guidance, runtime.context.settings
+    )
     core = build_diagnosis_core(diagnosis, guidance)
     deterministic = render_deterministic_explanation(core)
     diagnosis.deterministic_core = core.model_dump(mode="json")
@@ -839,10 +841,11 @@ def ai_explanation(
 def feedback_handler(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
 ) -> dict[str, Any]:
-    _diagnosis(runtime, state)
+    diagnosis = _diagnosis(runtime, state)
     feedback = interrupt(
         {
             "kind": "student_feedback",
+            "issues": diagnosis_issues(runtime.context.db, diagnosis),
             "workflow_id": state["diagnosis_id"],
             "diagnosis_result_id": state.get("diagnosis_result_id"),
             "allowed_actions": ["resolved", "unresolved", "request_teacher_help"],
@@ -865,6 +868,7 @@ def feedback_handler(
         raise ValueError("invalid student feedback resume payload")
     return {
         "student_feedback": {
+            "episode_id": feedback.get("episode_id"),
             "id": sanitize_text(feedback.get("id"), max_chars=100),
             "action": feedback["action"],
             "note": sanitize_text(feedback.get("note"), max_chars=1000)
@@ -882,32 +886,39 @@ def escalation_handler(
 ) -> dict[str, Any]:
     guidance = _guidance(runtime, state)
     feedback_action = (state.get("student_feedback") or {}).get("action")
-    attempt_count = int(state.get("attempt_count") or 0)
-    if feedback_action == "unresolved":
-        attempt_count += 1
-    failure_count = max(
-        int(state.get("failure_count") or 0),
-        max((item.failure_count for item in guidance), default=0),
+    target = (state.get("student_feedback") or {}).get("episode_id")
+    if target:
+        guidance = [item for item in guidance if item.episode_id == target]
+    attempt_count = (
+        runtime.context.db.scalar(
+            select(func.count(DiagnosisFeedback.id)).where(
+                DiagnosisFeedback.episode_id == target,
+                DiagnosisFeedback.action == "unresolved",
+                DiagnosisFeedback.diagnosis_result_id == state["diagnosis_result_id"]
+                if target is None
+                else True,
+            )
+        )
+        or 0
     )
-    if feedback_action == "unresolved":
-        failure_count += 1
+    failure_count = max(
+        max((item.failure_count for item in guidance), default=0),
+        0,
+    )
     evaluated_at = datetime.fromisoformat(state["evaluated_at"])
     current_duration = max(
         0,
         int((datetime.now(evaluated_at.tzinfo) - evaluated_at).total_seconds()),
     )
     anomaly_duration = max(
-        current_duration,
-        int(state.get("anomaly_duration_seconds") or 0),
         max((item.anomaly_duration_seconds for item in guidance), default=0),
+        0,
     )
     hint_level = max(
-        state.get("hint_level", state.get("guidance_level", 1)),
         max((item.hint_level for item in guidance), default=1),
+        min(4, 1 + attempt_count),
     )
-    if feedback_action == "unresolved":
-        hint_level = min(4, hint_level + 1)
-    elif feedback_action == "request_teacher_help":
+    if feedback_action == "request_teacher_help":
         hint_level = 4
 
     score = state.get("evidence_score", 0.0)
@@ -923,17 +934,22 @@ def escalation_handler(
         feedback_action == "request_teacher_help"
         or hint_level >= 4
         or attempt_count >= runtime.context.settings.diagnosis_teacher_max_attempts
-        or anomaly_duration >= runtime.context.settings.diagnosis_teacher_duration_seconds
+        or max(current_duration, anomaly_duration)
+        >= runtime.context.settings.diagnosis_teacher_duration_seconds
         or score < runtime.context.settings.diagnosis_teacher_review_score
         or ai_conflicts_with_rules
         or evidence_conflict
         or reasoning_unknown
     )
+    remaining_issues = sum(
+        i["status"] in {"open", "escalated"}
+        for i in diagnosis_issues(runtime.context.db, _diagnosis(runtime, state))
+    )
     diagnosis_status = (
         "waiting_teacher"
         if needs_teacher
         else "waiting_feedback"
-        if feedback_action in {None, "unresolved"}
+        if feedback_action in {None, "unresolved"} or remaining_issues
         else "completed"
     )
     return {
@@ -942,6 +958,9 @@ def escalation_handler(
         "failure_count": failure_count,
         "historical_failures": failure_count,
         "attempt_count": attempt_count,
+        "unresolved_feedback_count": attempt_count,
+        "help_wait_seconds": current_duration,
+        "remaining_issues": remaining_issues,
         "anomaly_duration_seconds": anomaly_duration,
         "need_teacher_help": needs_teacher,
         "needs_teacher": needs_teacher,
@@ -964,7 +983,7 @@ def route_after_escalation(
     feedback_action = (state.get("student_feedback") or {}).get("action")
     if feedback_action == "unresolved":
         return "knowledge_context"
-    if feedback_action is None:
+    if feedback_action is None or state.get("remaining_issues", 0):
         return "feedback_handler"
     return "persist_result"
 

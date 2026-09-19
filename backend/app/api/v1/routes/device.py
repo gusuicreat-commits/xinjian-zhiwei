@@ -38,7 +38,7 @@ def validated_ingestion_session(
 ) -> str | None:
     if session_id is not None:
         try:
-            resolve_experiment_session(db, device, session_id)
+            resolve_experiment_session(db, device, session_id, require_active=False)
         except ScopeViolation as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         except ScopeConflict as exc:

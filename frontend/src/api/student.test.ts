@@ -1,9 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { apiClient } from './client'
-import { createDiagnosisFeedback, getFeedbackRecovery } from './student'
+import { createDiagnosisFeedback, getFeedbackRecovery, getStudentDashboard } from './student'
 
 vi.mock('./client', () => ({ apiClient: { post: vi.fn(), get: vi.fn() } }))
+
+it('uses the student account without transmitting a device secret', async () => {
+  vi.mocked(apiClient.get).mockResolvedValue({ data: {} })
+  await getStudentDashboard({
+    deviceId: 'device-a',
+    deviceToken: 'must-not-send',
+    accessToken: 'account-session',
+    experimentSessionId: 'session-a',
+  })
+  expect(apiClient.get).toHaveBeenLastCalledWith('/api/v1/student/dashboard', {
+    headers: {
+      'X-Device-ID': 'device-a',
+      Authorization: 'Bearer account-session',
+      'X-Experiment-Session-ID': 'session-a',
+    },
+  })
+})
 
 describe('feedback API contract', () => {
   beforeEach(() => vi.resetAllMocks())

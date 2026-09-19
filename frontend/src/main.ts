@@ -11,6 +11,10 @@ import {
   ElForm,
   ElFormItem,
   ElInput,
+  ElSelect,
+  ElOption,
+  ElRadioGroup,
+  ElRadioButton,
   ElResult,
   ElSkeleton,
   ElTag,
@@ -33,10 +37,16 @@ for (const component of [
   ElForm,
   ElFormItem,
   ElInput,
+  ElSelect,
+  ElOption,
+  ElRadioGroup,
+  ElRadioButton,
   ElResult,
   ElSkeleton,
   ElTag,
 ]) {
   app.use(component)
+  // Some Element Plus child components expose a no-op plugin installer.
+  if (component.name && !app.component(component.name)) app.component(component.name, component)
 }
 app.mount('#app')

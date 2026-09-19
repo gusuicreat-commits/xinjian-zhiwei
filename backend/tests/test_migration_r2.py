@@ -28,13 +28,20 @@ def migration_db():
         conn.execute(text(f"CREATE SCHEMA {schema}"))
     scoped = url.update_query_dict({"options": f"-csearch_path={schema},public"})
     engine = create_engine(scoped)
-    env = {**os.environ, "DATABASE_URL": url.render_as_string(hide_password=False),
-           "PGOPTIONS": f"-csearch_path={schema},public"}
+    env = {
+        **os.environ,
+        "DATABASE_URL": url.render_as_string(hide_password=False),
+        "PGOPTIONS": f"-csearch_path={schema},public",
+    }
 
     def migrate(*arguments):
         result = subprocess.run(
-            [sys.executable, "-m", "alembic", *arguments], cwd=BACKEND,
-            env=env, capture_output=True, text=True, timeout=60,
+            [sys.executable, "-m", "alembic", *arguments],
+            cwd=BACKEND,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         assert result.returncode == 0, result.stdout + result.stderr
         return result.stdout + result.stderr
@@ -50,9 +57,9 @@ def migration_db():
 
 def test_empty_database_upgrade_matches_models(migration_db):
     engine, migrate = migration_db
-    migrate("upgrade", "20260917_0029")
+    migrate("upgrade", "head")
     with engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260917_0029"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260919_0031"
     migrate("check")
 
 
@@ -71,7 +78,7 @@ def _seed(conn, name, **overrides):
         elif isinstance(column.type, (Integer, Float, Numeric)):
             value = 1
         else:
-            value = str(uuid4())[:getattr(column.type, "length", None)]
+            value = str(uuid4())[: getattr(column.type, "length", None)]
         values[column.name] = value
     values.update(overrides)
     conn.execute(table.insert().values(**values))
@@ -86,18 +93,23 @@ def test_historical_upgrade_preserves_content_and_does_not_guess_scope(migration
     with engine.begin() as conn:
         device = _seed(conn, "devices")
         diagnosis = _seed(conn, "diagnosis_results", device_id=device["id"])
-        feedback = _seed(conn, "diagnosis_feedback", device_id=device["id"],
-                         diagnosis_result_id=diagnosis["id"])
+        feedback = _seed(
+            conn, "diagnosis_feedback", device_id=device["id"], diagnosis_result_id=diagnosis["id"]
+        )
         for name in ("device_logs", "sensor_readings", "device_heartbeats"):
             before[name] = _seed(conn, name, device_id=device["id"])
         before["diagnosis_results"] = diagnosis
         before["knowledge_case_drafts"] = _seed(
-            conn, "knowledge_case_drafts", diagnosis_result_id=diagnosis["id"],
+            conn,
+            "knowledge_case_drafts",
+            diagnosis_result_id=diagnosis["id"],
             feedback_id=feedback["id"],
         )
         before["knowledge_cases"] = _seed(conn, "knowledge_cases")
         before["diagnosis_episodes"] = _seed(
-            conn, "diagnosis_episodes", device_id=device["id"],
+            conn,
+            "diagnosis_episodes",
+            device_id=device["id"],
             last_diagnosis_result_id=diagnosis["id"],
         )
     migrate("upgrade", "20260917_0029")
@@ -113,9 +125,15 @@ def test_historical_upgrade_preserves_content_and_does_not_guess_scope(migration
     with engine.begin() as conn:
         for name, original in before.items():
             table = Table(name, MetaData(), autoload_with=conn)
-            current = dict(conn.execute(table.select().where(
-                table.c.id == original["id"],
-            )).mappings().one())
+            current = dict(
+                conn.execute(
+                    table.select().where(
+                        table.c.id == original["id"],
+                    )
+                )
+                .mappings()
+                .one()
+            )
             column, expected = additions[name]
             assert current.pop(column) == expected
             assert current == original
@@ -123,4 +141,5 @@ def test_historical_upgrade_preserves_content_and_does_not_guess_scope(migration
         _seed(conn, "knowledge_cases", source_draft_id=source)
         with pytest.raises(IntegrityError), conn.begin_nested():
             _seed(conn, "knowledge_cases", source_draft_id=source)
+    migrate("upgrade", "head")
     migrate("check")

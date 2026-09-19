@@ -105,7 +105,8 @@ def test_same_evidence_preserves_duration_escalation(api_context):
         later = record(db, device, now + timedelta(seconds=301))
         history = generate_guidance(db, device, later)[0]
         assert history.failure_count == first_history.failure_count == 1
-        assert history.anomaly_duration_seconds == 301
+        assert history.anomaly_duration_seconds == 0
+        assert history.help_wait_seconds == 301
         assert history.hint_level == 2
 
 

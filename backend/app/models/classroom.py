@@ -7,6 +7,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Table,
     UniqueConstraint,
@@ -181,6 +182,28 @@ class ExperimentSession(UuidPrimaryKeyMixin, TimestampMixin, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # NULL means an older session; never infer a historical pinned version.
+    experiment_version_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("experiment_versions.id", ondelete="RESTRICT")
+    )
+    version_no: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+
+class ExperimentSessionCommand(UuidPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "experiment_session_commands"
+    __table_args__ = (
+        UniqueConstraint("actor_user_id", "request_id", name="uq_session_command_actor_request"),
+    )
+
+    actor_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("experiment_sessions.id", ondelete="RESTRICT"), nullable=False
+    )
+    request_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
 
 class AuditEvent(UuidPrimaryKeyMixin, Base):

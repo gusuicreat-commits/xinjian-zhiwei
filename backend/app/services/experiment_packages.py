@@ -31,10 +31,20 @@ PACKAGE_TRANSITIONS = {
     "pending": {"approved"},
     "approved": {"published"},
     "published": {"revoked", "superseded"},
-    "superseded": set(),
+    "superseded": {"revoked"},
     "revoked": set(),
 }
 RUNTIME_STATUSES = {"published", "superseded"}
+
+
+def teaching_available(db, diagnosis):
+    if diagnosis.experiment_version_id is None:
+        return True
+    try:
+        load_experiment_package_runtime(db, diagnosis.experiment_version_id)
+        return True
+    except ExperimentPackageLoadError:
+        return False
 
 
 @dataclass(frozen=True)
@@ -151,11 +161,19 @@ def transition_experiment_package(
     version: ExperimentVersion,
     target: str,
 ) -> ExperimentVersion:
+    original_status = version.status
+    # All releases of one experiment serialize on the same durable parent row.
+    db.scalar(select(Experiment).where(Experiment.id == version.experiment_id).with_for_update())
+    db.refresh(version)
+    if version.status != original_status:
+        raise ValueError("package state changed; refresh before applying a transition")
     if target not in PACKAGE_TRANSITIONS.get(version.status, set()):
         raise ValueError(f"invalid package transition {version.status} -> {target}")
     report = PackageValidationReport.model_validate(version.validation_report)
     if target in {"approved", "published"} and not report.valid:
         raise ValueError("an invalid package cannot be approved or published")
+    if target in {"approved", "published"}:
+        load_experiment_package_runtime(db, version.id, require_published=False)
     if target == "published":
         current = list(
             db.scalars(
@@ -198,7 +216,7 @@ def load_experiment_package_runtime(
     *,
     require_published: bool = True,
 ) -> ExperimentPackageRuntime:
-    version = db.get(ExperimentVersion, experiment_version_id)
+    version = db.get(ExperimentVersion, experiment_version_id, populate_existing=True)
     if version is None:
         raise ExperimentPackageLoadError("experiment package version not found")
     if require_published and version.status not in RUNTIME_STATUSES:

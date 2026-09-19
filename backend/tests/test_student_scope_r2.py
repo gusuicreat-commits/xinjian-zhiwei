@@ -126,6 +126,7 @@ def test_old_raw_evidence_is_not_reintroduced_by_new_diagnosis(api_context):
             device_id=old.device_id,
             status="active",
             started_at=datetime.now(timezone.utc),
+            is_test_data=True,
         )
         old.status = "completed"
         db.add(current)

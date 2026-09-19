@@ -26,10 +26,12 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
+from app.core.security import hash_password
 from app.db.session import get_db
 from app.evaluation.workflow_environment import DEVICE_KEY, DEVICE_TOKEN, WorkflowEnvironment
-from app.models import AICallRecord, Device, DiagnosisEvidence, DiagnosisFeedback
+from app.models import AICallRecord, Device, DiagnosisEvidence, DiagnosisFeedback, User
 from app.models.diagnosis_workflow import DiagnosisWorkflowRun
+from app.services.rbac import assign_role, ensure_rbac_catalog
 
 BACKEND = Path(__file__).resolve().parents[2]
 
@@ -104,6 +106,9 @@ def fixture(dsn, control_dir, origin):
             with env.sessions() as db:
                 device = db.get(Device, env.device_id)
                 device.metadata_json = {"is_test_fixture": True, "is_test_data": True}
+                student = db.scalar(select(User).where(User.username == "synthetic-student"))
+                student.password_hash = hash_password("browser-synthetic-only", iterations=1000)
+                assign_role(db, student, ensure_rbac_catalog(db)["student"])
                 db.commit()
             env.app = FastAPI(title="Synthetic browser integration fixture")
             env.app.include_router(api_router, prefix="/api/v1")
@@ -116,6 +121,7 @@ def fixture(dsn, control_dir, origin):
                     "X-Device-ID",
                     "X-Device-Token",
                     "X-Experiment-Session-ID",
+                    "Authorization",
                 ],
             )
 
@@ -159,6 +165,8 @@ def fixture(dsn, control_dir, origin):
                             "device_key": DEVICE_KEY,
                             "device_token": DEVICE_TOKEN,
                             "session_id": env.session_id,
+                            "student_username": "synthetic-student",
+                            "student_password": "browser-synthetic-only",
                             "records": case["records"],
                             "is_test_data": True,
                         }

@@ -156,6 +156,8 @@ class AIStatusResponse(StrictAIModel):
     cloud_configured: bool = False
     thinking_enabled: bool = False
     production_route: str = "cache → deepseek → deterministic_fallback"
+    budget_enforcement: Literal["estimated_preflight"] = "estimated_preflight"
+    budget_notice: str = "金额按输入估算预留，未知费用不退回；不保证服务商账单的硬金额上限。"
 
 
 class AIExplanationRequest(StrictAIModel):

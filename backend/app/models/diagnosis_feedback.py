@@ -21,6 +21,9 @@ class DiagnosisFeedback(UuidPrimaryKeyMixin, Base):
         String(36), ForeignKey("experiment_sessions.id", ondelete="RESTRICT")
     )
     processing_status: Mapped[Optional[str]] = mapped_column(String(20))
+    episode_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("diagnosis_episodes.id", ondelete="RESTRICT")
+    )
 
     device_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False

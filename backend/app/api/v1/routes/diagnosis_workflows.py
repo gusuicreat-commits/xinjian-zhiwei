@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_authenticated_device, require_permission
+from app.api.dependencies import get_student_device, require_permission, revalidate_student_access
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.diagnosis.workflow_schemas import (
@@ -34,7 +34,7 @@ from app.services.diagnosis_workflow import (
 
 router = APIRouter(prefix="/diagnosis-workflows", tags=["diagnosis-workflows"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
-AuthenticatedDevice = Annotated[Device, Depends(get_authenticated_device)]
+AuthenticatedDevice = Annotated[Device, Depends(get_student_device)]
 WorkflowReviewer = Annotated[User, Depends(require_permission("intervention.manage"))]
 AppSettings = Annotated[Settings, Depends(get_settings)]
 ExperimentSessionHeader = Annotated[
@@ -116,6 +116,7 @@ def start_diagnosis_workflow(
                 "message": "workflow failed; the legacy deterministic diagnosis remains available",
             },
         ) from exc
+    revalidate_student_access(request, db)
     return serialize_workflow(workflow, audience="student")
 
 

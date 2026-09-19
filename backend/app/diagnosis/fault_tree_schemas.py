@@ -103,6 +103,7 @@ class GuidanceHint(StrictModel):
 
 
 class FaultTreeEvaluation(StrictModel):
+    help_wait_seconds: int | None = None
     tree_id: str
     tree_title: str
     tree_status: Literal["placeholder", "approved"]

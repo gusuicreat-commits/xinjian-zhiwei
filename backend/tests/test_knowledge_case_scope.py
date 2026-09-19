@@ -16,6 +16,7 @@ from app.models import (
     Device,
     DeviceBinding,
     DiagnosisResult,
+    Enrollment,
     ExperimentSession,
     GuidanceHistory,
     TeachingAssignment,
@@ -68,6 +69,7 @@ def case_scope(api_context):
             assign_role(db, actor, roles[role])
             actors[username] = actor
         assign_role(db, student, roles["student"])
+        db.add(Enrollment(class_id=own_class.id, user_id=student.id, status="active"))
         db.add_all(
             [
                 TeachingAssignment(class_id=own_class.id, user_id=actors["own-teacher"].id),

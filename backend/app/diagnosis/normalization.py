@@ -220,13 +220,14 @@ def normalize_raw_device_data(
     return normalizers.normalize(records, definition)
 
 
-def _component_for_sensor(sensor_type: str, definition: ExperimentDefinition | None) -> str:
+def _component_for_sensor(sensor_type: str, definition: ExperimentDefinition | None) -> str | None:
     if definition is None:
         return sensor_type
-    for component in definition.hardware.components:
-        if sensor_type in {component.id, component.kind, component.model}:
-            return component.id
-    return sensor_type
+    exact = [c.id for c in definition.hardware.components if c.id == sensor_type]
+    if exact:
+        return exact[0]
+    matches = [c.id for c in definition.hardware.components if sensor_type in {c.kind, c.model}]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _interface_for_component(
@@ -234,14 +235,8 @@ def _interface_for_component(
 ) -> str | None:
     if component_id is None or definition is None:
         return None
-    return next(
-        (
-            interface.id
-            for interface in definition.interfaces
-            if component_id in interface.component_ids
-        ),
-        None,
-    )
+    matches = [i.id for i in definition.interfaces if component_id in i.component_ids]
+    return matches[0] if len(matches) == 1 else None
 
 
 def normalize_legacy_context(
@@ -288,11 +283,17 @@ def normalize_legacy_context(
     for log in logs:
         snapshot = log.raw_payload.get("sensor_snapshot")
         snapshot = snapshot if isinstance(snapshot, dict) else {}
-        component_id = (log.raw_payload.get("component_id") or log.raw_payload.get("component")
-                        or snapshot.get("component_id"))
-        interface_id = (log.raw_payload.get("interface_id") or log.raw_payload.get("interface")
-                        or snapshot.get("interface_id")
-                        or _interface_for_component(component_id, definition))
+        component_id = (
+            log.raw_payload.get("component_id")
+            or log.raw_payload.get("component")
+            or snapshot.get("component_id")
+        )
+        interface_id = (
+            log.raw_payload.get("interface_id")
+            or log.raw_payload.get("interface")
+            or snapshot.get("interface_id")
+            or _interface_for_component(component_id, definition)
+        )
         if log.event_code:
             events.append(
                 ContextEvent(

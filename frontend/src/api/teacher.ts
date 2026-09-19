@@ -1,4 +1,6 @@
+import { isAxiosError } from 'axios'
 import { apiClient } from '@/api/client'
+import { newRequestId } from '@/api/feedbackRetry'
 import { createUserSession } from '@/api/auth'
 import type { UserSession } from '@/types/auth'
 import type {
@@ -87,7 +89,72 @@ export async function actOnTeacherIntervention(
     is_private: boolean
   },
 ): Promise<void> {
-  await apiClient.post(`/api/v1/teacher-workflow/interventions/${caseId}/actions`, payload, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
+  // Scope pending commands to the signed-in account, without persisting its token.
+  const auth = JSON.parse(
+    sessionStorage.getItem('xinjian-teacher-session') ?? 'null',
+  ) as UserSession | null
+  if (!auth || auth.access_token !== accessToken) throw new Error('TEACHER_SESSION_REQUIRED')
+  const key = `xinjian-intervention:${auth.user_id}:${caseId}`
+  const previous = sessionStorage.getItem(key)
+  const pending = previous
+    ? (JSON.parse(previous) as {
+        request_id: string
+        payload: { action: string; expected_version: number; note?: string; is_private: boolean }
+      })
+    : { request_id: newRequestId(), payload }
+  if (JSON.stringify(pending.payload) !== JSON.stringify(payload)) {
+    throw new Error('请先确认上次工单操作的结果，不能用新内容覆盖待确认请求。')
+  }
+  sessionStorage.setItem(key, JSON.stringify(pending))
+  try {
+    await apiClient.post(
+      `/api/v1/teacher-workflow/interventions/${caseId}/actions`,
+      {
+        ...pending.payload,
+        request_id: pending.request_id,
+      },
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+  } catch (error) {
+    // A received conflict is a definite rejection; retain only uncertain outcomes.
+    if (isAxiosError(error) && error.response?.status === 409) sessionStorage.removeItem(key)
+    throw error
+  }
+  sessionStorage.removeItem(key)
+}
+
+export function pendingInterventionCommand(
+  userId: string,
+  caseId: string,
+): {
+  request_id: string
+  payload: Parameters<typeof actOnTeacherIntervention>[2]
+} | null {
+  const raw = sessionStorage.getItem(`xinjian-intervention:${userId}:${caseId}`)
+  return raw ? JSON.parse(raw) : null
+}
+
+export async function reportTeacherProblemResolved(
+  accessToken: string,
+  userId: string,
+  caseId: string,
+  revision: number,
+): Promise<void> {
+  const key = `xinjian-problem-report:${userId}:${caseId}`
+  const previous = sessionStorage.getItem(key)
+  const payload = previous
+    ? JSON.parse(previous)
+    : { request_id: newRequestId(), expected_revision: revision }
+  sessionStorage.setItem(key, JSON.stringify(payload))
+  try {
+    await apiClient.post(
+      `/api/v1/teacher-workflow/interventions/${caseId}/problem-resolution`,
+      payload,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 409) sessionStorage.removeItem(key)
+    throw error
+  }
+  sessionStorage.removeItem(key)
 }

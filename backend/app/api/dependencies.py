@@ -8,9 +8,18 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.security import verify_device_token
 from app.db.session import get_db
-from app.models.classroom import User
+from app.models.classroom import ExperimentSession, User
 from app.models.device import Device
 from app.services.auth import resolve_session, user_access
+from app.services.data_scope import (
+    ScopeConflict,
+    ScopeViolation,
+    assert_student_session_access,
+    find_active_experiment_session,
+    is_demo_device,
+    is_demo_session,
+    resolve_experiment_session,
+)
 
 
 def require_review_access(
@@ -81,6 +90,75 @@ def get_current_user(
     return user
 
 
+def get_student_device(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    authorization: Annotated[Optional[str], Header()] = None,
+    x_device_token: Annotated[Optional[str], Header(alias="X-Device-Token")] = None,
+    x_device_id: Annotated[Optional[str], Header(alias="X-Device-ID")] = None,
+    session_id: Annotated[Optional[str], Header(alias="X-Experiment-Session-ID")] = None,
+) -> Device:
+    """Student operations never treat a production device secret as a human login."""
+    try:
+        if authorization is not None:
+            user = get_current_user(db, authorization)
+            _, permissions = user_access(db, user.id)
+            needed = (
+                "feedback.create" if request.url.path.endswith("/feedback") else "dashboard.read"
+            )
+            if needed not in permissions:
+                raise ScopeViolation("student operation permission was revoked")
+            device_key = request.path_params.get("device_id") or x_device_id
+            device = db.scalar(select(Device).where(Device.device_key == device_key))
+            if device is None or not device.is_active:
+                raise ScopeViolation("device is not available")
+            if session_id is None:
+                owned = list(
+                    db.scalars(
+                        select(ExperimentSession).where(
+                            ExperimentSession.device_id == device.id,
+                            ExperimentSession.student_user_id == user.id,
+                            ExperimentSession.status == "active",
+                            ExperimentSession.ended_at.is_(None),
+                        )
+                    )
+                )
+                if len(owned) != 1:
+                    raise ScopeConflict("select one active experiment session")
+                session = owned[0]
+            else:
+                session = resolve_experiment_session(db, device, session_id, require_active=False)
+            # Closed-session receipt reads retain the original identity; write routes
+            # independently reject new work in a closed session.
+            receipt_read = request.url.path.endswith("/feedback-recovery")
+            feedback_retry = request.url.path.endswith("/feedback")
+            assert_student_session_access(
+                db, user, session, require_active=not (receipt_read or feedback_retry)
+            )
+            request.state.student_auth_mode = "student_account"
+            request.state.student_user_id = user.id
+        else:
+            device = get_authenticated_device(request, db, x_device_token, x_device_id)
+            if not is_demo_device(device):
+                raise HTTPException(status_code=401, detail="student account login required")
+            session = (
+                resolve_experiment_session(db, device, session_id, require_active=False)
+                if session_id
+                else find_active_experiment_session(db, device)
+            )
+            if session is not None and not is_demo_session(db, session):
+                raise HTTPException(status_code=401, detail="student account login required")
+            if session is not None and not db.get(User, session.student_user_id).is_active:
+                raise ScopeViolation("student account is inactive")
+            request.state.student_auth_mode = "device_credential_placeholder"
+        request.state.student_experiment_session = session
+        return device
+    except ScopeViolation as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ScopeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 def require_permission(permission_code: str):
     def dependency(
         user: Annotated[User, Depends(get_current_user)],
@@ -98,6 +176,19 @@ def require_permission(permission_code: str):
         return user
 
     return dependency
+
+
+def revalidate_student_access(request: Request, db: Session):
+    """Long-running operations must not deliver to an identity revoked during I/O."""
+    db.expire_all()
+    return get_student_device(
+        request,
+        db,
+        authorization=request.headers.get("Authorization"),
+        x_device_token=request.headers.get("X-Device-Token"),
+        x_device_id=request.headers.get("X-Device-ID"),
+        session_id=request.headers.get("X-Experiment-Session-ID"),
+    )
 
 
 def require_any_role(*role_codes: str):

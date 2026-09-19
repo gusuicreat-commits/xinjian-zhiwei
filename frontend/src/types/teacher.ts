@@ -3,6 +3,9 @@ import type { DiagnosisWorkflowMetrics, DiagnosisWorkflowRecord } from '@/types/
 export type { DiagnosisWorkflowMetrics }
 
 export interface TeacherIntervention {
+  episode_id?: string | null
+  problem_status?: string | null
+  evidence_revision?: number | null
   case_id: string | null
   source: 'student_request' | 'manual_request' | 'automatic_guidance'
   status: 'open' | 'claimed' | 'resolved' | 'unconfirmed' | 'closed' | 'recommended'

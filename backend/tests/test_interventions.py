@@ -10,6 +10,7 @@ from app.models import (
     Device,
     DeviceBinding,
     DiagnosisResult,
+    Enrollment,
     ExperimentAssignment,
     ExperimentSession,
     InterventionCase,
@@ -155,6 +156,7 @@ def test_student_request_teacher_queue_scope_and_unconfirmed_flow(
         db.add(classroom)
         db.flush()
         assign_role(db, student, roles["student"])
+        db.add(Enrollment(class_id=classroom.id, user_id=student.id, status="active"))
         assign_role(db, assigned_teacher, roles["teacher"])
         assign_role(db, outside_teacher, roles["teacher"])
         db.add(TeachingAssignment(class_id=classroom.id, user_id=assigned_teacher.id))
@@ -308,6 +310,7 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
         db.add(classroom)
         db.flush()
         assign_role(db, student, roles["student"])
+        db.add(Enrollment(class_id=classroom.id, user_id=student.id, status="active"))
         assign_role(db, teacher, roles["teacher"])
         db.add(TeachingAssignment(class_id=classroom.id, user_id=teacher.id))
         device = db.query(Device).filter_by(device_key="phase2-test-device").one()
@@ -437,7 +440,8 @@ def test_device_feedback_creates_teacher_case_and_returns_resolution_to_student(
     final_dashboard = client.get("/api/v1/student/dashboard", headers=api_context["headers"]).json()
     assert final_dashboard["intervention"]["status"] == "resolved"
     assert final_dashboard["intervention"]["resolution_summary"] == expected_summary
-    assert final_dashboard["episode"]["status"] == "resolved"
+    # Completing a teacher's work does not prove hardware recovery.
+    assert final_dashboard["episode"]["status"] == "escalated"
     student_login = client.post(
         "/api/v1/auth/session",
         json={"username": "feedback-workflow-student", "password": "synthetic-password"},

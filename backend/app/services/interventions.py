@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from typing import Optional
 
 from sqlalchemy import select, update
@@ -5,9 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.models.base import utc_now
 from app.models.classroom import User
-from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.intervention import InterventionCase, InterventionEvent
+from app.services.diagnosis_episode import issue_links, lifecycle_lock
 
 TRANSITIONS = {
     ("open", "claim"): "claimed",
@@ -31,14 +32,38 @@ def ensure_intervention_case(
     class_id: str,
     actor_user_id: str,
     source: str,
+    episode_id: str | None = None,
 ) -> InterventionCase:
-    existing = db.scalar(
-        select(InterventionCase).where(InterventionCase.diagnosis_result_id == diagnosis.id)
-    )
+    links = issue_links(db, diagnosis)
+    if links:
+        if episode_id is None and len(links) == 1:
+            episode_id = links[0].episode_id
+        if not any(link.episode_id == episode_id for link in links):
+            raise InterventionConflict("select one recorded problem for this intervention")
+        original = db.scalar(
+            select(InterventionCase)
+            .where(
+                InterventionCase.diagnosis_result_id == diagnosis.id,
+                InterventionCase.episode_id == episode_id,
+            )
+            .order_by(InterventionCase.created_at)
+        )
+        if original is not None:
+            return original
+        query = select(InterventionCase).where(
+            InterventionCase.episode_id == episode_id,
+            InterventionCase.status.in_(["open", "claimed", "unconfirmed"]),
+        )
+    else:
+        if episode_id is not None:
+            raise InterventionConflict("historical diagnosis has no recorded problem association")
+        query = select(InterventionCase).where(InterventionCase.diagnosis_result_id == diagnosis.id)
+    existing = db.scalar(query)
     if existing is not None:
         return existing
     case = InterventionCase(
         diagnosis_result_id=diagnosis.id,
+        episode_id=episode_id,
         class_id=class_id,
         status="open",
         version_no=1,
@@ -65,7 +90,28 @@ def ensure_intervention_case(
     return case
 
 
-def apply_action(
+def apply_action(db, case, actor, *, request_id=None, **kwargs):
+    diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
+    with lifecycle_lock(db, diagnosis) if diagnosis is not None else nullcontext():
+        db.refresh(case)
+        payload = {"case_id": case.id, **kwargs}
+        if request_id:
+            for event in db.scalars(
+                select(InterventionEvent).where(
+                    InterventionEvent.case_id == case.id,
+                    InterventionEvent.actor_user_id == actor.id,
+                )
+            ):
+                if event.metadata_json.get("request_id") == request_id:
+                    if event.metadata_json.get("payload") != payload:
+                        raise InterventionConflict(
+                            "request identity already used with different content"
+                        )
+                    return InterventionCase(**event.metadata_json["result"])
+        return _apply_action(db, case, actor, request_id=request_id, payload=payload, **kwargs)
+
+
+def _apply_action(
     db: Session,
     case: InterventionCase,
     actor: User,
@@ -75,6 +121,8 @@ def apply_action(
     note: Optional[str],
     target_teacher_user_id: Optional[str],
     is_private: bool,
+    request_id=None,
+    payload=None,
 ) -> InterventionCase:
     if case.version_no != expected_version:
         raise InterventionConflict("intervention version conflict")
@@ -125,26 +173,30 @@ def apply_action(
             to_status=to_status,
             note=note,
             is_private=is_private,
-            metadata_json={"target_teacher_user_id": target_teacher_user_id},
+            metadata_json={
+                "target_teacher_user_id": target_teacher_user_id,
+                "request_id": request_id,
+                "payload": payload,
+                "result": {
+                    key: getattr(case, key)
+                    for key in (
+                        "id",
+                        "diagnosis_result_id",
+                        "episode_id",
+                        "class_id",
+                        "assigned_teacher_user_id",
+                        "status",
+                        "version_no",
+                        "resolution_summary",
+                        "is_test_data",
+                    )
+                },
+            },
             created_at=utc_now(),
         )
     )
-    episode = db.scalar(
-        select(DiagnosisEpisode)
-        .where(DiagnosisEpisode.last_diagnosis_result_id == case.diagnosis_result_id)
-        .order_by(DiagnosisEpisode.updated_at.desc())
-        .limit(1)
-    )
-    if episode is not None:
-        if to_status in {"resolved", "closed"}:
-            episode.status = "resolved"
-            episode.resolved_at = utc_now()
-            episode.resolution_source = "teacher_intervention"
-        elif to_status in {"claimed", "unconfirmed"}:
-            episode.status = "escalated"
-            episode.current_hint_level = max(episode.current_hint_level, 4)
-            episode.resolved_at = None
-            episode.resolution_source = None
+    # Work completion is not physical recovery. Explicit problem transitions
+    # belong to the lifecycle service and require their own evidence revision.
     db.commit()
     updated = db.get(InterventionCase, case.id)
     if updated is None:
@@ -164,6 +216,79 @@ def public_resolution_summary(db: Session, case: InterventionCase) -> Optional[s
     if event is None or event.is_private:
         return None
     return event.note
+
+
+def apply_problem_resolution(
+    db, case, actor, *, request_id, expected_revision, recovery_diagnosis_id=None
+):
+    """Explicit teacher report; verified recovery additionally needs fresh rule evidence."""
+    from app.models.diagnosis_episode import DiagnosisEpisode
+    from app.services.diagnosis_episode import (
+        EpisodeFeedbackConflict,
+        finish_problem,
+        lifecycle_lock,
+    )
+
+    if not case.episode_id:
+        raise InterventionConflict("historical work order has no recorded problem target")
+    diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
+    with lifecycle_lock(db, diagnosis):
+        payload = {
+            "case_id": case.id,
+            "expected_revision": expected_revision,
+            "recovery_diagnosis_id": recovery_diagnosis_id,
+        }
+        events = db.scalars(
+            select(InterventionEvent).where(
+                InterventionEvent.case_id == case.id,
+                InterventionEvent.actor_user_id == actor.id,
+                InterventionEvent.action == "problem_resolved",
+            )
+        )
+        for event in events:
+            if event.metadata_json.get("request_id") == request_id:
+                if event.metadata_json.get("payload") != payload:
+                    raise InterventionConflict(
+                        "request identity already used with different content"
+                    )
+                return event.metadata_json["result"]
+        episode = db.get(DiagnosisEpisode, case.episode_id, populate_existing=True)
+        if episode is None or episode.status not in {"open", "escalated"}:
+            raise InterventionConflict("problem is no longer active")
+        recovery = db.get(DiagnosisResult, recovery_diagnosis_id) if recovery_diagnosis_id else None
+        source = "teacher_verified_recovery" if recovery_diagnosis_id else "teacher_report"
+        try:
+            finish_problem(episode, expected_revision, source, recovery=recovery)
+        except EpisodeFeedbackConflict as exc:
+            raise InterventionConflict(str(exc)) from exc
+        result = {
+            "episode_id": episode.id,
+            "status": episode.status,
+            "resolution_source": episode.resolution_source,
+        }
+        db.add(
+            InterventionEvent(
+                case_id=case.id,
+                actor_user_id=actor.id,
+                action="problem_resolved",
+                from_status=case.status,
+                to_status=case.status,
+                is_private=False,
+                note="教师已明确结束此问题。" if not recovery else "已核对新的规则恢复证据。",
+                metadata_json={
+                    "episode_id": episode.id,
+                    "evidence_revision": expected_revision,
+                    "request_id": request_id,
+                    "payload": payload,
+                    "result": result,
+                    "recovery_diagnosis_id": recovery_diagnosis_id,
+                    "resolution_source": episode.resolution_source,
+                },
+                created_at=utc_now(),
+            )
+        )
+        db.commit()
+        return result
 
 
 def timeline(

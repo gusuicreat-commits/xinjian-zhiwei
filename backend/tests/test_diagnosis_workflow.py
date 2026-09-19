@@ -34,6 +34,16 @@ from app.services.diagnosis_workflow import (
 
 
 def _add_failure_log(api_context: dict[str, Any]) -> None:
+    assert (
+        api_context["client"]
+        .post(
+            "/api/v1/device/heartbeat",
+            headers=api_context["headers"],
+            json={"observed_at": datetime.now(timezone.utc).isoformat(), "is_test_data": True},
+        )
+        .status_code
+        == 201
+    )
     response = api_context["client"].post(
         "/api/v1/device/logs",
         headers=api_context["headers"],
@@ -67,11 +77,16 @@ def _resume_feedback(db, graph, workflow, device, settings, action="resolved"):
         is_test_data=True,
     )
     db.add(feedback)
+    from app.models import DiagnosisResult
+    from app.services.diagnosis_episode import apply_episode_feedback, lifecycle_lock
+
+    diagnosis = db.get(DiagnosisResult, workflow.diagnosis_result_id)
+    with lifecycle_lock(db, diagnosis):
+        apply_episode_feedback(db, diagnosis, feedback)
+        db.commit()
     db.commit()
     db.refresh(feedback)
-    return resume_workflow_with_feedback(
-        db, graph, workflow, feedback, device, settings
-    )
+    return resume_workflow_with_feedback(db, graph, workflow, feedback, device, settings)
 
 
 class FailOnceAfterTerminalSaver(InMemorySaver):
@@ -193,9 +208,7 @@ def test_unresolved_feedback_resumes_same_workflow_and_waits_again(
         )
         original_thread = workflow.graph_thread_id
 
-        workflow = _resume_feedback(
-            db, graph, workflow, device, settings, action="unresolved"
-        )
+        workflow = _resume_feedback(db, graph, workflow, device, settings, action="unresolved")
 
         assert workflow.status == "waiting_feedback"
         assert workflow.graph_thread_id == original_thread

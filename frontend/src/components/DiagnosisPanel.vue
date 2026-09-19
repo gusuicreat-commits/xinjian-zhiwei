@@ -8,7 +8,7 @@ import {
   QuestionFilled,
   Warning,
 } from '@element-plus/icons-vue'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import type {
   FeedbackAction,
@@ -20,13 +20,16 @@ import type {
   StudentFeedback,
   StudentGuidance,
   StudentIntervention,
+  StudentDashboard,
 } from '@/types/student'
 
 const props = defineProps<{
+  issues?: StudentDashboard['issues']
   diagnosis: StudentDiagnosis | null
   guidance: StudentGuidance[]
   feedback: StudentFeedback | null
   intervention: StudentIntervention | null
+  interventions?: StudentIntervention[]
   feedbackLoading: boolean
   feedbackBlocked?: boolean
   aiStatus: AIStatus
@@ -39,10 +42,22 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  feedback: [action: FeedbackAction]
+  feedback: [action: FeedbackAction, episodeId: string | null]
   requestAi: []
   requestWorkflow: []
 }>()
+
+const selectedIssue = ref<string | null>(null)
+watch(
+  () => props.diagnosis?.id,
+  () => {
+    selectedIssue.value = props.issues?.length === 1 ? props.issues[0]!.id : null
+  },
+  { immediate: true },
+)
+const issueSelectionRequired = computed(
+  () => (props.issues?.length ?? 0) > 1 && !selectedIssue.value,
+)
 
 const actionLabels: Record<FeedbackAction, string> = {
   resolved: '问题已解决',
@@ -73,8 +88,18 @@ const technicalDetails = computed(() => props.deviceStateExplanation.technical_d
 const evidenceItems = computed(
   () => props.diagnosis?.matches.flatMap((match) => match.evidence) ?? [],
 )
-const rankedCauses = computed(() => props.guidance.flatMap((item) => item.ranked_causes))
-const hints = computed(() => props.guidance.flatMap((item) => item.hints))
+const focusedGuidance = computed(() =>
+  (props.issues?.length ?? 0) > 1
+    ? props.guidance.filter((item) => item.episode_id === selectedIssue.value)
+    : props.guidance,
+)
+const rankedCauses = computed(() => focusedGuidance.value.flatMap((item) => item.ranked_causes))
+const hints = computed(() => focusedGuidance.value.flatMap((item) => item.hints))
+const focusedIntervention = computed(() =>
+  (props.issues?.length ?? 0) > 1
+    ? (props.interventions?.find((item) => item.episode_id === selectedIssue.value) ?? null)
+    : props.intervention,
+)
 const workflowRuleHits = computed(() => {
   const pending = props.workflow?.review_request?.rule_hits ?? []
   return pending.length ? pending : (props.workflow?.final_result?.rule_hits ?? [])
@@ -145,7 +170,7 @@ const workflowActionLabel = computed(() => {
   return props.workflow ? '继续辅助诊断' : '启动辅助诊断'
 })
 const interventionStatus = computed(() => {
-  if (!props.intervention) return null
+  if (!focusedIntervention.value) return null
   const statusCopy = {
     open: {
       title: '求助已提交，等待教师认领',
@@ -158,8 +183,8 @@ const interventionStatus = computed(() => {
       type: 'primary',
     },
     resolved: {
-      title: '教师已标记为解决',
-      detail: props.intervention.resolution_summary || '教师已完成本次协助处理。',
+      title: '教师已完成工单处理（不代表硬件复测通过）',
+      detail: focusedIntervention.value.resolution_summary || '教师已完成本次协助处理。',
       type: 'success',
     },
     unconfirmed: {
@@ -169,11 +194,11 @@ const interventionStatus = computed(() => {
     },
     closed: {
       title: '教师协助已关闭',
-      detail: props.intervention.resolution_summary || '本次教师协助流程已经结束。',
+      detail: focusedIntervention.value.resolution_summary || '本次教师协助流程已经结束。',
       type: 'info',
     },
   } as const
-  return statusCopy[props.intervention.status]
+  return statusCopy[focusedIntervention.value.status]
 })
 
 function scorePercent(score: number): number {
@@ -191,6 +216,17 @@ function formatReviewTime(value: string): string {
 
 <template>
   <div id="diagnosis" class="diagnosis-suite">
+    <label v-if="issues && issues.length > 1">
+      选择本次排查和反馈的问题
+      <el-select v-model="selectedIssue" placeholder="请选择一个问题">
+        <el-option
+          v-for="issue in issues"
+          :key="issue.id"
+          :value="issue.id"
+          :label="`${issue.error_type} · ${issue.scope?.keys.join('、') || '设备范围'} · ${issue.status === 'resolved' ? '已结束（不代表硬件已验证）' : '处理中'}`"
+        />
+      </el-select>
+    </label>
     <article class="panel-card diagnosis-summary" :class="{ 'is-abnormal': primaryMatch }">
       <div class="panel-heading compact-heading">
         <h2><Warning /> 设备状态解释</h2>
@@ -455,24 +491,24 @@ function formatReviewTime(value: string): string {
         <el-button
           type="success"
           :loading="feedbackLoading"
-          :disabled="feedbackBlocked"
-          @click="emit('feedback', 'resolved')"
+          :disabled="feedbackBlocked || issueSelectionRequired"
+          @click="emit('feedback', 'resolved', selectedIssue)"
         >
           <CircleCheck /> 问题已解决
         </el-button>
         <el-button
           type="warning"
           :loading="feedbackLoading"
-          :disabled="feedbackBlocked"
-          @click="emit('feedback', 'unresolved')"
+          :disabled="feedbackBlocked || issueSelectionRequired"
+          @click="emit('feedback', 'unresolved', selectedIssue)"
         >
           <QuestionFilled /> 仍未解决
         </el-button>
         <el-button
           type="primary"
           :loading="feedbackLoading"
-          :disabled="feedbackBlocked"
-          @click="emit('feedback', 'request_teacher_help')"
+          :disabled="feedbackBlocked || issueSelectionRequired"
+          @click="emit('feedback', 'request_teacher_help', selectedIssue)"
         >
           <Promotion /> 请求教师协助
         </el-button>

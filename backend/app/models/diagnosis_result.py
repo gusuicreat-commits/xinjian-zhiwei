@@ -45,6 +45,7 @@ class DiagnosisResult(UuidPrimaryKeyMixin, Base):
     episode_evidence_revision: Mapped[Optional[int]] = mapped_column(
         Integer, default=0, nullable=True
     )
+    issue_model_version: Mapped[Optional[int]] = mapped_column(Integer, default=2)
     evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ruleset_version: Mapped[str] = mapped_column(String(100), nullable=False)
     ruleset_hash: Mapped[str] = mapped_column(String(64), nullable=False)

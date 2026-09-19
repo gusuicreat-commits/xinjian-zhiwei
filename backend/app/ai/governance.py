@@ -12,7 +12,7 @@ from app.core.config import Settings
 from app.models.ai_usage_reservation import AIUsageReservation
 from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_result import DiagnosisResult
-from app.services.diagnosis_episode import episode_for_diagnosis
+from app.services.diagnosis_episode import episode_for_diagnosis, issue_links
 from app.services.lightweight_diagnosis import budget_allowed, estimate_ai_cost
 
 # PostgreSQL also locks across workers. The process lock supports SQLite's
@@ -26,6 +26,43 @@ class AIQuotaDenied(AIProviderError):
         super().__init__(code)
 
 
+def current_delivery_scope(db, diagnosis):
+    """Recheck current teaching authority, including on cache hits and late results."""
+    from app.models import User
+    from app.services.data_scope import (
+        assert_student_session_access,
+        diagnosis_session,
+        is_demo_session,
+    )
+    from app.services.experiment_packages import load_experiment_package_runtime
+
+    try:
+        db.refresh(diagnosis)
+        if diagnosis.matched_rules and episode_for_diagnosis(db, diagnosis) is None:
+            raise AIQuotaDenied("EPISODE_SCOPE_UNRESOLVED")
+        owner = diagnosis_session(db, diagnosis)
+        if (diagnosis.context_snapshot or {}).get("feedback_scope") and owner is None:
+            raise ValueError("diagnosis owner is unresolved")
+        if owner is not None:
+            db.refresh(owner)
+            student = db.get(User, owner.student_user_id, populate_existing=True)
+            if student is None or not student.is_active or owner.status != "active":
+                raise ValueError("student session is no longer active")
+            if not is_demo_session(db, owner):
+                assert_student_session_access(db, student, owner)
+        if diagnosis.experiment_version_id:
+            load_experiment_package_runtime(db, diagnosis.experiment_version_id)
+        result = []
+        for link in issue_links(db, diagnosis):
+            db.refresh(link.episode)
+            result.append((link.episode_id, link.episode.status, link.episode.evidence_revision))
+        return tuple(sorted(result))
+    except AIQuotaDenied:
+        raise
+    except Exception as exc:
+        raise AIQuotaDenied("AI_TEACHING_SCOPE_UNAVAILABLE") from exc
+
+
 def estimate_prompt_tokens(system_prompt: str, user_prompt: str) -> int:
     """Provider-independent estimate, including instructions and Schema, not only data.
 
@@ -37,15 +74,33 @@ def estimate_prompt_tokens(system_prompt: str, user_prompt: str) -> int:
 
 class GovernedAIInvocation:
     def __init__(
-        self, db: Session, diagnosis: DiagnosisResult, settings: Settings,
-        *, call_stage: str, episode: DiagnosisEpisode | None = None,
+        self,
+        db: Session,
+        diagnosis: DiagnosisResult,
+        settings: Settings,
+        *,
+        call_stage: str,
+        episode: DiagnosisEpisode | None = None,
+        knowledge_case_ids: tuple[str, ...] = (),
     ):
         self.db = db
         self.diagnosis = diagnosis
         self.settings = settings
         self.call_stage = call_stage
         self.episode = episode
+        self.knowledge_case_ids = knowledge_case_ids
         self.reservations: list[AIUsageReservation] = []
+
+    def _check_knowledge(self):
+        from app.models.knowledge import KnowledgeCase
+
+        # Package cases are immutable snapshots authorized by the package gate.
+        if self.diagnosis.experiment_version_id:
+            return
+        for case_id in self.knowledge_case_ids:
+            case = self.db.get(KnowledgeCase, case_id, populate_existing=True)
+            if case is not None and case.review_status != "approved":
+                raise AIQuotaDenied("AI_KNOWLEDGE_WITHDRAWN")
 
     @property
     def attempts(self) -> int:
@@ -82,12 +137,23 @@ class GovernedAIInvocation:
                     self.db.refresh(self.episode)
                 if self.episode is None and self.diagnosis.matched_rules:
                     raise AIQuotaDenied("EPISODE_SCOPE_UNRESOLVED")
-                allowed, reason = budget_allowed(
-                    self.db, self.diagnosis.device_id, settings, self.episode,
-                    projected_call_cost=projected,
-                )
-                if not allowed:
-                    raise AIQuotaDenied(reason or "AI_BUDGET_LIMIT")
+                episodes = {
+                    link.episode_id: link.episode for link in issue_links(self.db, self.diagnosis)
+                }
+                if self.episode:
+                    episodes[self.episode.id] = self.episode
+                for target in list(episodes.values()) or [None]:
+                    if target:
+                        self.db.refresh(target)
+                    allowed, reason = budget_allowed(
+                        self.db,
+                        self.diagnosis.device_id,
+                        settings,
+                        target,
+                        projected_call_cost=projected,
+                    )
+                    if not allowed:
+                        raise AIQuotaDenied(reason or "AI_BUDGET_LIMIT")
                 if projected is None and (
                     settings.ai_daily_budget is not None
                     or settings.ai_max_cost_per_call is not None
@@ -97,13 +163,26 @@ class GovernedAIInvocation:
                     diagnosis_result_id=self.diagnosis.id,
                     device_id=self.diagnosis.device_id,
                     episode_id=self.episode.id if self.episode else None,
-                    call_stage=self.call_stage, provider=client.provider, model=client.model,
-                    status="reserved", reserved_cost=projected, accounted_cost=projected,
+                    call_stage=self.call_stage,
+                    provider=client.provider,
+                    model=client.model,
+                    status="reserved",
+                    reserved_cost=projected,
+                    accounted_cost=projected,
+                    attribution={
+                        "episode_ids": sorted(episodes),
+                        "currency": settings.ai_budget_currency,
+                        "price_version": settings.ai_price_version,
+                        "day_timezone": "UTC",
+                        "enforcement": "estimated_preflight",
+                        "input_cost_per_1k": settings.ai_input_cost_per_1k_tokens,
+                        "output_cost_per_1k": settings.ai_output_cost_per_1k_tokens,
+                    },
                     is_test_data=self.diagnosis.is_test_data,
                 )
                 self.db.add(reservation)
-                if self.episode is not None:
-                    self.episode.ai_call_count += 1
+                for target in episodes.values():
+                    target.ai_call_count += 1
                 self.db.commit()
                 self.reservations.append(reservation)
                 return reservation
@@ -124,8 +203,14 @@ class GovernedAIInvocation:
             raise AIQuotaDenied("AI_QUOTA_STORAGE_UNAVAILABLE") from exc
 
     def complete_json(
-        self, client: AIClient, *, system_prompt: str, user_prompt: str,
+        self,
+        client: AIClient,
+        *,
+        system_prompt: str,
+        user_prompt: str,
     ) -> AICompletion:
+        delivery_scope = current_delivery_scope(self.db, self.diagnosis)
+        self._check_knowledge()
         reservation = self._reserve(client, system_prompt, user_prompt)
         try:
             # No hidden transport retries: each physical request needs a reservation.
@@ -151,4 +236,7 @@ class GovernedAIInvocation:
                 completion.input_tokens, completion.output_tokens, self.settings
             )
         self._settle()
+        self._check_knowledge()
+        if current_delivery_scope(self.db, self.diagnosis) != delivery_scope:
+            raise AIQuotaDenied("AI_RESULT_STALE")
         return completion

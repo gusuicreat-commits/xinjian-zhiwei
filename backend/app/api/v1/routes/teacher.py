@@ -38,4 +38,9 @@ def get_teacher_dashboard(
             .distinct()
         )
     )
-    return build_teacher_dashboard(db, allowed_device_ids=device_ids)
+    class_ids = set(
+        db.scalars(
+            select(TeachingAssignment.class_id).where(TeachingAssignment.user_id == actor.id)
+        )
+    )
+    return build_teacher_dashboard(db, allowed_device_ids=device_ids, allowed_class_ids=class_ids)

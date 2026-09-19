@@ -4,7 +4,7 @@
 
 ## 开始工作前
 
-1. 阅读 `README.md` 和 `docs/development-guidelines.md`；后者是项目开发约束的维护位置，尤其遵守第 19 节“模型规范内核”。不在本文件复制规则正文。
+1. 阅读 `README.md` 和 `docs/development-guidelines.md`；后者是项目开发约束的唯一维护位置，尤其遵守第 19 节“模型规范内核”和第 20 节“业务逻辑与开发规则”。第 20 节是用户于 2026-09-19 确认并要求逐步实施、此后持续遵守的完整业务方案。不在本文件复制规则正文。
 2. 涉及诊断、AI、知识或实验包时，阅读 `docs/ai-diagnosis-design.md` 及对应模块设计；涉及评测时阅读 `docs/evaluation.md` 和 `docs/test-reporting.md`。
 3. 当前真实性和待验收事项以 `docs/project-truth-status.md`、`docs/implementation-status.md` 及本次实际检查为准。历史报告不能证明当前代码、硬件或生产环境已通过。
 

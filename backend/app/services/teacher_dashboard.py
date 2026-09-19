@@ -6,9 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models.classroom import DeviceBinding
+from app.models.classroom import DeviceBinding, ExperimentAssignment, ExperimentSession
 from app.models.device import Device
 from app.models.device_log import DeviceLog
+from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 from app.models.intervention import InterventionCase, InterventionEvent
@@ -24,6 +25,7 @@ from app.schemas.teacher import (
     TeacherMetricSummary,
     UnconfiguredDataset,
 )
+from app.services.data_scope import diagnosis_session
 from app.services.device_ingest import calculate_device_status
 from app.services.knowledge import get_knowledge_status
 
@@ -36,6 +38,7 @@ def build_teacher_dashboard(
     db: Session,
     *,
     allowed_device_ids: Optional[set[str]] = None,
+    allowed_class_ids: Optional[set[str]] = None,
 ) -> TeacherDashboardResponse:
     now = datetime.now(timezone.utc)
     settings = get_settings()
@@ -64,8 +67,29 @@ def build_teacher_dashboard(
             DiagnosisResult,
             DiagnosisResult.id == InterventionCase.diagnosis_result_id,
         ).where(DiagnosisResult.device_id.in_(allowed_device_ids))
+    if allowed_class_ids is not None:
+        owned_sessions = (
+            select(ExperimentSession.id)
+            .join(ExperimentAssignment)
+            .where(ExperimentAssignment.class_id.in_(allowed_class_ids))
+        )
+        log_query = log_query.where(DeviceLog.experiment_session_id.in_(owned_sessions))
+        intervention_case_query = intervention_case_query.where(
+            InterventionCase.class_id.in_(allowed_class_ids)
+        )
     devices = db.scalars(device_query).all()
     diagnoses = db.scalars(diagnosis_query).all()
+
+    def recorded_class(diagnosis):
+        owner = diagnosis_session(db, diagnosis) if diagnosis is not None else None
+        task = db.get(ExperimentAssignment, owner.experiment_assignment_id) if owner else None
+        return task.class_id if task else None
+
+    if allowed_class_ids is not None:
+        diagnoses = [item for item in diagnoses if recorded_class(item) in allowed_class_ids]
+        intervention_query = intervention_query.where(
+            GuidanceHistory.diagnosis_result_id.in_([item.id for item in diagnoses])
+        )
     latest_diagnoses: dict[str, DiagnosisResult] = {}
     for diagnosis in diagnoses:
         latest_diagnoses.setdefault(diagnosis.device_id, diagnosis)
@@ -131,7 +155,13 @@ def build_teacher_dashboard(
     logs = db.scalars(log_query.limit(80)).all()
     guidance_interventions = db.scalars(intervention_query.limit(30)).all()
     intervention_cases = db.scalars(intervention_case_query.limit(30)).all()
-    case_diagnosis_ids = {case.diagnosis_result_id for case in intervention_cases}
+    intervention_cases = [
+        case
+        for case in intervention_cases
+        if recorded_class(db.get(DiagnosisResult, case.diagnosis_result_id))
+        in (None, case.class_id)
+    ]
+    case_targets = {(case.diagnosis_result_id, case.episode_id) for case in intervention_cases}
     intervention_items: list[TeacherInterventionItem] = []
     for case in intervention_cases:
         diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
@@ -142,7 +172,10 @@ def build_teacher_dashboard(
             continue
         guidance = db.scalar(
             select(GuidanceHistory)
-            .where(GuidanceHistory.diagnosis_result_id == diagnosis.id)
+            .where(
+                GuidanceHistory.diagnosis_result_id == diagnosis.id,
+                GuidanceHistory.episode_id == case.episode_id,
+            )
             .order_by(GuidanceHistory.created_at.desc(), GuidanceHistory.id.desc())
             .limit(1)
         )
@@ -167,6 +200,15 @@ def build_teacher_dashboard(
         intervention_items.append(
             TeacherInterventionItem(
                 case_id=case.id,
+                episode_id=case.episode_id,
+                problem_status=(
+                    db.get(DiagnosisEpisode, case.episode_id).status if case.episode_id else None
+                ),
+                evidence_revision=(
+                    db.get(DiagnosisEpisode, case.episode_id).evidence_revision
+                    if case.episode_id
+                    else None
+                ),
                 source=(
                     "student_request"
                     if request_source == "student_device_feedback"
@@ -187,11 +229,12 @@ def build_teacher_dashboard(
             )
         )
     for record in guidance_interventions:
-        if record.diagnosis_result_id in case_diagnosis_ids:
+        if (record.diagnosis_result_id, record.episode_id) in case_targets:
             continue
         intervention_items.append(
             TeacherInterventionItem(
                 source="automatic_guidance",
+                episode_id=record.episode_id,
                 status="recommended",
                 device_id=record.device.device_key,
                 diagnosis_result_id=record.diagnosis_result_id,

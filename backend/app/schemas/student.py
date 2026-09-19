@@ -15,11 +15,23 @@ class StrictStudentModel(BaseModel):
 class StudentSessionResponse(StrictStudentModel):
     device_id: str
     display_name: Optional[str]
-    auth_mode: Literal["device_credential_placeholder"]
+    auth_mode: Literal["device_credential_placeholder", "student_account"]
     student_user_id: Optional[str] = None
     experiment_session_id: Optional[str] = None
     experiment_assignment_id: Optional[str] = None
     notice: str
+
+
+class ExperimentSessionStart(StrictStudentModel):
+    request_id: UUID
+    device_id: str = Field(min_length=1, max_length=128)
+    experiment_assignment_id: UUID
+
+
+class ExperimentSessionEnd(StrictStudentModel):
+    request_id: UUID
+    expected_version: int = Field(ge=1)
+    reason: Literal["completed", "cancelled"]
 
 
 class CurrentTaskSummary(StrictStudentModel):
@@ -70,6 +82,7 @@ class StudentDiagnosisSummary(StrictStudentModel):
 
 class StudentGuidanceItem(StrictStudentModel):
     id: str
+    episode_id: Optional[str] = None
     tree_id: str
     tree_title: str
     tree_status: str
@@ -83,6 +96,7 @@ class StudentGuidanceItem(StrictStudentModel):
 
 class StudentFeedbackItem(StrictStudentModel):
     id: str
+    episode_id: Optional[str] = None
     action: Literal["resolved", "unresolved", "request_teacher_help"]
     note: Optional[str]
     is_test_data: bool
@@ -102,6 +116,7 @@ class StudentFeedbackRecoveryResponse(StrictStudentModel):
 
 
 class StudentInterventionSummary(StrictStudentModel):
+    episode_id: Optional[str] = None
     id: str
     status: Literal["open", "claimed", "resolved", "unconfirmed", "closed"]
     version_no: int
@@ -120,13 +135,16 @@ class StudentDashboardResponse(StrictStudentModel):
     guidance: list[StudentGuidanceItem]
     feedback: Optional[StudentFeedbackItem]
     intervention: Optional[StudentInterventionSummary] = None
+    interventions: list[StudentInterventionSummary] = Field(default_factory=list)
     ai_status: AIStatusResponse
     ai_explanation: Optional[AIExplanationResponse]
     episode: Optional[dict[str, Any]] = None
+    issues: list[dict[str, Any]] = Field(default_factory=list)
     device_state_explanation: DeviceStateExplanation
 
 
 class StudentFeedbackCreate(StrictStudentModel):
     request_id: UUID
+    episode_id: Optional[UUID] = None
     action: Literal["resolved", "unresolved", "request_teacher_help"]
     note: Optional[str] = Field(default=None, max_length=1000)

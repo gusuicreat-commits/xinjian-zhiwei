@@ -22,6 +22,8 @@ type Manifest = {
   session_id: string
   records: Array<Record<string, unknown>>
   is_test_data: boolean
+  student_username: string
+  student_password: string
 }
 type Snapshot = {
   migration: string
@@ -160,6 +162,7 @@ const test = base.extend<{ backend: Backend }>({
 
 async function login(page: Page, backend: Backend) {
   await page.goto('/login')
+  await page.getByText('测试设备演示', { exact: true }).click()
   await page.getByPlaceholder('设备 ID').fill(backend.manifest.device_key)
   await page.getByPlaceholder('设备令牌').fill(backend.manifest.device_token)
   const sessionResponse = page.waitForResponse(
@@ -203,7 +206,7 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
   expect(workflow.status).toBe('waiting_feedback')
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20260917_0029')
+  expect(persisted.migration).toBe('20260919_0031')
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,
@@ -300,4 +303,35 @@ test('closed tab loses local request but fresh login finds server pending and re
   await reopened.reload()
   await expect(reopened.getByText(/最近一次反馈已确认：/)).toBeVisible()
   expect(await backend.snapshot()).toEqual(after)
+})
+
+test('account login uses no device secret and explicitly ends its own experiment', async ({
+  page,
+  backend,
+}) => {
+  const requests: Array<Record<string, string>> = []
+  page.on('request', (request) => {
+    if (request.url().includes('/api/v1/student/')) requests.push(request.headers())
+  })
+  await page.goto('/login')
+  await page.getByPlaceholder('学生账号', { exact: true }).fill(backend.manifest.student_username)
+  await page.getByPlaceholder('学生密码', { exact: true }).fill(backend.manifest.student_password)
+  const authenticated = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/auth/session') && response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: '验证学生账号', exact: true }).click()
+  const accountResponse = await authenticated
+  expect(accountResponse.status()).toBe(200)
+  expect((await accountResponse.json()).roles).toContain('student')
+  await expect(page.getByRole('button', { name: '进入所选实验', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '进入所选实验', exact: true }).click()
+  await expect(page).toHaveURL(/\/student$/)
+  await expect(page.getByRole('button', { name: '结束本次实验', exact: true })).toBeEnabled()
+  expect(requests.some((h) => h.authorization?.startsWith('Bearer '))).toBe(true)
+  expect(requests.every((h) => !h['x-device-token'])).toBe(true)
+  await page.getByRole('button', { name: '结束本次实验', exact: true }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  const stored = await page.evaluate(() => sessionStorage.getItem('xinjian-student-device-session'))
+  expect(stored).toBeNull()
 })

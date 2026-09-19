@@ -16,7 +16,7 @@ export const FEEDBACK_ACTION_LABELS: Record<FeedbackAction, string> = {
 
 export class FeedbackRequestError extends Error {}
 
-function newRequestId(): string {
+export function newRequestId(): string {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
   // randomUUID is unavailable on plain HTTP LAN origins; getRandomValues remains usable.
   const bytes = crypto.getRandomValues(new Uint8Array(16))
@@ -50,12 +50,32 @@ function parseRequest(raw: string): StudentFeedbackCreate {
   ) {
     throw new FeedbackRequestError('未决反馈记录无法读取，请联系教师核对提交状态。')
   }
-  return { request_id: pending.request_id, action: pending.action, note: pending.note ?? null }
+  if (pending.episode_id && !UUID_PATTERN.test(pending.episode_id))
+    throw new FeedbackRequestError('未决反馈的问题归属无法读取，请联系教师核对。')
+  return {
+    request_id: pending.request_id,
+    action: pending.action,
+    note: pending.note ?? null,
+    ...(pending.episode_id ? { episode_id: pending.episode_id } : {}),
+  }
 }
 
 export function sameFeedbackPayload(a: StudentFeedbackCreate, b: StudentFeedbackCreate): boolean {
   return (
-    a.request_id === b.request_id && a.action === b.action && (a.note ?? null) === (b.note ?? null)
+    a.request_id === b.request_id &&
+    a.action === b.action &&
+    (a.note ?? null) === (b.note ?? null) &&
+    (a.episode_id ?? null) === (b.episode_id ?? null)
+  )
+}
+
+export function matchesServerFeedback(
+  local: StudentFeedbackCreate,
+  server: StudentFeedbackCreate,
+): boolean {
+  return (
+    sameFeedbackPayload(local, server) ||
+    (!local.episode_id && sameFeedbackPayload(local, { ...server, episode_id: undefined }))
   )
 }
 
@@ -91,6 +111,7 @@ export function getOrCreateFeedbackRequest(
   diagnosisId: string,
   action: FeedbackAction,
   note: string | null = null,
+  episodeId: string | null = null,
 ): StudentFeedbackCreate {
   if (!credentials.experimentSessionId) {
     throw new FeedbackRequestError('反馈需要实验会话，请重新登录。')
@@ -100,14 +121,23 @@ export function getOrCreateFeedbackRequest(
     const raw = sessionStorage.getItem(key)
     if (raw) {
       const pending = parseRequest(raw)
-      if (pending.action !== action || pending.note !== note) {
+      if (
+        pending.action !== action ||
+        pending.note !== note ||
+        (pending.episode_id ?? null) !== episodeId
+      ) {
         throw new FeedbackRequestError(
           `上一条“${FEEDBACK_ACTION_LABELS[pending.action]}”反馈的提交结果尚未确认，请先点击原反馈重试。`,
         )
       }
       return pending
     }
-    const pending = { request_id: newRequestId(), action, note }
+    const pending = {
+      request_id: newRequestId(),
+      action,
+      note,
+      ...(episodeId ? { episode_id: episodeId } : {}),
+    }
     sessionStorage.setItem(key, JSON.stringify(pending))
     return pending
   } catch (error) {
@@ -120,9 +150,16 @@ export function completeFeedbackRequest(
   credentials: DeviceCredentials,
   diagnosisId: string,
   expected: StudentFeedbackCreate,
+  authoritativeReceipt = false,
 ): void {
   const key = storageKey(credentials, diagnosisId)
   const raw = sessionStorage.getItem(key)
   // A late response must never erase another locally prepared request.
-  if (raw && sameFeedbackPayload(parseRequest(raw), expected)) sessionStorage.removeItem(key)
+  if (
+    raw &&
+    (authoritativeReceipt
+      ? matchesServerFeedback(parseRequest(raw), expected)
+      : sameFeedbackPayload(parseRequest(raw), expected))
+  )
+    sessionStorage.removeItem(key)
 }

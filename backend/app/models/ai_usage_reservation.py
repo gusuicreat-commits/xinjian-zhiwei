@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -32,6 +32,7 @@ class AIUsageReservation(UuidPrimaryKeyMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     reserved_cost: Mapped[Optional[float]] = mapped_column(Float)
     accounted_cost: Mapped[Optional[float]] = mapped_column(Float)
+    attribution: Mapped[Optional[dict]] = mapped_column(JSON)
     input_tokens: Mapped[Optional[int]] = mapped_column(Integer)
     output_tokens: Mapped[Optional[int]] = mapped_column(Integer)
     error_code: Mapped[Optional[str]] = mapped_column(String(100))

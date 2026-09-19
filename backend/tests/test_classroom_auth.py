@@ -195,6 +195,7 @@ def test_student_and_teacher_device_dashboards_are_resource_scoped(
     assert unauthenticated.status_code == 401
     assert [item["device_id"] for item in student_devices.json()] == [seeded["visible_device"]]
     assert [item["device_id"] for item in teacher_devices.json()] == [seeded["visible_device"]]
-    assert visible.status_code == 200
+    # A current device binding cannot grant this student the fixture owner's session.
+    assert visible.status_code == 403
     assert student_hidden.status_code == 404
     assert teacher_hidden.status_code == 404

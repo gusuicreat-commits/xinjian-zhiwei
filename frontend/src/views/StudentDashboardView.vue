@@ -101,12 +101,15 @@ async function refresh(showTransition = false): Promise<void> {
   }
 }
 
-async function submitFeedback(action: FeedbackAction): Promise<void> {
+async function submitFeedback(
+  action: FeedbackAction,
+  episodeId: string | null = null,
+): Promise<void> {
   if (!sessionStore.credentials) return
   const credentials = sessionStore.credentials
   try {
     if (
-      (await dashboardStore.submitFeedback(credentials, action)) &&
+      (await dashboardStore.submitFeedback(credentials, action, episodeId)) &&
       sessionStore.credentials === credentials
     ) {
       ElMessage.success('反馈已记录')
@@ -210,6 +213,16 @@ async function logout(): Promise<void> {
   await router.replace('/login')
 }
 
+async function finishExperiment(): Promise<void> {
+  try {
+    await sessionStore.finishExperiment()
+    dashboardStore.clear()
+    await router.replace('/login')
+  } catch {
+    ElMessage.warning('结束结果尚未确认，请重试原操作或重新登录查看会话状态。')
+  }
+}
+
 onMounted(() => {
   void refresh()
   refreshTimer = window.setInterval(() => void refresh(), 15_000)
@@ -247,6 +260,12 @@ onBeforeUnmount(() => {
           <strong>{{ deviceLabel }}</strong
           ><small>临时设备会话</small>
         </div>
+        <el-button
+          v-if="sessionStore.credentials?.accessToken"
+          :disabled="dashboardStore.feedbackBlocked"
+          @click="finishExperiment"
+          >结束本次实验</el-button
+        >
         <button type="button" aria-label="退出登录" @click="logout"><SwitchButton /></button>
       </div>
     </header>
@@ -330,10 +349,12 @@ onBeforeUnmount(() => {
           <RealtimeLogList :logs="dashboardStore.dashboard.logs" />
           <SensorTrendChart :readings="dashboardStore.dashboard.readings" />
           <DiagnosisPanel
+            :issues="dashboardStore.dashboard.issues"
             :diagnosis="dashboardStore.dashboard.diagnosis"
             :guidance="dashboardStore.dashboard.guidance"
             :feedback="dashboardStore.dashboard.feedback"
             :intervention="dashboardStore.dashboard.intervention"
+            :interventions="dashboardStore.dashboard.interventions"
             :feedback-loading="dashboardStore.feedbackLoading"
             :feedback-blocked="dashboardStore.feedbackBlocked"
             :ai-status="dashboardStore.dashboard.ai_status"

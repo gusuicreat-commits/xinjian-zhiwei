@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -32,9 +33,9 @@ class KnowledgeCaseDefinition(StrictKnowledgeCaseModel):
     source_type: str = Field(alias="sourceType", default="curated_template")
     facts_locked: bool = Field(alias="factsLocked", default=False)
     quality_check_passed: bool = Field(alias="qualityCheckPassed", default=False)
-    review_status: Literal["draft", "pending", "approved", "rejected"] = Field(
-        alias="reviewStatus", default="draft"
-    )
+    review_status: Literal[
+        "draft", "pending", "approved", "rejected", "withdrawn", "superseded"
+    ] = Field(alias="reviewStatus", default="draft")
     source_ref: str = Field(alias="sourceRef", min_length=1, max_length=500)
     version: str = Field(default="1", min_length=1, max_length=50)
     is_test_data: bool = Field(alias="isTestData", default=False)
@@ -126,11 +127,25 @@ class KnowledgeCaseDraftResponse(StrictKnowledgeCaseModel):
     updated_at: datetime
 
 
+class CaseConfirmationMaterial(StrictKnowledgeCaseModel):
+    method: Literal["teacher_inspection", "controlled_test", "measurement"]
+    finding: str = Field(min_length=1, max_length=4000)
+    recovery_diagnosis_id: str = Field(min_length=36, max_length=36)
+    applicability_limits: str = Field(min_length=1, max_length=2000)
+
+
+class CaseWithdrawRequest(StrictKnowledgeCaseModel):
+    request_id: UUID
+    expected_version: str = Field(min_length=1, max_length=50)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class KnowledgeCaseDraftApproveRequest(StrictKnowledgeCaseModel):
     case_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._:-]+$")
     confirmed_root_cause: str = Field(min_length=1, max_length=200)
     final_solution_steps: list[str] = Field(min_length=1, max_length=30)
     confirmation_note: str = Field(min_length=1, max_length=4000)
+    confirmation_material: CaseConfirmationMaterial | None = None
 
 
 class AICasePolishFields(StrictKnowledgeCaseModel):

@@ -11,6 +11,7 @@ from app.knowledge.case_drafting import (
     CaseDraftError,
     approve_case_draft,
     generate_ai_assisted_polish,
+    withdraw_case,
 )
 from app.models.classroom import (
     DeviceBinding,
@@ -21,7 +22,7 @@ from app.models.classroom import (
 )
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
-from app.models.knowledge import KnowledgeCaseDraft
+from app.models.knowledge import KnowledgeCase, KnowledgeCaseDraft
 from app.schemas.knowledge import (
     KnowledgeChunkMergeRequest,
     KnowledgeChunkSplitRequest,
@@ -37,6 +38,7 @@ from app.schemas.knowledge import (
     KnowledgeWorkspaceResponse,
 )
 from app.schemas.knowledge_case import (
+    CaseWithdrawRequest,
     KnowledgeCaseDraftApproveRequest,
     KnowledgeCaseDraftResponse,
     KnowledgeCaseResponse,
@@ -229,6 +231,11 @@ def approve_diagnosis_case_draft(
             confirmed_root_cause=payload.confirmed_root_cause,
             final_solution_steps=payload.final_solution_steps,
             confirmation_note=payload.confirmation_note,
+            confirmation_material=(
+                payload.confirmation_material.model_dump()
+                if payload.confirmation_material
+                else None
+            ),
         )
     except CaseDraftError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -259,6 +266,32 @@ def approve_diagnosis_case_draft(
         created_at=case.created_at,
         updated_at=case.updated_at,
     )
+
+
+@router.post("/cases/{case_id}/withdraw")
+def withdraw_knowledge_case(
+    case_id: str, payload: CaseWithdrawRequest, actor: CurrentUser, db: DatabaseSession
+):
+    roles = _require_case_reviewer(db, actor)
+    case = db.get(KnowledgeCase, case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="case not found")
+    if case.source_draft_id:
+        _require_case_scope(db, actor, roles, case.source_draft_id)
+    elif "formal_approver" not in roles:
+        raise HTTPException(status_code=403, detail="global cases require formal review authority")
+    try:
+        return withdraw_case(
+            db,
+            case,
+            actor,
+            request_id=str(payload.request_id),
+            expected_version=payload.expected_version,
+            reason=payload.reason,
+        )
+    except CaseDraftError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/status", response_model=KnowledgeStatusResponse)

@@ -4,51 +4,174 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_authenticated_device
+from app.api.dependencies import get_current_user, get_student_device
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.experiment_packages.loader import ExperimentPackageLoadError
+from app.models.classroom import DeviceBinding, ExperimentAssignment, ExperimentSession, User
 from app.models.device import Device
 from app.models.diagnosis_result import DiagnosisResult
 from app.schemas.student import (
+    ExperimentSessionEnd,
+    ExperimentSessionStart,
     StudentDashboardResponse,
     StudentFeedbackCreate,
     StudentFeedbackItem,
     StudentFeedbackRecoveryResponse,
     StudentSessionResponse,
 )
+from app.services.data_scope import assert_student_assignment_access, assert_student_session_access
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
     WorkflowScopeViolation,
-    find_active_experiment_session,
 )
+from app.services.experiment_sessions import end_session, session_summary, start_session
 from app.services.student_dashboard import build_student_dashboard
 from app.services.student_feedback import read_feedback_recovery, submit_student_feedback
 
 router = APIRouter(prefix="/student", tags=["student"])
-AuthenticatedDevice = Annotated[Device, Depends(get_authenticated_device)]
+AuthenticatedDevice = Annotated[Device, Depends(get_student_device)]
 DatabaseSession = Annotated[Session, Depends(get_db)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
 
 
+@router.get("/assignments")
+def student_assignments(user: Annotated[User, Depends(get_current_user)], db: DatabaseSession):
+    result = []
+    for assignment in db.scalars(
+        select(ExperimentAssignment)
+        .where(ExperimentAssignment.status == "published")
+        .order_by(ExperimentAssignment.id)
+    ):
+        try:
+            assert_student_assignment_access(db, user, assignment)
+        except (WorkflowConflict, WorkflowScopeViolation):
+            continue
+        devices = list(
+            db.scalars(
+                select(Device)
+                .where(
+                    Device.is_active.is_(True),
+                    select(DeviceBinding.id)
+                    .where(
+                        DeviceBinding.device_id == Device.id,
+                        DeviceBinding.student_user_id == user.id,
+                        DeviceBinding.class_id == assignment.class_id,
+                        DeviceBinding.is_active.is_(True),
+                        (DeviceBinding.experiment_assignment_id == assignment.id)
+                        | DeviceBinding.experiment_assignment_id.is_(None),
+                    )
+                    .exists(),
+                )
+                .order_by(Device.device_key)
+            )
+        )
+        result.append(
+            {
+                "id": assignment.id,
+                "title": assignment.title,
+                "is_test_data": assignment.is_test_data,
+                "devices": [{"id": d.device_key, "name": d.display_name} for d in devices],
+            }
+        )
+    return result
+
+
+@router.post("/experiment-sessions", status_code=201)
+def begin_experiment(
+    payload: ExperimentSessionStart,
+    user: Annotated[User, Depends(get_current_user)],
+    db: DatabaseSession,
+) -> dict:
+    try:
+        return start_session(
+            db,
+            user,
+            request_id=payload.request_id,
+            device_key=payload.device_id,
+            assignment_id=str(payload.experiment_assignment_id),
+        )
+    except WorkflowScopeViolation as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (WorkflowConflict, ExperimentPackageLoadError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/experiment-sessions/{session_id}/end")
+def finish_experiment(
+    session_id: str,
+    payload: ExperimentSessionEnd,
+    user: Annotated[User, Depends(get_current_user)],
+    db: DatabaseSession,
+) -> dict:
+    try:
+        return end_session(
+            db,
+            user,
+            session_id=session_id,
+            request_id=payload.request_id,
+            expected_version=payload.expected_version,
+            reason=payload.reason,
+        )
+    except WorkflowScopeViolation as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except WorkflowConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/experiment-sessions")
+def list_student_sessions(
+    user: Annotated[User, Depends(get_current_user)],
+    db: DatabaseSession,
+) -> list[dict]:
+    result = []
+    for session in db.scalars(
+        select(ExperimentSession)
+        .where(
+            ExperimentSession.student_user_id == user.id,
+            ExperimentSession.status == "active",
+            ExperimentSession.ended_at.is_(None),
+        )
+        .order_by(ExperimentSession.started_at.desc(), ExperimentSession.id)
+    ):
+        try:
+            assert_student_session_access(db, user, session)
+        except (WorkflowConflict, WorkflowScopeViolation):
+            continue
+        device = db.get(Device, session.device_id)
+        if device is None or not device.is_active:
+            continue
+        result.append(session_summary(db, session))
+    return result
+
+
 @router.post("/session", response_model=StudentSessionResponse)
 def create_student_session(
-    device: AuthenticatedDevice, db: DatabaseSession
+    device: AuthenticatedDevice, db: DatabaseSession, request: Request
 ) -> StudentSessionResponse:
     try:
-        experiment_session = find_active_experiment_session(db, device)
+        experiment_session = request.state.student_experiment_session
     except WorkflowConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return StudentSessionResponse(
         device_id=device.device_key,
         display_name=device.display_name,
-        auth_mode="device_credential_placeholder",
+        auth_mode=request.state.student_auth_mode,
         student_user_id=(experiment_session.student_user_id if experiment_session else None),
         experiment_session_id=(experiment_session.id if experiment_session else None),
         experiment_assignment_id=(
             experiment_session.experiment_assignment_id if experiment_session else None
         ),
         notice=(
-            "已验证学生—实验会话—设备归属，LangGraph 诊断可用。"
+            (
+                "学生账号和实验资格已验证。"
+                if request.state.student_auth_mode == "student_account"
+                else "测试演示：设备凭据仅可访问明确标记的测试会话。"
+            )
             if experiment_session
             else "当前设备没有唯一有效的学生实验会话；LangGraph 诊断已关闭。"
         ),
@@ -59,10 +182,12 @@ def create_student_session(
 def get_student_dashboard(
     device: AuthenticatedDevice,
     db: DatabaseSession,
+    request: Request,
     experiment_session_id: Annotated[str | None, Header(alias="X-Experiment-Session-ID")] = None,
 ) -> StudentDashboardResponse:
     try:
-        return build_student_dashboard(db, device, experiment_session_id)
+        selected = request.state.student_experiment_session
+        return build_student_dashboard(db, device, selected.id if selected else None)
     except WorkflowScopeViolation as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except WorkflowConflict as exc:
@@ -115,6 +240,7 @@ def create_student_feedback(
         ) from exc
     return StudentFeedbackItem(
         id=record.id,
+        episode_id=record.episode_id,
         action=record.action,
         note=record.note,
         is_test_data=record.is_test_data,

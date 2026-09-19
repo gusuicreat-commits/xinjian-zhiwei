@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from pydantic import ValidationError
 
 from app.diagnosis.schemas import ArtifactScope
@@ -46,6 +47,16 @@ PACKAGE_FILES: dict[str, type] = {
     "tests/normal_cases.yaml": PackageTests,
     "tests/fault_cases.yaml": PackageTests,
 }
+
+# Diagnostic rule/package semantics version, distinct from the web application release.
+DIAGNOSIS_ENGINE_VERSION = "2.0.0"
+
+
+def engine_compatible(requirement: str) -> bool:
+    try:
+        return DIAGNOSIS_ENGINE_VERSION in SpecifierSet(requirement)
+    except InvalidSpecifier:
+        return False
 
 
 class ExperimentPackageLoadError(ValueError):
@@ -246,9 +257,15 @@ def validate_experiment_package(bundle: ExperimentPackageBundle) -> PackageValid
     }
     checks = [
         PackageCheck(
+            code="compatibility.engine",
+            passed=engine_compatible(bundle.metadata.compatibility.engine),
+            message=f"requires a supported diagnostic engine ({DIAGNOSIS_ENGINE_VERSION})",
+        ),
+        PackageCheck(
             code="evidence.runtime_types",
-            passed=(bundle.hardware.runtime_expectations is None or
-                    evidence_types == emitted_types),
+            passed=(
+                bundle.hardware.runtime_expectations is None or evidence_types == emitted_types
+            ),
             message="declared evidence types match emitted observation/event types",
         ),
         PackageCheck(

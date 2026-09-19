@@ -9,7 +9,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models import DiagnosisFeedback, DiagnosisResult, DiagnosisWorkflowRun
 from app.services.data_scope import diagnosis_session
-from app.services.diagnosis_episode import EpisodeFeedbackConflict, lifecycle_lock
+from app.services.diagnosis_episode import EpisodeFeedbackConflict, issue_links, lifecycle_lock
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
     WorkflowScopeViolation,
@@ -17,6 +17,7 @@ from app.services.diagnosis_workflow import (
     resolve_experiment_session,
     resume_workflow_with_feedback,
 )
+from app.services.experiment_packages import teaching_available
 from app.services.student_dashboard import save_student_feedback
 
 # SQLite is a single-process development/test backend. PostgreSQL uses a
@@ -118,6 +119,7 @@ def read_feedback_recovery(db, device, session_id):
             "diagnosis_result_id": record.diagnosis_result_id,
             "request_id": record.request_id,
             "action": record.action,
+            "episode_id": record.episode_id,
             # Exact payload is required for replay; it belongs to this session.
             "note": record.note,
             "is_test_data": record.is_test_data,
@@ -149,6 +151,12 @@ def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, s
             )
         )
         if record is not None:
+            requested_episode = str(payload.episode_id) if payload.episode_id else None
+            links = issue_links(db, diagnosis)
+            if requested_episode is None and len(links) == 1:
+                requested_episode = links[0].episode_id
+            if requested_episode != record.episode_id:
+                raise WorkflowConflict("feedback request_id was already used with another target")
             if (record.action, record.note, record.experiment_session_id) != (
                 payload.action,
                 payload.note,
@@ -173,9 +181,18 @@ def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, s
                 raise WorkflowConflict(
                     "retry the pending feedback request before starting a new one"
                 )
-            if workflow is not None and workflow.status == "waiting_feedback" and graph is None:
+            if (
+                workflow is not None
+                and workflow.status == "waiting_feedback"
+                and graph is None
+                and teaching_available(db, diagnosis)
+            ):
                 raise RuntimeError("workflow unavailable; feedback was not written")
-            needs_resume = workflow is not None and workflow.status == "waiting_feedback"
+            needs_resume = (
+                workflow is not None
+                and workflow.status == "waiting_feedback"
+                and teaching_available(db, diagnosis)
+            )
             try:
                 with lifecycle_lock(db, diagnosis):
                     record = save_student_feedback(

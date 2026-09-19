@@ -3,17 +3,36 @@ import type { DiagnosisWorkflowRecord } from '@/types/workflow'
 export interface DeviceCredentials {
   deviceId: string
   deviceToken: string
+  accessToken?: string
   experimentSessionId?: string
 }
 
 export interface StudentSession {
   device_id: string
   display_name: string | null
-  auth_mode: 'device_credential_placeholder'
+  auth_mode: 'device_credential_placeholder' | 'student_account'
   student_user_id: string | null
   experiment_session_id: string | null
   experiment_assignment_id: string | null
   notice: string
+}
+
+export interface StudentExperimentSession {
+  id: string
+  device_id: string
+  display_name: string | null
+  assignment_title: string
+  experiment_assignment_id: string
+  is_test_data: boolean
+  version_no: number
+  status: string
+}
+
+export interface StudentAssignment {
+  id: string
+  title: string
+  is_test_data: boolean
+  devices: { id: string; name: string | null }[]
 }
 
 export interface CurrentTask {
@@ -202,6 +221,7 @@ export interface GuidanceHint {
 }
 
 export interface StudentGuidance {
+  episode_id?: string | null
   id: string
   tree_id: string
   tree_title: string
@@ -218,6 +238,7 @@ export type FeedbackAction = 'resolved' | 'unresolved' | 'request_teacher_help'
 
 export interface StudentFeedbackCreate {
   request_id: string
+  episode_id?: string | null
   action: FeedbackAction
   note?: string | null
 }
@@ -243,6 +264,7 @@ export interface FeedbackRecoveryTarget {
 
 export interface StudentFeedback {
   id: string
+  episode_id?: string | null
   action: FeedbackAction
   note: string | null
   is_test_data: boolean
@@ -250,6 +272,7 @@ export interface StudentFeedback {
 }
 
 export interface StudentIntervention {
+  episode_id?: string | null
   id: string
   status: 'open' | 'claimed' | 'resolved' | 'unconfirmed' | 'closed'
   version_no: number
@@ -301,6 +324,14 @@ export interface DeviceStateExplanation {
 }
 
 export interface StudentDashboard {
+  issues?: Array<{
+    scope?: { kind: string; keys: string[] }
+    id: string
+    error_type: string
+    status: string
+    failure_count: number
+    resolution_source: string | null
+  }>
   generated_at: string
   task: CurrentTask
   device: StudentDevice
@@ -310,6 +341,7 @@ export interface StudentDashboard {
   guidance: StudentGuidance[]
   feedback: StudentFeedback | null
   intervention: StudentIntervention | null
+  interventions?: StudentIntervention[]
   ai_status: AIStatus
   ai_explanation: AIExplanationResponse | null
   device_state_explanation: DeviceStateExplanation

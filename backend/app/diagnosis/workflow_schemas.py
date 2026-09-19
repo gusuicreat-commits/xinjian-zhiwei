@@ -68,6 +68,9 @@ class DiagnosisState(TypedDict, total=False):
     student_feedback: dict[str, Any] | None
     historical_failures: int
     attempt_count: int
+    unresolved_feedback_count: int
+    help_wait_seconds: int
+    remaining_issues: int
     need_teacher_help: bool
     diagnosis_status: DiagnosisWorkflowStatus
     failure_count: int
@@ -190,6 +193,7 @@ class DiagnosisWorkflowMetricsResponse(StrictModel):
 
 
 class DiagnosisWorkflowResponse(StrictModel):
+    teaching_available: bool = True
     id: str
     diagnosis_id: str
     diagnosis_result_id: str | None

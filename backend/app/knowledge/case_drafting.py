@@ -44,6 +44,46 @@ class CaseDraftError(ValueError):
     pass
 
 
+def withdraw_case(db, case, actor, *, request_id, expected_version, reason):
+    from app.models.classroom import AuditEvent
+
+    case = db.scalar(
+        select(KnowledgeCase)
+        .where(KnowledgeCase.id == case.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    payload = {"expected_version": expected_version, "reason": reason}
+    for audit in db.scalars(
+        select(AuditEvent).where(
+            AuditEvent.actor_user_id == actor.id,
+            AuditEvent.resource_id == case.id,
+            AuditEvent.action == "knowledge_case.withdraw",
+        )
+    ):
+        if audit.details_json.get("request_id") == request_id:
+            if audit.details_json.get("payload") != payload:
+                raise CaseDraftError("withdraw request identity was reused with different content")
+            return audit.details_json["result"]
+    if case.version != expected_version or case.review_status not in {"approved", "pending"}:
+        raise CaseDraftError("case state changed; refresh before withdrawal")
+    case.review_status = "withdrawn"
+    result = {"id": case.id, "version": case.version, "review_status": "withdrawn"}
+    db.add(
+        AuditEvent(
+            actor_user_id=actor.id,
+            action="knowledge_case.withdraw",
+            resource_type="knowledge_case",
+            resource_id=case.id,
+            details_json={"request_id": request_id, "payload": payload, "result": result},
+            is_test_data=case.is_test_data,
+            created_at=utc_now(),
+        )
+    )
+    db.commit()
+    return result
+
+
 def _update_draft(
     db: Session,
     draft: KnowledgeCaseDraft,
@@ -412,6 +452,7 @@ def approve_case_draft(
     confirmed_root_cause: str,
     final_solution_steps: list[str],
     confirmation_note: str,
+    confirmation_material: dict | None = None,
 ) -> KnowledgeCase:
     if draft.status != "pending_review":
         raise CaseDraftError("case draft is not ready for teacher review")
@@ -439,8 +480,29 @@ def approve_case_draft(
         for item in (draft.fact_snapshot or {}).get("candidate_causes", [])
         if item.get("cause_id")
     )
-    if confirmed_root_cause not in allowed_causes:
+    outside_candidates = confirmed_root_cause not in allowed_causes
+    if outside_candidates and confirmation_material is None:
         raise CaseDraftError("confirmed root cause is outside the fault-tree candidates")
+    if not draft.is_test_data and confirmation_material is None:
+        raise CaseDraftError(
+            "formal publication requires confirmation method and recovery evidence"
+        )
+    if confirmation_material is not None:
+        from app.schemas.knowledge_case import CaseConfirmationMaterial
+        from app.services.diagnosis_episode import confirmed_recovery
+
+        material = CaseConfirmationMaterial.model_validate(confirmation_material).model_dump()
+        original = db.get(DiagnosisResult, draft.diagnosis_result_id)
+        recovery = db.get(DiagnosisResult, material["recovery_diagnosis_id"])
+        if original is None or recovery is None or not confirmed_recovery(recovery, original):
+            raise CaseDraftError(
+                "confirmation requires fresh recovery evidence in the original scope"
+            )
+        confirmation_material = {
+            **material,
+            "confirmed_by": reviewer_ref,
+            "confirmed_at": utc_now().isoformat(),
+        }
     if not final_solution_steps or any(not str(item).strip() for item in final_solution_steps):
         raise CaseDraftError("teacher-confirmed solution steps are required")
     if not draft.facts_locked or not draft.source_ids:
@@ -467,6 +529,8 @@ def approve_case_draft(
         "outcome": "resolved",
         "confirmation_note": confirmation_note,
         "source_ids": draft.source_ids,
+        "confirmation_material": confirmation_material,
+        "requires_new_package": outside_candidates,
     }
     case = KnowledgeCase(
         id=case_id,
@@ -485,10 +549,10 @@ def approve_case_draft(
         confirmed_at=confirmed_at,
         solution_record=solution_record,
         ai_generated_fields=payload.get("aiGeneratedFields") or {},
-        source_type="real_experiment",
+        source_type="controlled_test" if draft.is_test_data else "real_experiment",
         facts_locked=True,
         quality_check_passed=True,
-        review_status="approved",
+        review_status="pending" if outside_candidates else "approved",
         source_ref=f"diagnosis-case-draft:{draft.id}",
         source_draft_id=draft.id,
         version="1",
