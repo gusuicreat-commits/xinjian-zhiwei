@@ -206,7 +206,7 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
   expect(workflow.status).toBe('waiting_feedback')
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20260919_0031')
+  expect(persisted.migration).toBe('20260920_0032')
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,
@@ -334,4 +334,123 @@ test('account login uses no device secret and explicitly ends its own experiment
   await expect(page).toHaveURL(/\/login$/)
   const stored = await page.evaluate(() => sessionStorage.getItem('xinjian-student-device-session'))
   expect(stored).toBeNull()
+})
+
+test('teacher releases revoked student occupancy with lost-response recovery, next student starts', async ({
+  page,
+  context,
+  backend,
+}) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  // Seed only this fixture's random schema; authorization and release use real HTTP.
+  await exec(
+    python,
+    [
+      '-c',
+      `
+import json,os
+from pathlib import Path
+from sqlalchemy import create_engine,select
+from sqlalchemy.orm import Session
+from app.cli.browser_integration_fixture import scoped_url
+from app.models import User,Enrollment,ExperimentSession,ExperimentAssignment,DeviceBinding
+from app.core.security import hash_password
+from app.services.rbac import assign_role,ensure_rbac_catalog
+m=json.loads(Path(os.environ['AUDIT_MANIFEST']).read_text())
+e=create_engine(scoped_url(os.environ['XINJIAN_EVAL_POSTGRES_DSN'],m['schema']))
+with Session(e) as db:
+ s=db.get(ExperimentSession,m['session_id']);a=db.get(ExperimentAssignment,s.experiment_assignment_id)
+ db.scalar(select(Enrollment).where(Enrollment.user_id==s.student_user_id)).status='withdrawn'
+ old=db.get(User,s.student_user_id);old.is_active=False
+ new=User(username='handover-student',display_name='合成接班学生',password_hash=hash_password('handover-only',iterations=1000),is_test_data=True)
+ db.add(new);db.flush();assign_role(db,new,ensure_rbac_catalog(db)['student'])
+ db.add(Enrollment(user_id=new.id,class_id=a.class_id,status='active'))
+ binding=db.scalar(select(DeviceBinding).where(DeviceBinding.device_id==s.device_id));binding.student_user_id=new.id
+ db.commit()
+e.dispose()
+`,
+    ],
+    {
+      cwd: backendDir,
+      env: { ...process.env, AUDIT_MANIFEST: join(backend.controlDir, 'manifest.json') },
+    },
+  )
+  await page.goto('/teacher/login')
+  await page.getByPlaceholder('教师用户名', { exact: true }).fill('synthetic-teacher')
+  await page.getByPlaceholder('密码', { exact: true }).fill('synthetic-evaluation-login')
+  await page.getByRole('button', { name: '进入教师端', exact: true }).click()
+  await expect(page).toHaveURL(/\/teacher$/)
+  const panel = page.getByRole('region', { name: '实验设备占用管理' })
+  await expect(panel.getByRole('button', { name: '结束占用', exact: true })).toBeVisible()
+  await test
+    .info()
+    .attach('session-management', { body: await panel.screenshot(), contentType: 'image/png' })
+  const sent: Array<{ request_id: string; expected_version: number }> = []
+  page.on('request', (r) => {
+    if (r.url().endsWith('/release') && r.method() === 'POST') sent.push(r.postDataJSON())
+  })
+  await page.route(
+    '**/teacher/experiment-sessions/*/release',
+    async (route) => {
+      const saved = await route.fetch()
+      expect(saved.status()).toBe(200)
+      await route.abort('failed')
+    },
+    { times: 1 },
+  )
+  await panel.getByRole('button', { name: '结束占用', exact: true }).click()
+  await page
+    .getByPlaceholder('请填写原因，例如：学生资格已撤销，需要交接设备')
+    .fill('选课资格撤销，交接给下一位学生')
+  await page.getByRole('button', { name: '确认结束占用', exact: true }).click()
+  await expect(panel.getByRole('button', { name: '继续确认原操作', exact: true })).toBeVisible()
+  await page.reload()
+  await panel.getByRole('button', { name: '继续确认原操作', exact: true }).click()
+  await expect(panel.getByText('当前没有实验占用', { exact: true })).toBeVisible()
+  expect(sent).toHaveLength(2)
+  expect(sent[1]).toEqual(sent[0])
+
+  const nextPage = await context.newPage()
+  await nextPage.goto('/login')
+  await nextPage.getByPlaceholder('学生账号', { exact: true }).fill('handover-student')
+  await nextPage.getByPlaceholder('学生密码', { exact: true }).fill('handover-only')
+  await nextPage.getByRole('button', { name: '验证学生账号', exact: true }).click()
+  await nextPage.getByText('选择实验任务', { exact: true }).click()
+  await nextPage.getByRole('option', { name: '合成作业（测试）', exact: true }).click()
+  await nextPage.getByText('选择设备', { exact: true }).click()
+  await nextPage.getByRole('option', { name: '合成评测设备', exact: true }).click()
+  await nextPage.getByRole('button', { name: '开始所选实验', exact: true }).click()
+  await expect(nextPage).toHaveURL(/\/student$/)
+  await expect(nextPage.getByRole('button', { name: '结束本次实验', exact: true })).toBeEnabled()
+  const verified = await exec(
+    python,
+    [
+      '-c',
+      `
+import json,os
+from pathlib import Path
+from sqlalchemy import create_engine,select
+from sqlalchemy.orm import Session
+from app.cli.browser_integration_fixture import scoped_url
+from app.models import ExperimentSession,AuditEvent,ExperimentSessionCommand
+m=json.loads(Path(os.environ['AUDIT_MANIFEST']).read_text())
+e=create_engine(scoped_url(os.environ['XINJIAN_EVAL_POSTGRES_DSN'],m['schema']))
+with Session(e) as db:
+ old=db.get(ExperimentSession,m['session_id']);assert old.status=='cancelled' and old.version_no==2
+ active=list(db.scalars(select(ExperimentSession).where(ExperimentSession.status=='active')))
+ assert len(active)==1 and active[0].student_user_id!=old.student_user_id
+ assert len(list(db.scalars(select(ExperimentSessionCommand).where(ExperimentSessionCommand.session_id==old.id))))==1
+ assert len(list(db.scalars(select(AuditEvent).where(AuditEvent.action=='experiment_session.release'))))==1
+ print('handover database invariants verified')
+e.dispose()
+`,
+    ],
+    {
+      cwd: backendDir,
+      env: { ...process.env, AUDIT_MANIFEST: join(backend.controlDir, 'manifest.json') },
+    },
+  )
+  expect(verified.stdout).toContain('handover database invariants verified')
+  expect(pageErrors).toEqual([])
 })

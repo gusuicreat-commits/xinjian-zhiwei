@@ -9,11 +9,13 @@ from sqlalchemy import or_, select
 
 from app.models import (
     AuditEvent,
+    Classroom,
     Device,
     DeviceBinding,
     ExperimentAssignment,
     ExperimentSession,
     ExperimentSessionCommand,
+    TeachingAssignment,
     User,
 )
 from app.models.base import utc_now
@@ -61,7 +63,7 @@ def session_summary(db, session):
     }
 
 
-def _replay(db, actor, request_id, digest):
+def _replay(db, actor, request_id, digest, *, managed=False):
     receipt = db.scalar(
         select(ExperimentSessionCommand).where(
             ExperimentSessionCommand.actor_user_id == actor.id,
@@ -73,11 +75,14 @@ def _replay(db, actor, request_id, digest):
     if receipt.payload_hash != digest:
         raise ScopeConflict("request_id already used with different content")
     session = db.get(ExperimentSession, receipt.session_id)
-    assert_student_session_access(db, actor, session, require_active=False)
+    if managed:
+        assert_session_management(db, actor, session)
+    else:
+        assert_student_session_access(db, actor, session, require_active=False)
     return receipt.result_json
 
 
-def _record(db, actor, session, request_id, digest, action):
+def _record(db, actor, session, request_id, digest, action, *, details=None):
     result = session_summary(db, session)
     db.add(
         ExperimentSessionCommand(
@@ -94,7 +99,11 @@ def _record(db, actor, session, request_id, digest, action):
             action=action,
             resource_type="experiment_session",
             resource_id=session.id,
-            details_json={"request_id": str(request_id), "version_no": session.version_no},
+            details_json={
+                "request_id": str(request_id),
+                "version_no": session.version_no,
+                **(details or {}),
+            },
             is_test_data=session.is_test_data,
             created_at=utc_now(),
         )
@@ -197,3 +206,115 @@ def end_session(db, actor, *, session_id, request_id, expected_version, reason):
         session.ended_at = utc_now()
         session.version_no += 1
         return _record(db, user, session, request_id, digest, "experiment_session.end")
+
+
+def _management_roles(db, actor):
+    from app.services.auth import user_access
+
+    roles, permissions = user_access(db, actor.id)
+    if (
+        not actor.is_active
+        or not {"teacher", "admin"}.intersection(roles)
+        or "assignment.manage" not in permissions
+    ):
+        raise ScopeViolation("experiment session management is not authorized")
+    return roles
+
+
+def assert_session_management(db, actor, session):
+    roles = _management_roles(db, actor)
+    if session is None:
+        raise ScopeViolation("experiment session is not accessible")
+    assignment = db.get(ExperimentAssignment, session.experiment_assignment_id)
+    if assignment is None:
+        raise ScopeViolation("experiment session recorded class is unknown")
+    if (
+        "admin" not in roles
+        and db.scalar(
+            select(TeachingAssignment.id).where(
+                TeachingAssignment.user_id == actor.id,
+                TeachingAssignment.class_id == assignment.class_id,
+            )
+        )
+        is None
+    ):
+        raise ScopeViolation("experiment session recorded class is not accessible")
+
+
+def list_managed_sessions(db, actor):
+    roles = _management_roles(db, actor)
+    query = (
+        select(ExperimentSession)
+        .join(ExperimentAssignment)
+        .where(ExperimentSession.status == "active", ExperimentSession.ended_at.is_(None))
+    )
+    if "admin" not in roles:
+        query = query.where(
+            select(TeachingAssignment.id)
+            .where(
+                TeachingAssignment.user_id == actor.id,
+                TeachingAssignment.class_id == ExperimentAssignment.class_id,
+            )
+            .exists()
+        )
+    result = []
+    for session in db.scalars(query.order_by(ExperimentSession.started_at, ExperimentSession.id)):
+        result.append(managed_session_summary(db, session))
+    return result
+
+
+def release_session(db, actor, *, session_id, request_id, expected_version, reason):
+    reason = reason.strip()
+    if not reason or len(reason) > 1000:
+        raise ValueError("release reason must contain 1 to 1000 characters")
+    digest = _digest(
+        {
+            "action": "release",
+            "session_id": session_id,
+            "expected_version": expected_version,
+            "reason": reason,
+        }
+    )
+    with _command_lock(db, actor) as user:
+        replay = _replay(db, user, request_id, digest, managed=True)
+        if replay is not None:
+            db.commit()
+            return replay
+        session = db.get(ExperimentSession, session_id)
+        assert_session_management(db, user, session)
+        db.scalar(select(Device).where(Device.id == session.device_id).with_for_update())
+        db.refresh(session)
+        # Recheck authority after waiting; ownership never comes from today's binding.
+        assert_session_management(db, user, session)
+        if session.version_no != expected_version or session.status != "active" or session.ended_at:
+            raise ScopeConflict("session state changed; refresh before releasing")
+        old_version = session.version_no
+        session.status = "cancelled"
+        session.ended_at = utc_now()
+        session.version_no += 1
+        return _record(
+            db,
+            user,
+            session,
+            request_id,
+            digest,
+            "experiment_session.release",
+            details={
+                "reason": reason,
+                "previous_status": "active",
+                "previous_version": old_version,
+                "status": "cancelled",
+            },
+        )
+
+
+def managed_session_summary(db, session):
+    assignment = db.get(ExperimentAssignment, session.experiment_assignment_id)
+    student = db.get(User, session.student_user_id)
+    classroom = db.get(Classroom, assignment.class_id)
+    return {
+        **session_summary(db, session),
+        "student_name": student.display_name,
+        "class_name": classroom.name,
+        "started_at": session.started_at.isoformat(),
+    }

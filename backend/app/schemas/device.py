@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+PROTOCOL_INTEGER_MAX = 2**53 - 1
+
 
 class TraceablePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -118,9 +120,11 @@ class DeviceBatchIngestRequest(BaseModel):
         max_length=36,
     )
     boot_id: str = Field(alias="bootId", min_length=1, max_length=100)
-    sequence_no: int = Field(alias="sequenceNo", ge=0)
+    sequence_no: int = Field(alias="sequenceNo", ge=0, le=PROTOCOL_INTEGER_MAX, strict=True)
     sent_at: Optional[str] = Field(default=None, alias="sentAt", max_length=64)
-    uptime_ms: Optional[int] = Field(default=None, alias="uptimeMs", ge=0)
+    uptime_ms: Optional[int] = Field(
+        default=None, alias="uptimeMs", ge=0, le=PROTOCOL_INTEGER_MAX, strict=True
+    )
     firmware_version: Optional[str] = Field(
         default=None,
         alias="firmwareVersion",

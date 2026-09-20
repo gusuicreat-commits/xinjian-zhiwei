@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -24,8 +24,8 @@ class DeviceLog(UuidPrimaryKeyMixin, Base):
     protocol_version: Mapped[Optional[str]] = mapped_column(String(20))
     schema_version: Mapped[Optional[str]] = mapped_column(String(20))
     boot_id: Mapped[Optional[str]] = mapped_column(String(100))
-    sequence_no: Mapped[Optional[int]] = mapped_column(Integer)
-    uptime_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    sequence_no: Mapped[Optional[int]] = mapped_column(BigInteger)
+    uptime_ms: Mapped[Optional[int]] = mapped_column(BigInteger)
     time_quality: Mapped[Optional[str]] = mapped_column(String(30))
     level: Mapped[str] = mapped_column(String(20), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)

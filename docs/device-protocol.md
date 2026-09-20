@@ -147,3 +147,16 @@ DHT11 日志的组件标识可放在 `payload.sensor_snapshot.component_id`，�
 LED reading 的 metric_key 使用 level（旧值，来源未知）、gpio_command_level（命令）、gpio_actual_level（电气观测）或 led_physically_on（光学观测）。后三者分别要求 metadata.measurement_source 为 command / electrical_measurement / optical_observation；缺失或不匹配时标准观测 status=unknown。命令与电气观测还需 metadata.command_id 相同，且满足包配置的响应窗口才参与比较。数据契约支持这些语义不代表当前设备已经实现电气/光学检测，真实来源仍 pending_hardware。
 
 不接受把固件变量 level=1 当作 LED 已亮的证明；不得伪造光学来源声明。所有测试报文保持测试标记。
+
+## 序号与运行时长容量（2026-09-20）
+
+`sequenceNo` 和可选的 `uptimeMs` 接受 JSON 整数，范围为 `0..9007199254740991`
+（`2^53-1`，与浏览器安全整数范围一致）。不接受字符串、布尔值、小数、负值或超上限值；
+无效值在整批写入前返回 `422`。`uptimeMs` 缺失或为 `null` 仍表示未提供，不补零。
+
+请求记录、心跳、日志、读数四张表均以 `BIGINT` 保存这两个字段。旧字段名、毫秒单位、
+请求身份、载荷摘要和去重规则不变，不截断、不取余、不通过归零绕过容量限制。
+
+迁移 `0032` 仅扩大这八个字段，历史值及关联原样保留。存在超过 32 位范围的数据时，
+降级迁移会明确拒绝；不能为了回退而截断、删除新数据。实际环境升级需评估 ALTER TABLE
+的锁与耗时并先备份，本地测试通过不代表运行数据库已经升级。

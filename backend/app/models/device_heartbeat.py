@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -24,8 +24,8 @@ class DeviceHeartbeat(UuidPrimaryKeyMixin, Base):
     protocol_version: Mapped[Optional[str]] = mapped_column(String(20))
     schema_version: Mapped[Optional[str]] = mapped_column(String(20))
     boot_id: Mapped[Optional[str]] = mapped_column(String(100))
-    sequence_no: Mapped[Optional[int]] = mapped_column(Integer)
-    uptime_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    sequence_no: Mapped[Optional[int]] = mapped_column(BigInteger)
+    uptime_ms: Mapped[Optional[int]] = mapped_column(BigInteger)
     time_quality: Mapped[Optional[str]] = mapped_column(String(30))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     firmware_version: Mapped[Optional[str]] = mapped_column(String(100))

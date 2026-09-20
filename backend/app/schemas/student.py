@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.ai.schemas import AIExplanationResponse, AIStatusResponse
 from app.diagnosis.lightweight_schemas import DeviceStateExplanation
@@ -148,3 +148,16 @@ class StudentFeedbackCreate(StrictStudentModel):
     episode_id: Optional[UUID] = None
     action: Literal["resolved", "unresolved", "request_teacher_help"]
     note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class ExperimentSessionRelease(StrictStudentModel):
+    request_id: UUID
+    expected_version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("release reason is required")
+        return value.strip()

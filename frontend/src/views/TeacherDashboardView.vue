@@ -18,10 +18,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { pendingInterventionCommand, reportTeacherProblemResolved } from '@/api/teacher'
+import ManagedExperimentSessions from '@/components/ManagedExperimentSessions.vue'
 import TeacherDeviceChart from '@/components/TeacherDeviceChart.vue'
 import TeacherErrorRankingChart from '@/components/TeacherErrorRankingChart.vue'
 import TeacherErrorTrendChart from '@/components/TeacherErrorTrendChart.vue'
 import WorkflowEvidenceSummary from '@/components/WorkflowEvidenceSummary.vue'
+import { REVIEW_MODE } from '@/review/fixtures'
 import { useTeacherDashboardStore } from '@/stores/teacherDashboard'
 import { useTeacherSessionStore } from '@/stores/teacherSession'
 import type { TeacherDiagnosisWorkflow, TeacherIntervention } from '@/types/teacher'
@@ -392,6 +394,15 @@ onBeforeUnmount(() => {
     </aside>
 
     <section id="teacher-overview" class="teacher-content">
+      <ManagedExperimentSessions
+        v-if="
+          !REVIEW_MODE &&
+          sessionStore.session?.permissions.includes('assignment.manage') &&
+          sessionStore.accessToken
+        "
+        :access-token="sessionStore.accessToken"
+        :user-id="sessionStore.session.user_id"
+      />
       <el-skeleton
         v-if="dashboardStore.state === 'loading'"
         :rows="14"

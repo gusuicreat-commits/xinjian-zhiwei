@@ -1,7 +1,17 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -38,10 +48,10 @@ class IngestionRequest(UuidPrimaryKeyMixin, TimestampMixin, Base):
     protocol_version: Mapped[str] = mapped_column(String(20), nullable=False)
     schema_version: Mapped[str] = mapped_column(String(20), nullable=False)
     boot_id: Mapped[str] = mapped_column(String(100), nullable=False)
-    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    sequence_no: Mapped[int] = mapped_column(BigInteger, nullable=False)
     firmware_version: Mapped[Optional[str]] = mapped_column(String(100))
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    uptime_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    uptime_ms: Mapped[Optional[int]] = mapped_column(BigInteger)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     record_count: Mapped[int] = mapped_column(Integer, nullable=False)
     response_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
