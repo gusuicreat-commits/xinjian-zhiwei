@@ -94,7 +94,7 @@ body,
 .student-app .el-button:hover,
 .teacher-app .el-button:hover,
 .readiness-page .el-button:hover {
-  transform: translateX(6px);
+  transform: none;
 }
 
 .login-page .el-button--primary,
@@ -434,7 +434,7 @@ body,
 .auth-switch:hover,
 .teacher-login-access > a:hover {
   color: var(--studio-blue);
-  transform: translateX(6px);
+  transform: none;
 }
 
 .login-access footer {
@@ -688,7 +688,7 @@ body,
 .student-section-nav button.active {
   color: var(--studio-ink);
   background: transparent;
-  transform: translateX(6px);
+  transform: none;
 }
 
 .student-section-nav button svg,
@@ -896,7 +896,7 @@ body,
 
 .log-row:hover {
   color: var(--studio-ink);
-  transform: translateX(8px);
+  transform: none;
 }
 
 .sensor-chart,
@@ -941,16 +941,23 @@ body,
   background: transparent;
 }
 
+/* Nested bordered content must keep an inset from its parent and its text. */
 .alert-result {
-  margin: 0;
-  padding: 36px 0;
+  margin: 20px 16px;
+  padding: clamp(16px, 2vw, 24px);
+}
+
+.student-explanation-grid {
+  gap: 16px;
 }
 
 .student-explanation-grid div,
 .technical-facts div,
 .workflow-user-summary,
 .workflow-user-basis {
-  padding: 18px 0;
+  padding: 16px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: transparent;
 }
 
@@ -981,7 +988,7 @@ body,
 .evidence-list li:hover,
 .cause-ranking li:hover,
 .hint-steps li:hover {
-  transform: translateX(8px);
+  transform: none;
 }
 
 .rank-index,
@@ -1191,7 +1198,7 @@ body,
 
 .teacher-kpi:hover {
   background: transparent;
-  transform: translateX(8px);
+  transform: none;
 }
 
 .teacher-kpi > span {
@@ -1235,7 +1242,7 @@ body,
 
 .teacher-chart-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0;
+  gap: 32px 0;
   margin-bottom: 96px;
 }
 
@@ -1302,7 +1309,7 @@ body,
 }
 
 .teacher-action-list {
-  gap: 0;
+  gap: 12px;
 }
 
 .teacher-table-wrap th {
@@ -1326,7 +1333,7 @@ body,
 .teacher-table-wrap tr.selected {
   color: var(--studio-ink);
   background: transparent;
-  transform: translateX(6px);
+  transform: none;
 }
 
 .teacher-table-wrap code,
@@ -1352,12 +1359,12 @@ body,
 .workflow-history-list article:hover {
   color: var(--studio-ink);
   background: transparent;
-  transform: translateX(8px);
+  transform: none;
 }
 
 .workflow-metric-strip {
-  gap: 0;
-  padding: 0;
+  gap: 12px;
+  padding: 16px;
   border-color: var(--studio-line);
   background: transparent;
 }
@@ -1413,25 +1420,27 @@ body,
 
 .readiness-summary {
   margin-top: 56px;
-  border-top: 1px solid var(--studio-line);
+  border: 0;
 }
 
 .readiness-summary dl {
-  gap: 0;
+  gap: 12px;
 }
 
 .readiness-summary dl > div {
   min-height: 88px;
   padding: 20px;
-  border: 0;
-  border-right: 1px solid var(--studio-line);
-  border-bottom: 1px solid var(--studio-line);
+  border: 1px solid var(--studio-line);
+  border-radius: 0;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 12px;
   background: transparent;
 }
 
 .readiness-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 56px;
+  gap: 24px 56px;
   margin-top: 96px;
 }
 

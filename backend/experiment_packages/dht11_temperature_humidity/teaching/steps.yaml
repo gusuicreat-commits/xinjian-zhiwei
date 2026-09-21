@@ -9,3 +9,41 @@ steps:
   title: 观察串口数据
   expected_state: 温度和湿度持续输出
 expected_behaviors: []
+bindings:
+- tree_id: dht11-read-failure-v2
+  cause_id: wiring.data_pin_mismatch
+  component_id: dht11
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - dht11.single_bus
+  step_ids:
+  - connect
+- tree_id: dht11-read-failure-v2
+  cause_id: software.gpio_mismatch
+  component_id: dht11
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - dht11.minimum_interval
+  step_ids:
+  - configure
+- tree_id: dht11-read-failure-v2
+  cause_id: hardware.sensor_failure
+  component_id: dht11
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - dht11.failure_counts
+  - dht11.single_bus
+  step_ids:
+  - observe

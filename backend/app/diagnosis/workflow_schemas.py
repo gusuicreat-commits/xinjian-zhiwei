@@ -3,6 +3,7 @@ from __future__ import annotations
 import operator
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from pydantic import Field, model_validator
 from typing_extensions import TypedDict
@@ -126,6 +127,9 @@ class DiagnosisState(TypedDict, total=False):
 
 
 class DiagnosisWorkflowStartRequest(StrictModel):
+    request_id: UUID | None = None
+    baseline_id: str | None = Field(default=None, min_length=36, max_length=36)
+    target_episode_id: str | None = Field(default=None, min_length=36, max_length=36)
     lookback_seconds: int = Field(default=3600, ge=1, le=604800)
     experiment_template: ExperimentTemplateContext | None = None
     experiment_id: str | None = Field(default=None, min_length=1, max_length=100)
@@ -193,6 +197,7 @@ class DiagnosisWorkflowMetricsResponse(StrictModel):
 
 
 class DiagnosisWorkflowResponse(StrictModel):
+    check: dict[str, Any] | None = None
     teaching_available: bool = True
     id: str
     diagnosis_id: str

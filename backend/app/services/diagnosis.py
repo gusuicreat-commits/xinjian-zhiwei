@@ -68,7 +68,11 @@ def build_diagnosis_context(
     since = reference - timedelta(seconds=lookback_seconds)
     logs = db.scalars(
         select(DeviceLog)
-        .where(DeviceLog.device_id == device.id, DeviceLog.occurred_at >= since)
+        .where(
+            DeviceLog.device_id == device.id,
+            DeviceLog.occurred_at >= since,
+            DeviceLog.occurred_at <= reference,
+        )
         .where(
             DeviceLog.experiment_session_id == experiment_session_id
             if experiment_session_id
@@ -78,7 +82,11 @@ def build_diagnosis_context(
     ).all()
     heartbeats = db.scalars(
         select(DeviceHeartbeat)
-        .where(DeviceHeartbeat.device_id == device.id, DeviceHeartbeat.observed_at >= since)
+        .where(
+            DeviceHeartbeat.device_id == device.id,
+            DeviceHeartbeat.observed_at >= since,
+            DeviceHeartbeat.observed_at <= reference,
+        )
         .where(
             DeviceHeartbeat.experiment_session_id == experiment_session_id
             if experiment_session_id
@@ -88,7 +96,11 @@ def build_diagnosis_context(
     ).all()
     readings = db.scalars(
         select(SensorReading)
-        .where(SensorReading.device_id == device.id, SensorReading.observed_at >= since)
+        .where(
+            SensorReading.device_id == device.id,
+            SensorReading.observed_at >= since,
+            SensorReading.observed_at <= reference,
+        )
         .where(
             SensorReading.experiment_session_id == experiment_session_id
             if experiment_session_id

@@ -30,7 +30,7 @@ cases:
   qualityCheckPassed: false
   reviewStatus: draft
   sourceRef: experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml
-  version: 2.0.2
+  version: 2.0.3
   isTestData: true
   facts:
     verification_status: unverified

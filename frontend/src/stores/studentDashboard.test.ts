@@ -78,6 +78,24 @@ describe('student feedback submission boundaries', () => {
     expect(getStudentDashboard).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps stale data read-only on network failure and restores actions only after a successful read', async () => {
+    const store = await loadedStore()
+    const before = store.dashboard
+    vi.mocked(getStudentDashboard).mockRejectedValue(httpError(503))
+    await store.load(credentials)
+    expect(store.dashboard).toEqual(before)
+    expect(store.readOnly).toBe(true)
+    await store.runDiagnosisWorkflow(credentials)
+    await store.generateAIExplanation(credentials)
+    await expect(store.submitFeedback(credentials, 'unresolved')).rejects.toBeTruthy()
+    expect(startDiagnosisWorkflow).not.toHaveBeenCalled()
+    expect(requestAIExplanation).not.toHaveBeenCalled()
+    expect(createDiagnosisFeedback).not.toHaveBeenCalled()
+    vi.mocked(getStudentDashboard).mockResolvedValue(structuredClone(reviewStudentDashboard))
+    await store.load(credentials)
+    expect(store.readOnly).toBe(false)
+  })
+
   it('accepts a safe empty dashboard and removes the old diagnosis', async () => {
     const store = await loadedStore()
     const empty = structuredClone(reviewStudentDashboard)

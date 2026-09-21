@@ -317,14 +317,7 @@ def _reconcile_terminal_checkpoint(
     return result
 
 
-def start_workflow(
-    db: Session,
-    graph: Any,
-    device: Device,
-    settings: Settings,
-    payload: DiagnosisWorkflowStartRequest,
-    experiment_session: ExperimentSession | None = None,
-) -> DiagnosisWorkflowRun:
+def validate_workflow_start(db, device, payload, experiment_session=None):
     experiment_session = experiment_session or find_active_experiment_session(db, device)
     if experiment_session is None:
         raise WorkflowConflict("device has no active student experiment session")
@@ -351,8 +344,28 @@ def start_workflow(
     elif payload.experiment_id:
         # Compatibility path for the existing filesystem definitions.
         load_experiment_definition(payload.experiment_id, payload.experiment_version)
-    workflow_id = new_uuid()
-    workflow = DiagnosisWorkflowRun(
+    return resolved_session, package_runtime
+
+
+def start_workflow(
+    db: Session,
+    graph: Any,
+    device: Device,
+    settings: Settings,
+    payload: DiagnosisWorkflowStartRequest,
+    experiment_session: ExperimentSession | None = None,
+    *,
+    check=None,
+    frozen_context=None,
+) -> DiagnosisWorkflowRun:
+    resolved_session, package_runtime = validate_workflow_start(
+        db, device, payload, experiment_session
+    )
+    existing = (
+        db.get(DiagnosisWorkflowRun, check.workflow_id) if check and check.workflow_id else None
+    )
+    workflow_id = existing.id if existing else new_uuid()
+    workflow = existing or DiagnosisWorkflowRun(
         id=workflow_id,
         device_id=device.id,
         student_user_id=resolved_session.student_user_id,
@@ -373,8 +386,18 @@ def start_workflow(
         ),
     )
     db.add(workflow)
+    db.flush()
+    if check is not None:
+        check.workflow_id = workflow.id
     db.commit()
     db.refresh(workflow)
+    if existing and existing.status in {
+        "waiting_feedback",
+        "waiting_teacher",
+        "completed",
+        "rejected",
+    }:
+        return existing
     initial_state: DiagnosisState = {
         "device_status": {},
         "experiment_type": (
@@ -433,18 +456,27 @@ def start_workflow(
         # controlled workflow row when it is needed for audit/support.
         "question": sanitize_text(payload.question, max_chars=2000) if payload.question else None,
         "lookback_seconds": payload.lookback_seconds,
-        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        "evaluated_at": (
+            frozen_context.evaluated_at if frozen_context else datetime.now(timezone.utc)
+        ).isoformat(),
         "status": "collecting",
         "errors": [],
         "node_trace": [],
         "node_metrics": [],
     }
     try:
-        result = graph.invoke(
-            initial_state,
-            config=_config(workflow),
-            context=DiagnosisGraphContext(db=db, device=device, settings=settings),
-        )
+        saved = graph.get_state(_config(workflow)) if existing else None
+        interrupts = [i for task in (saved.tasks if saved else []) for i in task.interrupts]
+        if interrupts:
+            result = {**saved.values, "__interrupt__": interrupts}
+        else:
+            result = graph.invoke(
+                None if saved and saved.next else initial_state,
+                config=_config(workflow),
+                context=DiagnosisGraphContext(
+                    db=db, device=device, settings=settings, frozen_context=frozen_context
+                ),
+            )
     except Exception as exc:
         db.rollback()
         workflow = db.get(DiagnosisWorkflowRun, workflow.id)
@@ -459,7 +491,9 @@ def start_workflow(
                 db,
                 graph,
                 workflow,
-                context=DiagnosisGraphContext(db=db, device=device, settings=settings),
+                context=DiagnosisGraphContext(
+                    db=db, device=device, settings=settings, frozen_context=frozen_context
+                ),
             )
             return _sync_business_record(
                 db,

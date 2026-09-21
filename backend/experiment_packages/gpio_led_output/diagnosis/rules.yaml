@@ -1,4 +1,4 @@
-version: 2.0.2
+version: 2.0.3
 rules:
 - id: led-output-expectation-v2
   error_type: GPIO_EXPECTATION_FAILED

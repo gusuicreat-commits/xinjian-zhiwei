@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { metricLabel } from '@/presentation/userLanguage'
 import { TrendCharts } from '@element-plus/icons-vue'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
@@ -11,13 +12,14 @@ import type { StudentReading } from '@/types/student'
 const props = defineProps<{ readings: StudentReading[] }>()
 const chartElement = ref<HTMLElement | null>(null)
 let chart: ECharts | null = null
+let disposed = false
 
 use([LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
 
 const series = computed(() => {
   const groups = new Map<string, StudentReading[]>()
   for (const reading of props.readings) {
-    const key = `${reading.sensor_type} · ${reading.metric_key}${reading.unit ? ` (${reading.unit})` : ''}`
+    const key = `${reading.sensor_type} · ${metricLabel(reading.metric_key)} [${reading.metric_key}]${reading.unit ? ` (${reading.unit})` : ''}`
     groups.set(key, [...(groups.get(key) ?? []), reading])
   }
   return [...groups.entries()].map(([name, values]) => ({
@@ -30,7 +32,7 @@ const series = computed(() => {
 })
 
 function renderChart(): void {
-  if (!chartElement.value || props.readings.length === 0) return
+  if (disposed || !chartElement.value || props.readings.length === 0) return
   chart ??= init(chartElement.value)
   chart.setOption(
     {
@@ -67,13 +69,17 @@ watch(
   },
   { deep: true },
 )
-onMounted(() => {
-  renderChart()
+onMounted(async () => {
   window.addEventListener('resize', resize)
+  // A parent v-show may still be hidden during this child's mounted hook.
+  await nextTick()
+  renderChart()
 })
 onBeforeUnmount(() => {
+  disposed = true
   window.removeEventListener('resize', resize)
   chart?.dispose()
+  chart = null
 })
 </script>
 
@@ -102,7 +108,11 @@ onBeforeUnmount(() => {
         <tbody>
           <tr v-for="reading in readings.slice(-50)" :key="reading.id">
             <td>{{ new Date(reading.observed_at).toLocaleString('zh-CN') }}</td>
-            <td>{{ reading.sensor_type }} · {{ reading.metric_key }}</td>
+            <td>
+              {{ reading.sensor_type }} · {{ metricLabel(reading.metric_key) }}（{{
+                reading.metric_key
+              }}）
+            </td>
             <td>{{ reading.value }}</td>
             <td>{{ reading.unit || '—' }}</td>
           </tr>

@@ -142,11 +142,24 @@ class ExperimentStep(StrictModel):
     step_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]*$", min_length=1, max_length=100)
     title: str = Field(min_length=1, max_length=300)
     expected_state: str = Field(min_length=1, max_length=1000)
+    prerequisite_step_ids: list[str] = Field(default_factory=list, max_length=30)
+
+
+class TeachingBinding(StrictModel):
+    """Reference material for an existing hint; never grants action permission."""
+
+    tree_id: str = Field(min_length=1, max_length=100)
+    cause_id: str = Field(min_length=1, max_length=100)
+    component_id: str = Field(min_length=1, max_length=100)
+    levels: list[Literal[1, 2, 3, 4]] = Field(min_length=1, max_length=4)
+    concept_ids: list[str] = Field(default_factory=list, max_length=20)
+    step_ids: list[str] = Field(default_factory=list, max_length=30)
 
 
 class PackageSteps(StrictModel):
     steps: list[ExperimentStep] = Field(min_length=1)
     expected_behaviors: list[ExpectedBehavior] = Field(default_factory=list)
+    bindings: list[TeachingBinding] = Field(default_factory=list, max_length=100)
 
 
 class PackageHint(StrictModel):

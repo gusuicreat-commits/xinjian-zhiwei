@@ -157,6 +157,8 @@ def failure_evidence_keys(
 
 def confirmed_recovery(diagnosis: DiagnosisResult, previous: DiagnosisResult) -> bool:
     snapshot = diagnosis.context_snapshot or {}
+    if snapshot.get("recheck_recovery_allowed") is False:
+        return False
     assessment = snapshot.get("normal_assessment") or {}
     checks = assessment.get("checks") or []
     if (
@@ -483,6 +485,15 @@ def _new_evidence_after(diagnosis, keys, cutoff):
             raw = item.get("raw_payload") or {}
             if not candidates.intersection(keys) or raw.get("time_quality") == "server_fallback":
                 continue
+            time_quality = snapshot.get("recheck_source_time_quality")
+            if time_quality:
+                source = item.get("source") or {
+                    "logs": "device_log",
+                    "readings": "sensor_reading",
+                }.get(field)
+                source_key = f"{source}:{item.get('source_ref') or item.get('id')}"
+                if time_quality.get(source_key) != "device_reported":
+                    continue
             value = item.get(time_field)
             if value:
                 try:

@@ -51,7 +51,7 @@ const readinessDimensions = [
             <dt>{{ label }}</dt>
             <dd>
               <el-tag :type="data[key] ? 'success' : 'danger'">
-                {{ data[key] ? 'true' : 'false' }}
+                {{ data[key] ? '已满足' : '尚未满足' }}
               </el-tag>
             </dd>
           </div>
@@ -60,7 +60,11 @@ const readinessDimensions = [
       <section class="readiness-grid" aria-label="就绪检查项">
         <article v-for="item in data.items" :key="item.key" class="panel-card">
           <h2>{{ item.label }}</h2>
-          <el-tag :type="item.status === 'ready' ? 'success' : item.status === 'blocked' ? 'danger' : 'warning'">
+          <el-tag
+            :type="
+              item.status === 'ready' ? 'success' : item.status === 'blocked' ? 'danger' : 'warning'
+            "
+          >
             {{ labels[item.status] }}
           </el-tag>
           <p>{{ item.evidence }}</p>

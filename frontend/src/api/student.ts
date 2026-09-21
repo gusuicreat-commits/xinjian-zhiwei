@@ -1,3 +1,4 @@
+import { submitCheck } from './diagnosisChecks'
 import { apiClient } from '@/api/client'
 import type {
   AIExplanationResponse,
@@ -79,13 +80,9 @@ export async function endStudentExperiment(
 
 export async function startDiagnosisWorkflow(
   credentials: DeviceCredentials,
+  baselineId?: string | null,
 ): Promise<DiagnosisWorkflow> {
-  const response = await apiClient.post<DiagnosisWorkflow>(
-    `/api/v1/diagnosis-workflows/devices/${encodeURIComponent(credentials.deviceId)}`,
-    {},
-    { headers: authHeaders(credentials) },
-  )
-  return response.data
+  return submitCheck(credentials, authHeaders(credentials), baselineId)
 }
 
 export async function getLatestDiagnosisWorkflow(

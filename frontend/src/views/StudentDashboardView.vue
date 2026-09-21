@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  Bell,
   HomeFilled,
   List,
   Monitor,
@@ -8,12 +7,12 @@ import {
   SwitchButton,
   TrendCharts,
   UserFilled,
-  Warning,
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { CheckRequestError } from '@/api/diagnosisChecks'
 import { FeedbackRequestError } from '@/api/feedbackRetry'
 import DeviceOverview from '@/components/DeviceOverview.vue'
 import DiagnosisPanel from '@/components/DiagnosisPanel.vue'
@@ -27,11 +26,45 @@ import type { FeedbackAction, FeedbackRecoveryTarget } from '@/types/student'
 const router = useRouter()
 const sessionStore = useStudentSessionStore()
 const dashboardStore = useStudentDashboardStore()
-const activeNavTarget = ref('overview')
+type StudentView = 'work' | 'data' | 'reference'
+const activeView = ref<StudentView>('work')
+const scrollPositions: Record<StudentView, number> = { work: 0, data: 0, reference: 0 }
 const showRefreshFlash = ref(false)
+const checkError = ref<CheckRequestError | null>(null)
+const readOnly = computed(
+  () =>
+    dashboardStore.readOnly || Boolean(checkError.value && checkError.value.action !== 'confirm'),
+)
+const mustLogin = computed(
+  () =>
+    ['unauthorized', 'forbidden'].includes(dashboardStore.failureKind ?? '') ||
+    checkError.value?.action === 'login',
+)
+const recoveryLabel = computed(
+  () =>
+    ({
+      login: '重新登录',
+      refresh: '查看最新状态',
+      confirm: '继续确认原检查',
+      review: '核对当前实验',
+      retry: '重新查询状态',
+    })[checkError.value?.action ?? 'refresh'],
+)
+watch(
+  () => sessionStore.credentials,
+  () => {
+    checkError.value = null
+    activeView.value = 'work'
+    scrollPositions.work = scrollPositions.data = scrollPositions.reference = 0
+  },
+)
+async function recoverCheck() {
+  if (checkError.value?.action === 'login') return logout()
+  if (checkError.value?.action === 'confirm') return runDiagnosisWorkflow()
+  await refresh(true)
+}
+
 let refreshTimer: number | undefined
-let navigationFrame: number | undefined
-let navigationLockUntil = 0
 
 const hasTestData = computed(() => {
   const data = dashboardStore.dashboard
@@ -52,36 +85,29 @@ const deviceLabel = computed(
     '设备会话',
 )
 
-const navItems = computed(() => {
-  const data = dashboardStore.dashboard
-  const deviceStatus = data
-    ? {
-        online: '设备在线',
-        offline: '设备离线',
-        never_seen: '等待设备上报',
-      }[data.device.status]
+const deviceStatus = computed(() => {
+  const status = dashboardStore.dashboard?.device.status
+  return status
+    ? { online: '设备在线', offline: '设备离线', never_seen: '等待设备上报' }[status]
     : '状态加载中'
-  const diagnosisStatus = !data
-    ? '状态加载中'
-    : data.intervention && !['resolved', 'closed'].includes(data.intervention.status)
-      ? '教师协助中'
-      : data.feedback?.action === 'resolved'
-        ? '问题已解决'
-        : data.diagnosis
-          ? '已生成诊断'
-          : '等待异常信号'
-
-  return [
-    { label: '实验概览', meta: deviceStatus, target: 'overview', icon: HomeFilled },
-    {
-      label: '日志与传感数据',
-      meta: `${data?.logs.length ?? 0} 条日志 · ${data?.readings.length ?? 0} 组数据`,
-      target: 'logs',
-      icon: TrendCharts,
-    },
-    { label: '诊断与反馈', meta: diagnosisStatus, target: 'diagnosis', icon: Warning },
-  ]
 })
+const navItems = [
+  { label: '当前实验', target: 'work' as const, icon: HomeFilled },
+  { label: '数据记录', target: 'data' as const, icon: TrendCharts },
+  { label: '实验参考', target: 'reference' as const, icon: List },
+]
+const latestReadingAt = computed(() => {
+  const times = (dashboardStore.dashboard?.readings ?? [])
+    .map((item) => Date.parse(item.observed_at))
+    .filter(Number.isFinite)
+  return times.length ? new Date(Math.max(...times)).toLocaleString('zh-CN') : '尚无读数'
+})
+const showObservationChart = computed(
+  () =>
+    activeView.value === 'work' &&
+    !dashboardStore.dashboard?.diagnosis?.matches.length &&
+    Boolean(dashboardStore.dashboard?.readings.length),
+)
 
 async function refresh(showTransition = false): Promise<void> {
   if (!sessionStore.credentials) return
@@ -92,6 +118,8 @@ async function refresh(showTransition = false): Promise<void> {
 
   try {
     await dashboardStore.load(sessionStore.credentials)
+    if (dashboardStore.state === 'ready' && checkError.value?.action !== 'confirm')
+      checkError.value = null
   } finally {
     if (showTransition) {
       const remainingTime = Math.max(0, 460 - (window.performance.now() - startedAt))
@@ -146,7 +174,7 @@ async function refreshFeedbackRecovery(): Promise<void> {
 }
 
 async function generateAIExplanation(): Promise<void> {
-  if (!sessionStore.credentials) return
+  if (readOnly.value || !sessionStore.credentials) return
   try {
     await dashboardStore.generateAIExplanation(sessionStore.credentials)
     const result = dashboardStore.dashboard?.ai_explanation
@@ -158,53 +186,51 @@ async function generateAIExplanation(): Promise<void> {
 }
 
 async function runDiagnosisWorkflow(): Promise<void> {
-  if (!sessionStore.credentials) return
+  if (readOnly.value || !sessionStore.credentials) return
+  const credentials = sessionStore.credentials
   try {
-    await dashboardStore.runDiagnosisWorkflow(sessionStore.credentials)
+    await dashboardStore.runDiagnosisWorkflow(credentials)
+    if (credentials !== sessionStore.credentials) return
+    checkError.value = null
     const workflow = dashboardStore.workflow
-    if (workflow?.status === 'waiting_teacher') ElMessage.warning('诊断已暂停，等待教师审核')
+    if (workflow?.check?.status === 'no_new_data') ElMessage.info('暂无新的检查依据，保留上次诊断')
+    else if (workflow?.status === 'waiting_teacher') ElMessage.warning('诊断已暂停，等待教师审核')
     else if (workflow?.status === 'waiting_feedback') {
       ElMessage.info('请按建议排查后反馈结果，系统将继续本次诊断')
     } else if (workflow?.status === 'completed') ElMessage.success('辅助诊断工作流已完成')
     else ElMessage.info(`工作流状态：${workflow?.status || '未知'}`)
-  } catch {
-    ElMessage.error('辅助诊断工作流启动失败，原有诊断结果不受影响')
+  } catch (error) {
+    if (credentials !== sessionStore.credentials) return
+    checkError.value =
+      error instanceof CheckRequestError
+        ? error
+        : new CheckRequestError(
+            error instanceof Error ? error.message : '检查结果尚未确认，请刷新状态核对。',
+            'review',
+          )
   }
 }
 
-function navigateTo(target: string): void {
-  activeNavTarget.value = target
-  navigationLockUntil = window.performance.now() + 1_200
-  const section = document.getElementById(target)
-  const scrollTarget = section?.firstElementChild ?? section
-  scrollTarget?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+async function navigateTo(target: StudentView): Promise<void> {
+  if (target === activeView.value) return
+  scrollPositions[activeView.value] = window.scrollY
+  activeView.value = target
+  await nextTick()
+  window.scrollTo({ top: scrollPositions[target], behavior: 'instant' })
 }
-
-function syncActiveNavigation(): void {
-  const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
-  if (maxScroll > 80 && window.scrollY >= maxScroll - 8) {
-    activeNavTarget.value = navItems.value[navItems.value.length - 1]?.target ?? 'diagnosis'
-    return
-  }
-  const activationLine = window.innerWidth <= 780 ? 150 : 160
-  let nextTarget = navItems.value[0]?.target ?? 'overview'
-  for (const item of navItems.value) {
-    const section = document.getElementById(item.target)
-    const measuredElement = section?.firstElementChild ?? section
-    if (measuredElement && measuredElement.getBoundingClientRect().top <= activationLine) {
-      nextTarget = item.target
-    }
-  }
-  activeNavTarget.value = nextTarget
-}
-
-function handleWindowScroll(): void {
-  if (window.performance.now() < navigationLockUntil) return
-  if (navigationFrame !== undefined) return
-  navigationFrame = window.requestAnimationFrame(() => {
-    navigationFrame = undefined
-    syncActiveNavigation()
-  })
+function navigateWithKeyboard(event: KeyboardEvent, index: number): void {
+  const offset = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+  if (!offset && !['Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const nextIndex =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? navItems.length - 1
+        : (index + offset + navItems.length) % navItems.length
+  const next = navItems[nextIndex]!
+  void navigateTo(next.target)
+  document.getElementById(`student-tab-${next.target}`)?.focus()
 }
 
 async function logout(): Promise<void> {
@@ -214,6 +240,7 @@ async function logout(): Promise<void> {
 }
 
 async function finishExperiment(): Promise<void> {
+  if (readOnly.value) return
   try {
     await sessionStore.finishExperiment()
     dashboardStore.clear()
@@ -226,17 +253,14 @@ async function finishExperiment(): Promise<void> {
 onMounted(() => {
   void refresh()
   refreshTimer = window.setInterval(() => void refresh(), 15_000)
-  window.addEventListener('scroll', handleWindowScroll, { passive: true })
 })
 onBeforeUnmount(() => {
   window.clearInterval(refreshTimer)
-  window.removeEventListener('scroll', handleWindowScroll)
-  if (navigationFrame !== undefined) window.cancelAnimationFrame(navigationFrame)
 })
 </script>
 
 <template>
-  <main class="student-app">
+  <main class="student-app task-organized-student">
     <Transition name="workspace-refresh">
       <div
         v-if="showRefreshFlash"
@@ -252,17 +276,18 @@ onBeforeUnmount(() => {
         <strong>芯鉴知微</strong>
         <span>学生端</span>
       </div>
-      <div class="topbar-context"><List /> 当前实验任务 <span>⌄</span></div>
+      <div class="topbar-context">
+        <List /> {{ dashboardStore.dashboard?.task.title || '当前实验' }}
+      </div>
       <div class="topbar-user">
-        <button type="button" aria-label="通知"><Bell /></button>
         <div class="avatar"><UserFilled /></div>
         <div>
           <strong>{{ deviceLabel }}</strong
-          ><small>临时设备会话</small>
+          ><small>{{ sessionStore.credentials?.accessToken ? '学生账号' : '测试设备会话' }}</small>
         </div>
         <el-button
           v-if="sessionStore.credentials?.accessToken"
-          :disabled="dashboardStore.feedbackBlocked"
+          :disabled="readOnly || dashboardStore.feedbackBlocked"
           @click="finishExperiment"
           >结束本次实验</el-button
         >
@@ -273,11 +298,10 @@ onBeforeUnmount(() => {
     <section id="main-student-content" class="app-content" tabindex="-1">
       <div class="content-toolbar">
         <div>
-          <p class="workspace-kicker">STUDENT EXPERIMENT CONSOLE</p>
           <h1>学生实验<span class="workspace-title-accent">工作台</span></h1>
-          <small>查看设备状态，理解异常原因，并完成排查反馈。</small>
+          <small>查看当前实验，按问题排查，记录你的反馈。</small>
           <span v-if="dashboardStore.dashboard"
-            >最近更新
+            >页面读取时间
             {{ new Date(dashboardStore.dashboard.generated_at).toLocaleTimeString('zh-CN') }}</span
           >
         </div>
@@ -287,23 +311,36 @@ onBeforeUnmount(() => {
           ><Refresh /> 刷新数据</el-button
         >
       </div>
-      <nav class="student-section-nav" aria-label="页面快速定位与实时状态">
+      <nav class="student-section-nav" role="tablist" aria-label="学生工作区">
         <button
-          v-for="item in navItems"
+          v-for="(item, index) in navItems"
+          :id="`student-tab-${item.target}`"
           :key="item.target"
           type="button"
-          :class="{ active: activeNavTarget === item.target }"
-          :aria-current="activeNavTarget === item.target ? 'location' : undefined"
+          role="tab"
+          :class="{ active: activeView === item.target }"
+          :aria-selected="activeView === item.target"
+          aria-controls="student-task-panel"
+          :tabindex="activeView === item.target ? 0 : -1"
           @click="navigateTo(item.target)"
+          @keydown="navigateWithKeyboard($event, index)"
         >
           <component :is="item.icon" />
-          <span class="student-nav-copy">
-            <b>{{ item.label }}</b>
-            <small>{{ item.meta }}</small>
-          </span>
+          <span class="student-nav-copy"
+            ><b>{{ item.label }}</b></span
+          >
         </button>
       </nav>
 
+      <section v-if="checkError" class="recovery-notice" role="alert" aria-label="检查恢复提示">
+        <div>
+          <strong>下一步如何继续</strong>
+          <p>{{ checkError.message }}</p>
+        </div>
+        <el-button type="primary" :loading="dashboardStore.workflowLoading" @click="recoverCheck">{{
+          recoveryLabel
+        }}</el-button>
+      </section>
       <el-skeleton
         v-if="dashboardStore.state === 'loading'"
         :rows="10"
@@ -311,16 +348,38 @@ onBeforeUnmount(() => {
         class="dashboard-skeleton"
       />
       <el-result
-        v-else-if="dashboardStore.state === 'error'"
+        v-else-if="dashboardStore.state === 'error' && !dashboardStore.dashboard"
         icon="error"
         title="数据加载失败"
         :sub-title="dashboardStore.errorMessage"
       >
         <template #extra
-          ><el-button type="primary" @click="refresh(true)">重新加载</el-button></template
+          ><el-button v-if="mustLogin" type="primary" @click="logout">重新登录</el-button
+          ><el-button v-else type="primary" :disabled="showRefreshFlash" @click="refresh(true)"
+            >重新加载</el-button
+          ></template
         >
       </el-result>
       <div v-else-if="dashboardStore.dashboard" class="dashboard-content">
+        <section
+          v-if="dashboardStore.failureKind"
+          class="recovery-notice"
+          role="alert"
+          aria-label="数据暂未更新"
+        >
+          <div>
+            <strong>暂未更新 · 当前内容仅供查看</strong>
+            <p>{{ dashboardStore.errorMessage }}</p>
+            <p>
+              上次成功读取：{{
+                new Date(dashboardStore.dashboard.generated_at).toLocaleString('zh-CN')
+              }}。这不是设备的最新采样时间。
+            </p>
+          </div>
+          <el-button type="primary" :disabled="showRefreshFlash" @click="refresh(true)"
+            >重新连接并刷新</el-button
+          >
+        </section>
         <el-alert
           v-if="hasTestData"
           title="当前展示测试或模拟数据，不代表真实设备诊断结果。"
@@ -328,27 +387,87 @@ onBeforeUnmount(() => {
           :closable="false"
           show-icon
         />
-        <FeedbackRecoveryPanel
-          :state="dashboardStore.feedbackRecoveryState"
-          :recovery="dashboardStore.feedbackRecovery"
-          :pending="dashboardStore.pendingFeedback"
-          :error="dashboardStore.feedbackRecoveryError"
-          :local-error="dashboardStore.localFeedbackError"
-          :loading="dashboardStore.feedbackLoading"
-          :current-diagnosis-id="dashboardStore.dashboard.diagnosis?.id"
-          @retry="refreshFeedbackRecovery"
-          @recover="recoverFeedback"
-        />
-        <div id="overview">
-          <DeviceOverview
-            :task="dashboardStore.dashboard.task"
-            :device="dashboardStore.dashboard.device"
+        <section class="experiment-context" aria-label="本次实验与数据时间">
+          <div>
+            <strong>{{ dashboardStore.dashboard.task.title || '当前实验任务待配置' }}</strong
+            ><span>{{ deviceLabel }} · {{ deviceStatus }}</span>
+          </div>
+          <p>
+            最近心跳：{{
+              dashboardStore.dashboard.device.last_seen_at
+                ? new Date(dashboardStore.dashboard.device.last_seen_at).toLocaleString('zh-CN')
+                : '尚未上报'
+            }}
+            · 最新展示读数记录：{{ latestReadingAt }}
+          </p>
+          <small>通信状态不代表硬件正常；记录时间不等于现场已复测。</small>
+        </section>
+        <section
+          v-if="dashboardStore.checkPending && activeView !== 'work'"
+          class="recovery-notice"
+          role="status"
+          aria-label="检查结果待确认"
+        >
+          <p>上次检查结果尚未确认，切换页面不会重新提交。</p>
+          <el-button @click="navigateTo('work')">返回当前实验确认原请求</el-button>
+        </section>
+        <fieldset class="feedback-recovery-wrapper" :disabled="readOnly">
+          <FeedbackRecoveryPanel
+            :state="dashboardStore.feedbackRecoveryState"
+            :recovery="dashboardStore.feedbackRecovery"
+            :pending="dashboardStore.pendingFeedback"
+            :error="dashboardStore.feedbackRecoveryError"
+            :local-error="dashboardStore.localFeedbackError"
+            :loading="dashboardStore.feedbackLoading"
+            :current-diagnosis-id="dashboardStore.dashboard.diagnosis?.id"
+            @retry="refreshFeedbackRecovery"
+            @recover="recoverFeedback"
           />
-        </div>
-        <section class="analysis-grid">
-          <RealtimeLogList :logs="dashboardStore.dashboard.logs" />
-          <SensorTrendChart :readings="dashboardStore.dashboard.readings" />
+        </fieldset>
+        <section
+          id="student-task-panel"
+          role="tabpanel"
+          :aria-labelledby="`student-tab-${activeView}`"
+          tabindex="0"
+        >
+          <section
+            v-show="activeView === 'data'"
+            class="student-data-workspace"
+            aria-label="实验数据记录"
+          >
+            <div class="data-workspace-heading">
+              <h2>数据记录</h2>
+              <p>这里展示已上传的数据；切换页面不会启动检查。</p>
+            </div>
+            <details class="experiment-details">
+              <summary>实验与设备详情</summary>
+              <DeviceOverview
+                :task="dashboardStore.dashboard.task"
+                :device="dashboardStore.dashboard.device"
+              />
+            </details>
+            <div class="student-data-grid">
+              <RealtimeLogList :logs="dashboardStore.dashboard.logs" />
+              <SensorTrendChart
+                v-if="activeView === 'data'"
+                :readings="dashboardStore.dashboard.readings"
+              />
+            </div>
+          </section>
+          <section
+            v-if="showObservationChart"
+            class="observation-preview"
+            aria-label="当前实验读数"
+          >
+            <p>
+              当前展示的读数可用于观察实验；最新记录时间见上方。未发现异常不代表整套硬件验收通过。
+            </p>
+            <SensorTrendChart :readings="dashboardStore.dashboard.readings" />
+          </section>
           <DiagnosisPanel
+            v-show="activeView !== 'data'"
+            :view="activeView === 'reference' ? 'reference' : 'work'"
+            :read-only="readOnly"
             :issues="dashboardStore.dashboard.issues"
             :diagnosis="dashboardStore.dashboard.diagnosis"
             :guidance="dashboardStore.dashboard.guidance"
@@ -362,6 +481,7 @@ onBeforeUnmount(() => {
             :ai-loading="dashboardStore.aiLoading"
             :workflow="dashboardStore.workflow"
             :workflow-loading="dashboardStore.workflowLoading"
+            :check-pending="dashboardStore.checkPending"
             :has-experiment-session="Boolean(sessionStore.credentials?.experimentSessionId)"
             :device-state-explanation="dashboardStore.dashboard.device_state_explanation"
             @feedback="submitFeedback"
@@ -373,3 +493,169 @@ onBeforeUnmount(() => {
     </section>
   </main>
 </template>
+
+<style scoped>
+.task-organized-student .content-toolbar {
+  min-height: 0;
+  padding: 26px 0 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.task-organized-student .content-toolbar::after {
+  display: none;
+}
+.task-organized-student .content-toolbar h1 {
+  font-size: clamp(26px, 4vw, 34px);
+}
+.task-organized-student .content-toolbar > div {
+  padding: 0;
+}
+.task-organized-student .content-toolbar > .el-button {
+  margin: 0;
+  min-height: 42px;
+}
+.task-organized-student .student-section-nav {
+  margin-bottom: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: visible;
+}
+.task-organized-student .student-section-nav button {
+  min-height: 52px;
+  padding: 12px;
+  gap: 8px;
+}
+.task-organized-student .student-nav-copy b {
+  font-size: 14px;
+}
+.experiment-context {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--studio-line);
+  margin-bottom: 18px;
+  overflow-wrap: anywhere;
+}
+.experiment-context > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.experiment-context p {
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 10px 0 4px;
+}
+.experiment-context small {
+  color: #63665f;
+  line-height: 1.6;
+}
+.student-data-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 20px;
+}
+.student-data-grid :deep(.panel-card),
+.observation-preview :deep(.panel-card) {
+  grid-column: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border-right: 0;
+}
+.student-data-grid :deep(.log-list),
+.student-data-grid :deep(.sensor-chart) {
+  height: 280px;
+}
+.student-data-grid :deep(.el-empty) {
+  padding: 28px 10px;
+}
+.data-workspace-heading h2 {
+  margin: 6px 0;
+  font-size: 22px;
+}
+.data-workspace-heading p,
+.observation-preview > p {
+  color: #555;
+  line-height: 1.7;
+  font-size: 14px;
+}
+.experiment-details {
+  border: 1px solid var(--studio-line);
+  margin: 20px 0;
+  padding: 16px;
+}
+.experiment-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.experiment-details :deep(.overview-grid) {
+  margin: 16px 0 0;
+}
+.experiment-details :deep(.task-card),
+.experiment-details :deep(.device-card) {
+  min-height: 0;
+  padding: 16px;
+}
+.experiment-details :deep(.task-icon) {
+  display: none;
+}
+.experiment-details :deep(.task-card) {
+  display: block;
+}
+.observation-preview {
+  margin: 20px 0;
+}
+@media (max-width: 680px) {
+  .task-organized-student .content-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .task-organized-student .content-toolbar > .el-button {
+    width: auto;
+  }
+  .task-organized-student .student-section-nav button {
+    padding: 10px 6px;
+  }
+  .student-data-grid {
+    grid-template-columns: 1fr;
+  }
+  .experiment-context > div {
+    flex-direction: column;
+  }
+}
+
+.topbar-user :deep(.el-button) {
+  width: auto;
+  min-width: max-content;
+  padding: 0 12px;
+}
+
+.recovery-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 20px;
+  margin: 18px 0;
+  border: 1px solid #d2b771;
+  background: #fff9e9;
+  color: #534626;
+}
+.recovery-notice p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.recovery-notice :deep(.el-button) {
+  margin: 0;
+}
+.feedback-recovery-wrapper {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+</style>

@@ -19,6 +19,7 @@ from app.models.classroom import (
 from app.models.device import Device
 from app.models.device_heartbeat import DeviceHeartbeat
 from app.models.device_log import DeviceLog
+from app.models.diagnosis_check import DiagnosisCheck
 from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_evidence import DiagnosisEvidence
 from app.models.diagnosis_feedback import DiagnosisFeedback
@@ -46,6 +47,7 @@ from app.models.knowledge import (
 from app.models.sensor_reading import SensorReading
 
 __all__ = [
+    "DiagnosisCheck",
     "AICallRecord",
     "AIExplanationCache",
     "AIUsageReservation",

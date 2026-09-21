@@ -78,6 +78,10 @@ def test_recovery_finds_pending_from_an_earlier_diagnosis(recovery_env, monkeypa
     env = recovery_env
     make_pending(env, monkeypatch, {"request_id": str(uuid4()), "action": "unresolved"})
     original = env.request("GET", RECOVERY).json()["pending"][0]
+    # A newer diagnosis now requires fresh input; repeat checks reuse the old result.
+    from test_diagnosis_checks import ingest
+
+    ingest(env)
     started = env.request("POST", f"/api/v1/diagnosis-workflows/devices/{DEVICE_KEY}", json={})
     assert started.status_code == 201
     assert started.json()["diagnosis_result_id"] != original["diagnosis_result_id"]

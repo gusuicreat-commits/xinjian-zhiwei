@@ -175,8 +175,25 @@ GitHub CI 已配置 25 场景 PostgreSQL 评测，并使用 `always()` 上传该
 
 前端默认端口 15173、后端 18101，可用 `INTEGRATION_FRONTEND_PORT` / `INTEGRATION_BACKEND_PORT` 修改；不复用现有服务。CI 安装并使用 Chromium，本机可设置 `INTEGRATION_CHROME_CHANNEL=chrome` 使用已安装 Chrome。本地浏览器报告为 `frontend/playwright-report/integration/results.json`。后端找回专项另外覆盖旧诊断、原备注、越界、关闭会话、旧 NULL 记录及超过 20 条的分页边界。
 
-当前代码没有新增数据库迁移；Head 仍为 `20260912_0027`。本轮执行数量与结果集中记录在 [整改报告](workflow-remediation.md) 的“反馈找回与持续验收”。
+2026-09-12该轮未新增数据库迁移，当时Head为 `20260912_0027`；当前代码Head见[实现状态](implementation-status.md)。该轮执行数量与结果记录在 [整改报告](workflow-remediation.md) 的“反馈找回与持续验收”。
 
 ## 自动报告的存放与详略
 
 流程 CLI 默认输出简明 JSON 和同名 Markdown；失败细节单独 gzip 保存。报告不再混入源码变更，详见 [测试报告约定](test-reporting.md)。原始内存检查及退出码不变；需要全部快照时使用 `--details all`。旧报告原地保留。
+
+
+## 教学参考接入回归（2026-09-20）
+
+`test_teaching_materials.py` 覆盖显式关联、组件/等级隔离、缺引用/重复/循环拒绝、
+新旧包与hash兼容、历史不回填、撤回、AI关闭/超时/次数预算拒绝、反馈重试，以及三个真实
+Provider调用入口的教学参考排除。前端组件测试覆盖预期与实测区分、测试标记、HTML转义及问题切换。
+真实浏览器测试连接隔离PostgreSQL与实际后端，校验教学参考展示和刷新不新增反馈/AI调用。
+以上文件由既有verify.sh与CI自动收集；本轮执行证据见[报告](../output/audits/teaching-materials-latest.md)。
+
+## 重新检查回归
+
+新增 `test_diagnosis_checks.py`、`test_diagnosis_checks_postgres.py`，纳入既有pytest自动发现。
+覆盖无新数据、重传、新值相同、迟到、过期基准、会话隔离、冻结后上报、回执保存失败与重启。
+前端 `diagnosisChecks.test.ts`、`DiagnosisCheckPanel.test.ts` 与真实浏览器检查用例共同验证
+断网沿用身份、刷新无执行、页面检查依据可见。0033在空库/历史升级和降级保留场景验证。
+使用显式临时PostgreSQL与模拟Provider；本地通过不代表硬件/真实模型语义/远程CI通过。

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { issueLabel } from '@/presentation/userLanguage'
 import { BarChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { init, use, type ECharts } from 'echarts/core'
@@ -8,9 +9,10 @@ import type { TeacherDashboard } from '@/types/teacher'
 const props = defineProps<{ data: TeacherDashboard['error_ranking'] }>()
 const element = ref<HTMLElement | null>(null)
 let chart: ECharts | null = null
+let disposed = false
 use([BarChart, GridComponent, TooltipComponent, CanvasRenderer])
 function render(): void {
-  if (!element.value) return
+  if (disposed || !element.value) return
   chart ??= init(element.value)
   chart.setOption(
     {
@@ -25,7 +27,7 @@ function render(): void {
       yAxis: {
         type: 'category',
         inverse: true,
-        data: props.data.map((x) => x.error_code),
+        data: props.data.map((x) => issueLabel(x.error_code)),
         axisLabel: { color: '#555555', width: 116, overflow: 'truncate' },
       },
       series: [
@@ -52,19 +54,25 @@ watch(
   },
   { deep: true },
 )
-onMounted(() => {
-  render()
+onMounted(async () => {
   window.addEventListener('resize', resize)
+  // A parent v-show may still be hidden during this child's mounted hook.
+  await nextTick()
+  render()
 })
 onBeforeUnmount(() => {
+  disposed = true
   window.removeEventListener('resize', resize)
   chart?.dispose()
+  chart = null
 })
 </script>
 <template>
   <el-empty v-if="data.length === 0" description="暂无诊断错误记录" :image-size="54" />
   <div v-else ref="element" class="teacher-chart" role="img" aria-label="高频错误横向柱状图" />
   <ol class="sr-only" aria-label="高频错误文本数据">
-    <li v-for="item in data" :key="item.error_code">{{ item.error_code }}：{{ item.count }}</li>
+    <li v-for="item in data" :key="item.error_code">
+      {{ issueLabel(item.error_code) }}（{{ item.error_code }}）：{{ item.count }}
+    </li>
   </ol>
 </template>

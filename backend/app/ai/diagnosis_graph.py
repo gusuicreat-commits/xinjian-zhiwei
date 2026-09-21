@@ -17,7 +17,7 @@ from app.ai.context_sanitizer import sanitize_text
 from app.ai.reasoning import build_evidence_registry, reason_about_causes
 from app.ai.schemas import AIExplanationResponse, AIKnowledgeReference
 from app.core.config import Settings
-from app.diagnosis.schemas import DiagnosisOutcome, ExperimentTemplateContext
+from app.diagnosis.schemas import DiagnosisContext, DiagnosisOutcome, ExperimentTemplateContext
 from app.diagnosis.workflow_schemas import DiagnosisState
 from app.knowledge.validation import (
     build_reasoning_knowledge_constraints,
@@ -53,6 +53,7 @@ class DiagnosisGraphContext:
     ai_client: AIClient | None = None
     ai_clients: list[tuple[str, AIClient]] | None = None
     review_payload: dict[str, Any] | None = None
+    frozen_context: DiagnosisContext | None = None
 
 
 class DiagnosisNodeExecutionError(RuntimeError):
@@ -209,7 +210,7 @@ def _persisted_evidence_registry(
 def context_builder(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
 ) -> dict[str, Any]:
-    context = build_diagnosis_context(
+    context = runtime.context.frozen_context or build_diagnosis_context(
         runtime.context.db,
         runtime.context.device,
         evaluated_at=datetime.fromisoformat(state["evaluated_at"]),
@@ -326,7 +327,7 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
         else None
     )
     if record is None:
-        context = build_diagnosis_context(
+        context = runtime.context.frozen_context or build_diagnosis_context(
             db,
             runtime.context.device,
             evaluated_at=datetime.fromisoformat(state["evaluated_at"]),

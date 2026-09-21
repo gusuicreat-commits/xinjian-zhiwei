@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { issueLabel, readableText, logLevel, logSummary } from '@/presentation/userLanguage'
 import {
   Bell,
   Cpu,
@@ -31,21 +32,42 @@ import type { TeacherDiagnosisWorkflow, TeacherIntervention } from '@/types/teac
 const router = useRouter()
 const sessionStore = useTeacherSessionStore()
 const dashboardStore = useTeacherDashboardStore()
-const activeNavTarget = ref('teacher-overview')
+const activeNavTarget = ref('class-handling')
+const sectionPositions: Record<string, number> = {}
+const expandedInterventionKey = ref<string | null>(null)
+const sessionManagementOpen = ref(false)
+const sessionManagementStatus = ref({ pendingCount: 0, error: '', loading: false })
+function updateSessionManagementStatus(status: typeof sessionManagementStatus.value): void {
+  sessionManagementStatus.value = status
+  if (status.pendingCount > 0 || status.error) sessionManagementOpen.value = true
+}
+async function openSessionManagement(): Promise<void> {
+  await navigateTo('class-handling')
+  sessionManagementOpen.value = true
+  await nextTick()
+  const panel = document.getElementById('teacher-session-management')
+  panel?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  panel?.querySelector('summary')?.focus({ preventScroll: true })
+}
 const showRefreshFlash = ref(false)
 const searchQuery = ref('')
 const selectedDeviceId = ref('')
+let deviceListScrollPosition = 0
 const expandedWorkflowId = ref<string | null>(null)
 let refreshTimer: number | undefined
-let navigationFrame: number | undefined
-let navigationLockUntil = 0
 
 const dashboard = computed(() => dashboardStore.dashboard)
 const filteredAnomalies = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return dashboard.value?.anomalies ?? []
   return (dashboard.value?.anomalies ?? []).filter((item) =>
-    [item.device_id, item.device_name, item.latest_error_code, item.latest_summary]
+    [
+      item.device_id,
+      item.device_name,
+      item.latest_error_code,
+      issueLabel(item.latest_error_code),
+      item.latest_summary,
+    ]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(query)),
   )
@@ -55,9 +77,7 @@ const selectedDevice = computed(
 )
 const selectedLogs = computed(() => {
   const logs = dashboard.value?.recent_logs ?? []
-  return selectedDevice.value
-    ? logs.filter((item) => item.device_id === selectedDevice.value)
-    : logs
+  return selectedDevice.value ? logs.filter((item) => item.device_id === selectedDevice.value) : []
 })
 const hasTestData = computed(() =>
   Boolean(
@@ -82,25 +102,31 @@ const workflowInProgressOrOtherCount = computed(() => {
 })
 
 const navItems = [
+  { label: '课堂处置', description: '求助与异常', target: 'class-handling', icon: Warning },
+  { label: '课堂概览', description: '设备与趋势', target: 'class-overview', icon: DataAnalysis },
   {
-    label: '数据总览',
-    description: '设备核心指标',
-    target: 'teacher-overview',
-    icon: HomeFilled,
-  },
-  {
-    label: '设备分析',
-    description: '状态、错误与趋势',
-    target: 'device-analysis',
-    icon: DataAnalysis,
-  },
-  {
-    label: '异常处置',
-    description: '异常、日志与介入',
-    target: 'anomaly-workbench',
-    icon: Warning,
+    label: '资料与审核',
+    description: '诊断审核与知识',
+    target: 'class-resources',
+    icon: Management,
   },
 ]
+const activeSection = computed(() =>
+  navItems.find((item) => item.target === activeNavTarget.value)!,
+)
+const pendingInterventionCount = computed(
+  () =>
+    (dashboard.value?.interventions ?? []).filter((item) =>
+      ['open', 'claimed', 'unconfirmed', 'recommended'].includes(item.status),
+    ).length,
+)
+function interventionKey(item: TeacherIntervention): string {
+  return item.case_id ?? `${item.diagnosis_result_id}:${item.episode_id ?? item.tree_title}`
+}
+function toggleIntervention(item: TeacherIntervention): void {
+  const key = interventionKey(item)
+  expandedInterventionKey.value = expandedInterventionKey.value === key ? null : key
+}
 
 async function refresh(showTransition = false): Promise<void> {
   if (!sessionStore.accessToken) return
@@ -111,8 +137,6 @@ async function refresh(showTransition = false): Promise<void> {
 
   try {
     await dashboardStore.load(sessionStore.accessToken)
-    await nextTick()
-    syncActiveNavigation()
   } finally {
     if (showTransition) {
       const remainingTime = Math.max(0, 460 - (window.performance.now() - startedAt))
@@ -121,43 +145,40 @@ async function refresh(showTransition = false): Promise<void> {
     }
   }
 }
-function navigateTo(target: string): void {
+async function navigateTo(target: string): Promise<void> {
+  if (target === activeNavTarget.value) return
+  sectionPositions[activeNavTarget.value] = window.scrollY
   activeNavTarget.value = target
-  navigationLockUntil = window.performance.now() + 1_200
-  document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  await nextTick()
+  window.scrollTo({ top: sectionPositions[target] ?? 0, behavior: 'instant' })
 }
-function syncActiveNavigation(): void {
-  const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
-
-  if (maxScroll > 80 && window.scrollY >= maxScroll - 8) {
-    activeNavTarget.value = navItems[navItems.length - 1]?.target ?? 'teacher-overview'
-    return
-  }
-  const activationLine = 150
-  let nextTarget = navItems[0]?.target ?? 'teacher-overview'
-  for (const item of navItems) {
-    const section = document.getElementById(item.target)
-    if (section && section.getBoundingClientRect().top <= activationLine) {
-      nextTarget = item.target
-    }
-  }
-  activeNavTarget.value = nextTarget
+function navigateWithKeyboard(event: KeyboardEvent, index: number): void {
+  const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1 }
+  let nextIndex: number
+  if (event.key === 'Home') nextIndex = 0
+  else if (event.key === 'End') nextIndex = navItems.length - 1
+  else if (event.key in offsets)
+    nextIndex = (index + offsets[event.key]! + navItems.length) % navItems.length
+  else return
+  event.preventDefault()
+  const target = navItems[nextIndex]!.target
+  void navigateTo(target)
+  document.getElementById(`teacher-tab-${target}`)?.focus()
 }
-function handleWindowScroll(): void {
-  if (window.performance.now() < navigationLockUntil) return
-  if (navigationFrame !== undefined) return
-  navigationFrame = window.requestAnimationFrame(() => {
-    navigationFrame = undefined
-    syncActiveNavigation()
-  })
-}
-function selectDevice(deviceId: string): void {
+async function selectDevice(deviceId: string): Promise<void> {
+  deviceListScrollPosition = window.scrollY
   selectedDeviceId.value = deviceId
-  activeNavTarget.value = 'anomaly-workbench'
-  navigationLockUntil = window.performance.now() + 1_200
+  await navigateTo('class-handling')
+  await nextTick()
   document
     .getElementById('device-log-detail')
     ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+function returnToDeviceList(): void {
+  window.scrollTo({ top: deviceListScrollPosition, behavior: 'smooth' })
+  document
+    .querySelector<HTMLElement>('#anomaly-list .device-selection-button[aria-pressed="true"]')
+    ?.focus({ preventScroll: true })
 }
 function toggleWorkflow(workflowId: string): void {
   expandedWorkflowId.value = expandedWorkflowId.value === workflowId ? null : workflowId
@@ -287,7 +308,7 @@ async function handleWorkflowReview(
       action === 'approve'
         ? '可填写本次审核说明。'
         : action === 'edit'
-          ? '请填写修订后的诊断总结。规则证据和 Level 不会被修改。'
+          ? '请填写修订后的诊断总结。规则证据和提示层级不会被修改。'
           : '请填写驳回原因。',
       action === 'approve' ? '批准诊断解释' : action === 'edit' ? '修订诊断解释' : '驳回诊断解释',
       {
@@ -331,12 +352,9 @@ async function logout(): Promise<void> {
 onMounted(() => {
   void refresh()
   refreshTimer = window.setInterval(() => void refresh(), 30_000)
-  window.addEventListener('scroll', handleWindowScroll, { passive: true })
 })
 onBeforeUnmount(() => {
   window.clearInterval(refreshTimer)
-  window.removeEventListener('scroll', handleWindowScroll)
-  if (navigationFrame !== undefined) window.cancelAnimationFrame(navigationFrame)
 })
 </script>
 
@@ -356,16 +374,15 @@ onBeforeUnmount(() => {
         <div><strong>芯鉴知微</strong><small>嵌入式实验智能分析平台</small></div>
         <b>教师端</b>
       </div>
-      <div class="teacher-breadcrumb"><HomeFilled /><span>/</span><b>班级实验总览</b></div>
-      <label class="teacher-search"
-        ><input v-model="searchQuery" placeholder="搜索设备或错误代码…" /><Search
-      /></label>
+      <div class="teacher-breadcrumb">
+        <HomeFilled /><span>/</span><b>{{ activeSection.label }}</b>
+      </div>
       <button type="button" class="teacher-icon-button" aria-label="通知"><Bell /></button>
       <div class="teacher-user">
         <span><UserFilled /></span>
         <div>
           <strong>{{ sessionStore.session?.display_name || '教师账号' }}</strong>
-          <small>Bearer 账号会话</small>
+          <small>教师账号会话</small>
         </div>
       </div>
       <button type="button" class="teacher-icon-button" aria-label="退出教师端" @click="logout">
@@ -374,14 +391,20 @@ onBeforeUnmount(() => {
     </header>
 
     <aside class="teacher-sidebar">
-      <nav aria-label="教师端导航">
+      <nav role="tablist" aria-label="教师端导航">
         <button
-          v-for="item in navItems"
+          v-for="(item, index) in navItems"
           :key="item.target"
+          :id="`teacher-tab-${item.target}`"
           type="button"
+          role="tab"
+          :aria-selected="activeNavTarget === item.target"
+          :aria-controls="item.target"
+          :aria-label="item.label"
+          :tabindex="activeNavTarget === item.target ? 0 : -1"
+          @keydown="navigateWithKeyboard($event, index)"
           :class="{ active: activeNavTarget === item.target }"
           :title="`${item.label}：${item.description}`"
-          :aria-current="activeNavTarget === item.target ? 'location' : undefined"
           @click="navigateTo(item.target)"
         >
           <component :is="item.icon" />
@@ -393,16 +416,7 @@ onBeforeUnmount(() => {
       </nav>
     </aside>
 
-    <section id="teacher-overview" class="teacher-content">
-      <ManagedExperimentSessions
-        v-if="
-          !REVIEW_MODE &&
-          sessionStore.session?.permissions.includes('assignment.manage') &&
-          sessionStore.accessToken
-        "
-        :access-token="sessionStore.accessToken"
-        :user-id="sessionStore.session.user_id"
-      />
+    <section class="teacher-content">
       <el-skeleton
         v-if="dashboardStore.state === 'loading'"
         :rows="14"
@@ -422,24 +436,24 @@ onBeforeUnmount(() => {
       <template v-else-if="dashboard">
         <header class="teacher-hero">
           <div>
-            <p>TEACHER OPERATIONS</p>
-            <h1>班级实验<span class="workspace-title-accent">总览</span></h1>
-            <span>聚合设备状态、异常证据与待处理教学介入。</span>
+            <p>教师工作台</p>
+            <h1>{{ activeSection.label }}</h1>
+            <span>当前账号获授权的课堂范围 · {{ activeSection.description }}</span>
           </div>
-          <dl>
-            <div>
-              <dt>数据来源</dt>
-              <dd>实时接口</dd>
-            </div>
-            <div>
-              <dt>刷新频率</dt>
-              <dd>30 秒</dd>
-            </div>
-            <div>
-              <dt>当前状态</dt>
-              <dd>持续监测</dd>
-            </div>
-          </dl>
+          <div class="teacher-task-counts" aria-label="当前课堂事项">
+            <span
+              ><b>{{ pendingInterventionCount }}</b
+              >项求助或介入待处理</span
+            >
+            <span
+              ><b>{{ dashboard.metrics.abnormal_devices }}</b
+              >台设备需关注</span
+            >
+            <button type="button" @click="navigateTo('class-resources')">
+              <b>{{ dashboardStore.workflowQueue.length }}</b
+              >项诊断待审核
+            </button>
+          </div>
         </header>
         <div class="teacher-notice" :class="{ warning: hasTestData }">
           <Warning /><span>{{ dashboard.data_notice }}</span
@@ -447,171 +461,94 @@ onBeforeUnmount(() => {
             <Refresh />刷新
           </button>
         </div>
-        <section class="teacher-kpis" aria-label="设备统计概览">
-          <article class="teacher-kpi kpi-blue">
-            <span><Monitor /></span>
-            <div>
-              <small>在线设备数</small><strong>{{ dashboard.metrics.online_devices }}</strong
-              ><em>实时数据库</em>
-            </div>
-          </article>
-          <article class="teacher-kpi kpi-cyan">
-            <span><Cpu /></span>
-            <div>
-              <small>离线设备数</small><strong>{{ dashboard.metrics.offline_devices }}</strong
-              ><em>超时阈值可配置</em>
-            </div>
-          </article>
-          <article class="teacher-kpi kpi-orange">
-            <span><Warning /></span>
-            <div>
-              <small>异常设备数</small><strong>{{ dashboard.metrics.abnormal_devices }}</strong
-              ><em>最新规则诊断</em>
-            </div>
-          </article>
-          <article class="teacher-kpi kpi-purple">
-            <span><TrendCharts /></span>
-            <div><small>实验完成率</small><strong>—</strong><em>任务数据未配置</em></div>
-          </article>
+        <section
+          v-if="
+            sessionManagementStatus.pendingCount > 0 ||
+            sessionManagementStatus.error ||
+            sessionManagementStatus.loading
+          "
+          class="teacher-recovery-notice"
+          role="status"
+          aria-label="设备交接恢复提示"
+        >
+          <div>
+            <strong v-if="sessionManagementStatus.pendingCount > 0"
+              >有 {{ sessionManagementStatus.pendingCount }} 项设备交接操作待确认</strong
+            >
+            <strong v-else-if="sessionManagementStatus.error">设备交接状态需要核对</strong>
+            <strong v-else>正在核对设备交接记录</strong>
+            <p v-if="sessionManagementStatus.error">{{ sessionManagementStatus.error }}</p>
+            <p v-else-if="sessionManagementStatus.pendingCount > 0">
+              请继续确认原操作；切换栏目不会重新提交。
+            </p>
+          </div>
+          <button
+            v-if="!sessionManagementStatus.loading"
+            type="button"
+            @click="openSessionManagement"
+          >
+            {{
+              sessionManagementStatus.pendingCount > 0 ? '查看待确认的设备交接' : '查看设备交接状态'
+            }}
+          </button>
         </section>
-
-        <section id="device-analysis" class="teacher-chart-grid">
-          <article id="device-status" class="teacher-panel">
+        <section
+          id="class-handling"
+          v-show="activeNavTarget === 'class-handling'"
+          class="teacher-task-panel"
+          role="tabpanel"
+          aria-labelledby="teacher-tab-class-handling"
+        >
+          <article class="teacher-panel intervention-panel classroom-interventions">
             <header>
-              <h2>设备状态图</h2>
-              <small>当前快照</small>
+              <h2>学生求助与教学介入</h2>
+              <i>{{ dashboard.interventions.length }}</i>
             </header>
-            <TeacherDeviceChart :data="dashboard.device_status" />
-          </article>
-          <article class="teacher-panel">
-            <header>
-              <h2>高频错误排行</h2>
-              <small>各设备最新诊断</small>
-            </header>
-            <TeacherErrorRankingChart :data="dashboard.error_ranking" />
-          </article>
-          <article id="class-progress" class="teacher-panel teacher-placeholder">
-            <header>
-              <h2>班级实验进度</h2>
-              <small>真实接口</small>
-            </header>
-            <DataAnalysis /><b>班级与任务尚未配置</b>
-            <p>{{ dashboard.class_progress.notice }}</p>
-          </article>
-          <article class="teacher-panel">
-            <header>
-              <h2>错误趋势图</h2>
-              <small>近 7 天</small>
-            </header>
-            <TeacherErrorTrendChart :data="dashboard.error_trend" />
-          </article>
-        </section>
-
-        <section id="anomaly-workbench" class="teacher-detail-grid">
-          <article id="anomaly-list" class="teacher-panel anomaly-table-panel">
-            <header>
-              <h2>
-                设备异常列表 <i>{{ filteredAnomalies.length }}</i>
-              </h2>
-              <small>
-                {{
-                  filteredAnomalies.some((item) => item.student_identity_configured)
-                    ? '学生归属来自设备绑定'
-                    : '未建立学生归属关系'
-                }}
-              </small>
-            </header>
-            <div v-if="filteredAnomalies.length" class="teacher-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>设备</th>
-                    <th>异常类型</th>
-                    <th>状态</th>
-                    <th>数据来源</th>
-                    <th>处理建议</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="item in filteredAnomalies"
-                    :key="item.device_id"
-                    :class="{ selected: selectedDevice === item.device_id }"
-                    @click="selectDevice(item.device_id)"
-                  >
-                    <td>
-                      <b>{{ item.device_name || item.device_id }}</b
-                      ><small>{{ item.device_id }}</small>
-                    </td>
-                    <td>
-                      <code>{{ item.latest_error_code }}</code>
-                    </td>
-                    <td><span class="status-badge danger">待核查</span></td>
-                    <td>
-                      <span
-                        class="status-badge"
-                        :class="item.is_test_data ? 'warning' : 'success'"
-                        >{{ item.is_test_data ? '测试/模拟' : '未标记测试' }}</span
-                      >
-                    </td>
-                    <td>{{ item.latest_summary }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <el-empty v-else description="当前没有规则命中的异常设备" :image-size="58" />
-          </article>
-
-          <article id="device-log-detail" class="teacher-panel teacher-log-panel">
-            <header>
-              <h2>单个设备日志详情</h2>
-              <small>{{ selectedDevice || '未选择设备' }}</small>
-            </header>
-            <div v-if="selectedLogs.length" class="teacher-log-list">
-              <div v-for="log in selectedLogs" :key="log.id">
-                <time>{{
-                  new Date(log.occurred_at).toLocaleTimeString('zh-CN', { hour12: false })
-                }}</time
-                ><span :class="`log-${log.level.toLowerCase()}`">{{
-                  log.level.toUpperCase()
-                }}</span>
-                <p>
-                  <b v-if="log.event_code">{{ log.event_code }} · </b>{{ log.message }}
-                </p>
-              </div>
-            </div>
-            <el-empty v-else description="该设备暂无日志" :image-size="58" />
-          </article>
-
-          <div class="teacher-side-stack">
-            <article class="teacher-panel intervention-panel">
-              <header>
-                <h2>需要教师介入的设备</h2>
-                <i>{{ dashboard.interventions.length }}</i>
-              </header>
-              <div v-if="dashboard.interventions.length" class="teacher-action-list">
-                <div
-                  v-for="item in dashboard.interventions"
-                  :key="
-                    item.case_id ??
-                    `${item.diagnosis_result_id}:${item.episode_id ?? item.tree_title}`
-                  "
-                  class="teacher-action-item"
-                  @click="selectDevice(item.device_id)"
+            <div v-if="dashboard.interventions.length" class="teacher-action-list">
+              <article
+                v-for="item in dashboard.interventions"
+                :key="interventionKey(item)"
+                class="intervention-record"
+              >
+                <button
+                  type="button"
+                  class="intervention-summary"
+                  :aria-expanded="expandedInterventionKey === interventionKey(item)"
+                  @click="toggleIntervention(item)"
                 >
                   <span
                     ><b>{{ item.device_id }}</b
-                    ><small>{{ item.tree_title }}</small>
-                    <small class="intervention-source">
-                      {{
-                        item.source === 'student_request'
-                          ? '学生主动求助'
-                          : item.source === 'automatic_guidance'
-                            ? '系统建议介入'
-                            : '人工创建'
-                      }}
-                    </small></span
+                    ><small>{{ item.tree_title }}</small></span
                   >
+                  <span>
+                    <small>{{
+                      item.source === 'student_request'
+                        ? '学生主动求助'
+                        : item.source === 'automatic_guidance'
+                          ? '系统建议介入'
+                          : '人工创建'
+                    }}</small>
+                    <time>{{
+                      new Date(item.created_at).toLocaleString('zh-CN', { hour12: false })
+                    }}</time>
+                  </span>
+                  <span
+                    ><em :class="`intervention-${item.status}`">{{
+                      interventionStatusLabels[item.status]
+                    }}</em
+                    ><small v-if="item.is_test_data">测试/模拟</small
+                    ><small>{{
+                      expandedInterventionKey === interventionKey(item) ? '收起详情' : '查看详情'
+                    }}</small></span
+                  >
+                </button>
+                <div
+                  v-show="expandedInterventionKey === interventionKey(item)"
+                  class="intervention-details"
+                >
+                  <p>当前记录未提供学生明确执行过的步骤；提示或“仍未解决”反馈不等于已经执行。</p>
+                  <p>工单处理完成、问题报告解决与硬件恢复分别记录。</p>
+                  <p v-if="item.resolution_summary">处理说明：{{ item.resolution_summary }}</p>
                   <div class="intervention-action-copy">
                     <small v-if="item.episode_id"
                       >问题：{{
@@ -624,9 +561,6 @@ onBeforeUnmount(() => {
                       @click.stop="reportProblemResolved(item)"
                       >报告问题已解决</el-button
                     >
-                    <em :class="`intervention-${item.status}`">{{
-                      interventionStatusLabels[item.status]
-                    }}</em>
                     <el-button
                       v-if="
                         item.case_id &&
@@ -646,185 +580,836 @@ onBeforeUnmount(() => {
                       }}
                     </el-button>
                   </div>
+                  <button
+                    type="button"
+                    class="device-selection-button"
+                    @click="selectDevice(item.device_id)"
+                  >
+                    查看该设备日志
+                  </button>
+                </div>
+              </article>
+            </div>
+            <p v-else class="teacher-compact-empty">当前没有学生求助或教学介入记录。</p>
+          </article>
+          <label class="teacher-search"
+            ><input
+              v-model="searchQuery"
+              aria-label="搜索异常设备或错误代码"
+              placeholder="搜索设备或错误代码…" /><Search
+          /></label>
+          <section id="anomaly-workbench" class="teacher-detail-grid">
+            <article id="anomaly-list" class="teacher-panel anomaly-table-panel">
+              <header>
+                <h2>
+                  设备异常列表 <i>{{ filteredAnomalies.length }}</i>
+                </h2>
+                <small>
+                  {{
+                    filteredAnomalies.some((item) => item.student_identity_configured)
+                      ? '归属以服务器授权记录为准'
+                      : '未建立学生归属关系'
+                  }}
+                </small>
+              </header>
+              <div v-if="filteredAnomalies.length" class="teacher-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>设备</th>
+                      <th>异常类型</th>
+                      <th>状态</th>
+                      <th>数据来源</th>
+                      <th>处理建议</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="item in filteredAnomalies"
+                      :key="item.device_id"
+                      :class="{ selected: selectedDevice === item.device_id }"
+                    >
+                      <td>
+                        <button
+                          type="button"
+                          class="device-selection-button"
+                          :aria-pressed="selectedDevice === item.device_id"
+                          @click="selectDevice(item.device_id)"
+                        >
+                          {{ item.device_name || item.device_id }}</button
+                        ><small>{{ item.device_id }}</small>
+                      </td>
+                      <td>
+                        <span>{{ issueLabel(item.latest_error_code) }}</span>
+                        <details>
+                          <summary>查看编号</summary>
+                          <code>{{ item.latest_error_code }}</code>
+                        </details>
+                      </td>
+                      <td><span class="status-badge danger">待核查</span></td>
+                      <td>
+                        <span
+                          class="status-badge"
+                          :class="item.is_test_data ? 'warning' : 'success'"
+                          >{{ item.is_test_data ? '测试/模拟' : '未标记测试' }}</span
+                        >
+                      </td>
+                      <td>{{ readableText(item.latest_summary) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p v-else class="teacher-compact-empty">
+                {{
+                  searchQuery
+                    ? '没有匹配的异常设备，请调整搜索内容。'
+                    : '当前没有规则命中的异常设备；这不代表已完成硬件验收。'
+                }}
+              </p>
+            </article>
+
+            <article id="device-log-detail" class="teacher-panel teacher-log-panel">
+              <header>
+                <h2>单个设备日志详情</h2>
+                <small>{{ selectedDevice || '未选择设备' }}</small>
+              </header>
+              <button
+                v-if="selectedDeviceId"
+                type="button"
+                class="device-selection-button"
+                @click="returnToDeviceList"
+              >
+                返回异常列表
+              </button>
+              <div v-if="selectedLogs.length" class="teacher-log-list">
+                <div v-for="log in selectedLogs" :key="log.id" class="teacher-log-row">
+                  <time :datetime="log.occurred_at">{{
+                    new Date(log.occurred_at).toLocaleTimeString('zh-CN', { hour12: false })
+                  }}</time>
+                  <div class="teacher-log-content">
+                    <div class="teacher-log-meta">
+                      <span class="teacher-log-level" :class="`log-${log.level.toLowerCase()}`">
+                        {{ logLevel(log.level) }}
+                      </span>
+                      <span>{{ logSummary(log) }}</span>
+                    </div>
+                    <details>
+                      <summary>查看原始日志</summary>
+                      <code>{{ log.level }} · {{ log.event_code }}</code>
+                      <p>{{ log.message }}</p>
+                    </details>
+                  </div>
                 </div>
               </div>
-              <el-empty v-else description="暂无 Level 4 介入记录" :image-size="48" />
+              <p v-else class="teacher-compact-empty">
+                {{ selectedDevice ? '该设备暂无日志。' : '选择设备后查看对应日志。' }}
+              </p>
             </article>
-            <article class="teacher-panel intervention-panel">
-              <header>
-                <h2>AI 诊断审核队列</h2>
-                <i>{{ dashboardStore.workflowQueue.length }}</i>
-              </header>
-              <div v-if="workflowMetrics" class="workflow-metric-strip" aria-label="诊断工作流指标">
-                <span
-                  ><small>流程</small><b>{{ workflowMetrics.total ?? 0 }}</b></span
-                >
-                <span
-                  ><small>待审</small><b>{{ workflowMetrics.waiting_teacher ?? 0 }}</b></span
-                >
-                <span
-                  ><small>完成</small><b>{{ workflowMetrics.completed ?? 0 }}</b></span
-                >
-                <span
-                  ><small>驳回</small><b>{{ workflowMetrics.rejected ?? 0 }}</b></span
-                >
-                <span
-                  ><small>失败</small><b>{{ workflowMetrics.failed ?? 0 }}</b></span
-                >
-                <span
-                  ><small>运行中/其他</small><b>{{ workflowInProgressOrOtherCount }}</b></span
-                >
-                <span
-                  ><small>已审</small><b>{{ workflowMetrics.reviewed ?? 0 }}</b></span
-                >
-                <span
-                  ><small>修订率</small><b>{{ percent(workflowMetrics.edit_rate ?? 0) }}</b></span
-                >
-                <span
-                  ><small>驳回率</small><b>{{ percent(workflowMetrics.reject_rate ?? 0) }}</b></span
-                >
-                <span
-                  ><small>恢复</small><b>{{ workflowMetrics.resume_count ?? 0 }}</b></span
-                >
-                <span>
-                  <small>节点均耗时</small>
-                  <b>{{ workflowMetrics.average_node_duration_ms?.toFixed(1) ?? '—' }}ms</b>
-                </span>
-                <span
-                  ><small>AI 调用</small><b>{{ workflowMetrics.ai_call_count ?? 0 }}</b></span
-                >
-                <span>
-                  <small>Token</small>
-                  <b>{{
-                    (workflowMetrics.ai_input_tokens ?? 0) + (workflowMetrics.ai_output_tokens ?? 0)
-                  }}</b>
-                </span>
-                <span>
-                  <small>估算成本（元）</small
-                  ><b>{{ (workflowMetrics.ai_estimated_cost ?? 0).toFixed(4) }}</b>
-                </span>
-                <span>
-                  <small>有反馈诊断</small>
-                  <b>{{ workflowMetrics.student_feedback_count ?? 0 }}</b>
-                </span>
-                <span>
-                  <small>已解决诊断</small>
-                  <b>{{ workflowMetrics.student_resolved_count ?? 0 }}</b>
-                </span>
-                <span>
-                  <small>按每个诊断最新反馈计算解决率</small>
-                  <b>{{
-                    workflowMetrics.student_resolution_rate === null
-                      ? '—'
-                      : percent(workflowMetrics.student_resolution_rate)
-                  }}</b>
-                </span>
-              </div>
-              <div v-if="dashboardStore.workflowQueue.length" class="teacher-action-list">
-                <article
-                  v-for="item in dashboardStore.workflowQueue"
-                  :key="item.id"
-                  class="teacher-workflow-card"
-                >
-                  <header>
-                    <button type="button" @click="toggleWorkflow(item.id)">
-                      <b>{{ item.device_id }}</b>
-                      <small>
-                        需要教师确认 ·
-                        {{ item.review_request?.candidates?.length ?? 0 }} 个可能原因 ·
-                        {{
-                          item.review_request?.retrieved_chunks?.filter(
-                            (reference) => reference.metadata?.review_status === 'approved',
-                          ).length ?? 0
-                        }}
-                        份已审核资料
-                      </small>
-                      <small class="intervention-source">
-                        {{ expandedWorkflowId === item.id ? '收起诊断依据' : '查看诊断依据' }}
-                      </small>
-                    </button>
-                    <div class="intervention-action-copy">
-                      <el-button
-                        size="small"
-                        type="success"
-                        :loading="dashboardStore.workflowReviewingId === item.id"
-                        @click.stop="handleWorkflowReview(item.id, 'approve')"
-                        >批准</el-button
-                      >
-                      <el-button
-                        size="small"
-                        type="primary"
-                        :loading="dashboardStore.workflowReviewingId === item.id"
-                        @click.stop="handleWorkflowReview(item.id, 'edit')"
-                        >修订</el-button
-                      >
-                      <el-button
-                        size="small"
-                        type="danger"
-                        :loading="dashboardStore.workflowReviewingId === item.id"
-                        @click.stop="handleWorkflowReview(item.id, 'reject')"
-                        >驳回</el-button
-                      >
-                    </div>
-                  </header>
-                  <WorkflowEvidenceSummary v-if="expandedWorkflowId === item.id" :workflow="item" />
-                </article>
-              </div>
-              <el-empty v-else description="暂无等待审核的 AI 诊断" :image-size="48" />
-            </article>
-            <article class="teacher-panel workflow-history-panel">
-              <header>
-                <h2>近期诊断审核历史</h2>
-                <i>{{ dashboardStore.workflowHistory.length }}</i>
-              </header>
-              <div v-if="dashboardStore.workflowHistory.length" class="workflow-history-list">
-                <article v-for="item in dashboardStore.workflowHistory" :key="item.id">
-                  <button type="button" @click="toggleWorkflow(item.id)">
-                    <span>
-                      <b>{{ item.device_id }}</b>
-                      <small>{{
-                        new Date(item.updated_at).toLocaleString('zh-CN', { hour12: false })
-                      }}</small>
-                    </span>
-                    <em :class="`review-${latestReview(item)?.action || item.status}`">
-                      {{
-                        latestReview(item)
-                          ? reviewActionLabel(latestReview(item)!.action)
-                          : item.status
-                      }}
-                    </em>
-                  </button>
-                  <WorkflowEvidenceSummary v-if="expandedWorkflowId === item.id" :workflow="item" />
-                </article>
-              </div>
-              <el-empty v-else description="暂无诊断审核历史" :image-size="48" />
-            </article>
-            <article id="knowledge-review" class="teacher-panel knowledge-panel">
-              <header>
-                <h2>知识案例审核入口</h2>
-                <small>MVP 结构化知识</small>
-              </header>
-              <Management />
+          </section>
+          <details
+            v-if="
+              !REVIEW_MODE &&
+              sessionStore.session?.permissions.includes('assignment.manage') &&
+              sessionStore.accessToken
+            "
+            id="teacher-session-management"
+            class="teacher-management-details"
+            :open="sessionManagementOpen"
+            @toggle="sessionManagementOpen = ($event.target as HTMLDetailsElement).open"
+          >
+            <summary>管理实验会话与设备交接</summary>
+            <ManagedExperimentSessions
+              :access-token="sessionStore.accessToken"
+              :user-id="sessionStore.session.user_id"
+              @status-change="updateSessionManagementStatus"
+            />
+          </details>
+        </section>
+        <section
+          id="class-overview"
+          v-show="activeNavTarget === 'class-overview'"
+          class="teacher-task-panel"
+          role="tabpanel"
+          aria-labelledby="teacher-tab-class-overview"
+        >
+          <section class="teacher-kpis" aria-label="设备统计概览">
+            <article class="teacher-kpi kpi-blue">
+              <span><Monitor /></span>
               <div>
-                <b>{{
-                  dashboard.knowledge_cases.configured ? '结构化案例可用' : '等待审核案例'
-                }}</b>
-                <p>{{ dashboard.knowledge_cases.notice }}</p>
-                <p>
-                  案例 {{ dashboard.knowledge_cases.case_count ?? 0 }} · 已审核
-                  {{ dashboard.knowledge_cases.approved_case_count ?? 0 }} · 待审核
-                  {{ dashboard.knowledge_cases.pending_review_count ?? 0 }}
-                </p>
+                <small>在线设备数</small><strong>{{ dashboard.metrics.online_devices }}</strong
+                ><em>实时数据库</em>
               </div>
-              <span class="knowledge-status-chip">审核 API 已就绪</span>
             </article>
-          </div>
+            <article class="teacher-kpi kpi-cyan">
+              <span><Cpu /></span>
+              <div>
+                <small>离线设备数</small><strong>{{ dashboard.metrics.offline_devices }}</strong
+                ><em>超时阈值可配置</em>
+              </div>
+            </article>
+            <article class="teacher-kpi kpi-orange">
+              <span><Warning /></span>
+              <div>
+                <small>异常设备数</small><strong>{{ dashboard.metrics.abnormal_devices }}</strong
+                ><em>最新规则诊断</em>
+              </div>
+            </article>
+            <article class="teacher-kpi kpi-purple">
+              <span><TrendCharts /></span>
+              <div><small>实验完成率</small><strong>—</strong><em>任务数据未配置</em></div>
+            </article>
+          </section>
+
+          <section id="device-analysis" class="teacher-chart-grid">
+            <article id="device-status" class="teacher-panel">
+              <header>
+                <h2>设备状态图</h2>
+                <small>当前快照</small>
+              </header>
+              <TeacherDeviceChart
+                v-if="activeNavTarget === 'class-overview'"
+                :data="dashboard.device_status"
+              />
+            </article>
+            <article class="teacher-panel">
+              <header>
+                <h2>高频错误排行</h2>
+                <small>各设备最新诊断</small>
+              </header>
+              <TeacherErrorRankingChart
+                v-if="activeNavTarget === 'class-overview'"
+                :data="dashboard.error_ranking"
+              />
+            </article>
+            <article class="teacher-panel">
+              <header>
+                <h2>错误趋势图</h2>
+                <small>近 7 天</small>
+              </header>
+              <TeacherErrorTrendChart
+                v-if="activeNavTarget === 'class-overview'"
+                :data="dashboard.error_trend"
+              />
+            </article>
+          </section>
+
+          <p id="class-progress" class="teacher-compact-empty">
+            <b>班级实验进度：</b>{{ dashboard.class_progress.notice }}
+          </p>
+        </section>
+        <section
+          id="class-resources"
+          v-show="activeNavTarget === 'class-resources'"
+          class="teacher-task-panel teacher-resource-stack"
+          role="tabpanel"
+          aria-labelledby="teacher-tab-class-resources"
+        >
+          <p class="teacher-section-note">
+            诊断解释审核、工单处理与正式案例审核各自独立。批准解释不代表确认硬件恢复或发布正式案例。
+          </p>
+          <article class="teacher-panel intervention-panel">
+            <header>
+              <h2>诊断解释审核</h2>
+              <i>{{ dashboardStore.workflowQueue.length }}</i>
+            </header>
+            <div v-if="dashboardStore.workflowQueue.length" class="teacher-action-list">
+              <article
+                v-for="item in dashboardStore.workflowQueue"
+                :key="item.id"
+                class="teacher-workflow-card"
+              >
+                <header>
+                  <button
+                    type="button"
+                    :aria-expanded="expandedWorkflowId === item.id"
+                    @click="toggleWorkflow(item.id)"
+                  >
+                    <b>{{ item.device_id }}</b>
+                    <small>
+                      需要教师确认 ·
+                      {{ item.review_request?.candidates?.length ?? 0 }} 个可能原因 ·
+                      {{
+                        item.review_request?.retrieved_chunks?.filter(
+                          (reference) => reference.metadata?.review_status === 'approved',
+                        ).length ?? 0
+                      }}
+                      份已审核资料
+                    </small>
+                    <small class="intervention-source">
+                      {{ expandedWorkflowId === item.id ? '收起诊断依据' : '查看诊断依据' }}
+                    </small>
+                  </button>
+                  <div class="intervention-action-copy">
+                    <el-button
+                      size="small"
+                      type="success"
+                      :loading="dashboardStore.workflowReviewingId === item.id"
+                      @click.stop="handleWorkflowReview(item.id, 'approve')"
+                      >批准</el-button
+                    >
+                    <el-button
+                      size="small"
+                      type="primary"
+                      :loading="dashboardStore.workflowReviewingId === item.id"
+                      @click.stop="handleWorkflowReview(item.id, 'edit')"
+                      >修订</el-button
+                    >
+                    <el-button
+                      size="small"
+                      type="danger"
+                      :loading="dashboardStore.workflowReviewingId === item.id"
+                      @click.stop="handleWorkflowReview(item.id, 'reject')"
+                      >驳回</el-button
+                    >
+                  </div>
+                </header>
+                <WorkflowEvidenceSummary v-if="expandedWorkflowId === item.id" :workflow="item" />
+              </article>
+            </div>
+            <p v-else class="teacher-compact-empty">暂无等待审核的诊断。</p>
+          </article>
+          <article class="teacher-panel workflow-history-panel">
+            <header>
+              <h2>近期诊断审核历史</h2>
+              <i>{{ dashboardStore.workflowHistory.length }}</i>
+            </header>
+            <div v-if="dashboardStore.workflowHistory.length" class="workflow-history-list">
+              <article v-for="item in dashboardStore.workflowHistory" :key="item.id">
+                <button
+                  type="button"
+                  :aria-expanded="expandedWorkflowId === item.id"
+                  @click="toggleWorkflow(item.id)"
+                >
+                  <span>
+                    <b>{{ item.device_id }}</b>
+                    <small>{{
+                      new Date(item.updated_at).toLocaleString('zh-CN', { hour12: false })
+                    }}</small>
+                  </span>
+                  <em :class="`review-${latestReview(item)?.action || item.status}`">
+                    {{
+                      latestReview(item)
+                        ? reviewActionLabel(latestReview(item)!.action)
+                        : item.status
+                    }}
+                  </em>
+                </button>
+                <WorkflowEvidenceSummary v-if="expandedWorkflowId === item.id" :workflow="item" />
+              </article>
+            </div>
+            <p v-else class="teacher-compact-empty">暂无诊断审核历史。</p>
+          </article>
+          <article id="knowledge-review" class="teacher-panel knowledge-panel">
+            <header>
+              <h2>知识案例与审核状态</h2>
+              <small>现有结构化知识</small>
+            </header>
+            <Management />
+            <div>
+              <b>{{ dashboard.knowledge_cases.configured ? '结构化案例可用' : '等待审核案例' }}</b>
+              <p>{{ dashboard.knowledge_cases.notice }}</p>
+              <p>
+                案例 {{ dashboard.knowledge_cases.case_count ?? 0 }} · 已审核
+                {{ dashboard.knowledge_cases.approved_case_count ?? 0 }} · 待审核
+                {{ dashboard.knowledge_cases.pending_review_count ?? 0 }}
+              </p>
+            </div>
+            <span class="knowledge-status-chip"
+              >本页展示状态，案例审核操作通过现有审核接口进行</span
+            >
+          </article>
+          <details v-if="workflowMetrics" class="teacher-system-details">
+            <summary>系统详情与诊断统计</summary>
+            <p>沿用当前账号可读取的统计；已解决诊断比例不代表课堂通过率。</p>
+            <div v-if="workflowMetrics" class="workflow-metric-strip" aria-label="诊断工作流指标">
+              <span
+                ><small>流程</small><b>{{ workflowMetrics.total ?? 0 }}</b></span
+              >
+              <span
+                ><small>待审</small><b>{{ workflowMetrics.waiting_teacher ?? 0 }}</b></span
+              >
+              <span
+                ><small>完成</small><b>{{ workflowMetrics.completed ?? 0 }}</b></span
+              >
+              <span
+                ><small>驳回</small><b>{{ workflowMetrics.rejected ?? 0 }}</b></span
+              >
+              <span
+                ><small>失败</small><b>{{ workflowMetrics.failed ?? 0 }}</b></span
+              >
+              <span
+                ><small>运行中/其他</small><b>{{ workflowInProgressOrOtherCount }}</b></span
+              >
+              <span
+                ><small>已审</small><b>{{ workflowMetrics.reviewed ?? 0 }}</b></span
+              >
+              <span
+                ><small>修订率</small><b>{{ percent(workflowMetrics.edit_rate ?? 0) }}</b></span
+              >
+              <span
+                ><small>驳回率</small><b>{{ percent(workflowMetrics.reject_rate ?? 0) }}</b></span
+              >
+              <span
+                ><small>恢复</small><b>{{ workflowMetrics.resume_count ?? 0 }}</b></span
+              >
+              <span>
+                <small>节点均耗时</small>
+                <b>{{ workflowMetrics.average_node_duration_ms?.toFixed(1) ?? '—' }}ms</b>
+              </span>
+              <span
+                ><small>AI 调用</small><b>{{ workflowMetrics.ai_call_count ?? 0 }}</b></span
+              >
+              <span>
+                <small>模型用量（Token）</small>
+                <b>{{
+                  (workflowMetrics.ai_input_tokens ?? 0) + (workflowMetrics.ai_output_tokens ?? 0)
+                }}</b>
+              </span>
+              <span>
+                <small>估算成本（元）</small
+                ><b>{{ (workflowMetrics.ai_estimated_cost ?? 0).toFixed(4) }}</b>
+              </span>
+              <span>
+                <small>有反馈诊断</small>
+                <b>{{ workflowMetrics.student_feedback_count ?? 0 }}</b>
+              </span>
+              <span>
+                <small>已解决诊断</small>
+                <b>{{ workflowMetrics.student_resolved_count ?? 0 }}</b>
+              </span>
+              <span>
+                <small>按每个诊断最新反馈计算解决率</small>
+                <b>{{
+                  workflowMetrics.student_resolution_rate === null
+                    ? '—'
+                    : percent(workflowMetrics.student_resolution_rate)
+                }}</b>
+              </span>
+            </div>
+          </details>
         </section>
         <footer class="teacher-footer">
-          <span>图表支持自适应布局</span><span>数据来源：实时接口</span><span>刷新间隔：30s</span
+          <span>页面数据更新时间（不是采样时间）</span><span>每 30 秒读取一次</span
           ><time>{{ new Date(dashboard.generated_at).toLocaleString('zh-CN') }}</time>
         </footer>
       </template>
     </section>
   </main>
 </template>
+
+<style scoped>
+.teacher-recovery-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #c8a55a;
+  background: #fff8e9;
+  color: #5a451b;
+}
+.teacher-recovery-notice p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.teacher-recovery-notice button {
+  border: 1px solid currentColor;
+  padding: 10px 14px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+#teacher-session-management {
+  scroll-margin-top: 172px;
+}
+.teacher-content {
+  padding-bottom: 40px;
+}
+.teacher-topbar {
+  display: flex;
+  gap: 16px;
+}
+.teacher-brand {
+  margin-right: auto;
+}
+.teacher-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  padding: 24px 0 20px;
+}
+.teacher-hero::after {
+  display: none;
+}
+.teacher-hero > div {
+  grid-column: auto;
+  padding: 0;
+}
+.teacher-hero h1 {
+  font-size: clamp(1.6rem, 3vw, 2rem);
+  line-height: 1.25;
+}
+.teacher-hero .teacher-task-counts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px 18px;
+  max-width: 410px;
+  font-size: 13px;
+}
+.teacher-task-counts span,
+.teacher-task-counts button {
+  color: var(--studio-copy);
+  font-size: inherit;
+}
+.teacher-task-counts b {
+  margin-right: 6px;
+  color: var(--studio-blue);
+  font-size: 18px;
+}
+.teacher-task-counts button {
+  border: 0;
+  border-bottom: 1px solid var(--studio-line);
+  background: transparent;
+  padding: 0 0 4px;
+  cursor: pointer;
+}
+.teacher-task-panel {
+  min-width: 0;
+  margin-top: 24px;
+}
+.teacher-panel {
+  min-width: 0;
+}
+.teacher-panel > header {
+  min-height: 52px;
+  margin-bottom: 16px;
+}
+.classroom-interventions {
+  margin-bottom: 28px;
+}
+.teacher-compact-empty,
+.teacher-section-note {
+  margin: 12px 0;
+  color: var(--studio-copy);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.teacher-search {
+  display: flex;
+  width: min(100%, 340px);
+  margin: 0 0 20px;
+}
+.intervention-record {
+  border: 1px solid var(--studio-line);
+  min-width: 0;
+}
+.intervention-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  border: 0;
+  padding: 16px;
+  color: var(--studio-ink);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+.intervention-summary span {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.intervention-summary small,
+.intervention-summary time {
+  font-size: 12px;
+  color: var(--studio-copy);
+}
+.intervention-summary em {
+  font-size: 13px;
+  font-style: normal;
+  color: var(--studio-blue);
+}
+.intervention-details {
+  padding: 0 16px 16px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.intervention-details p {
+  font-size: 14px;
+  margin: 8px 0;
+}
+.intervention-details .intervention-action-copy {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.device-selection-button {
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--studio-blue);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.teacher-detail-grid {
+  gap: 24px;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+}
+.anomaly-table-panel,
+.teacher-log-panel {
+  min-height: 0;
+  grid-column: auto;
+  margin: 0;
+  padding: 0;
+  border-right: 0;
+}
+.teacher-log-panel {
+  scroll-margin-top: 172px;
+}
+.teacher-log-list {
+  height: auto;
+  max-height: 320px;
+  margin-bottom: 16px;
+  padding: 0;
+}
+.teacher-log-list > .teacher-log-row {
+  grid-template-columns: 66px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 0;
+  font-size: 13px;
+}
+.teacher-log-row time {
+  padding-top: 3px;
+  font-size: 12px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.teacher-log-content {
+  min-width: 0;
+}
+.teacher-log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.teacher-log-list .teacher-log-level {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  color: #37556d;
+  background: #e8edf0;
+}
+.teacher-log-list .teacher-log-level.log-error {
+  color: #9b3039;
+  background: #f3e6e7;
+}
+.teacher-log-list .teacher-log-level.log-warn,
+.teacher-log-list .teacher-log-level.log-warning {
+  color: #805b19;
+  background: #f3eddd;
+}
+.teacher-log-meta code {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--studio-ink);
+  overflow-wrap: anywhere;
+}
+.teacher-log-list .teacher-log-content p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.teacher-table-wrap table {
+  font-size: 13px;
+}
+.teacher-table-wrap td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  height: auto;
+  min-height: 52px;
+}
+.teacher-table-wrap code {
+  font-size: 12px;
+}
+.teacher-table-wrap tr {
+  cursor: default;
+}
+.teacher-kpis {
+  margin-bottom: 28px;
+}
+.teacher-kpi {
+  min-height: 130px;
+  padding: 24px 20px;
+}
+.teacher-kpi strong {
+  font-size: 36px;
+}
+.teacher-chart-grid {
+  gap: 28px;
+  margin-bottom: 24px;
+}
+.teacher-chart-grid > .teacher-panel:nth-child(odd),
+.teacher-chart-grid > .teacher-panel:nth-child(even) {
+  margin: 0;
+  padding: 0;
+  border-right: 0;
+}
+:deep(.teacher-chart) {
+  height: 270px;
+}
+.teacher-resource-stack > .teacher-panel,
+.teacher-management-details,
+.teacher-system-details {
+  margin-top: 24px;
+}
+.teacher-management-details,
+.teacher-system-details {
+  padding: 16px;
+  border: 1px solid var(--studio-line);
+}
+.teacher-management-details summary,
+.teacher-system-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.teacher-system-details > p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.teacher-system-details .workflow-metric-strip {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin: 16px 0 0;
+}
+.workflow-metric-strip span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.teacher-workflow-card > header > button {
+  color: var(--studio-ink);
+}
+:deep(.workflow-evidence-summary) {
+  font-size: 13px;
+}
+:deep(.workflow-summary-line strong) {
+  color: var(--studio-ink);
+}
+.workflow-metric-strip small {
+  font-size: 12px;
+}
+.workflow-metric-strip b {
+  font-size: 16px;
+}
+.knowledge-panel {
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 0 12px;
+}
+.knowledge-panel > div {
+  min-width: 0;
+}
+.knowledge-panel b,
+.knowledge-panel p {
+  font-size: 14px;
+  line-height: 1.65;
+}
+.knowledge-status-chip {
+  grid-column: 2;
+  justify-self: start;
+  margin-top: 12px;
+  font-size: 12px;
+  display: inline-block;
+  white-space: normal;
+  line-height: 1.6;
+}
+.teacher-footer {
+  margin-top: 32px;
+  font-size: 12px;
+}
+@media (max-width: 1000px) {
+  .teacher-hero {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .teacher-hero .teacher-task-counts {
+    justify-content: flex-start;
+    max-width: none;
+  }
+  .teacher-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 820px) {
+  .teacher-topbar {
+    left: 0;
+    right: 0;
+    width: 100%;
+  }
+  .teacher-sidebar nav button .teacher-nav-copy {
+    display: grid;
+  }
+  .teacher-content {
+    padding-bottom: 96px;
+  }
+}
+@media (max-width: 680px) {
+  .teacher-topbar {
+    gap: 8px;
+  }
+  .teacher-topbar .teacher-breadcrumb {
+    display: none;
+  }
+  .teacher-sidebar nav button {
+    padding: 8px 4px;
+    gap: 4px;
+  }
+  .teacher-nav-copy b {
+    font-size: 14px;
+  }
+  .teacher-nav-copy small {
+    display: none;
+  }
+  .intervention-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .intervention-summary > span:nth-child(2) {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+  .teacher-kpi {
+    padding: 20px 12px;
+    min-height: 120px;
+  }
+  .teacher-kpi strong {
+    font-size: 30px;
+  }
+  .teacher-management-details,
+  .teacher-system-details {
+    padding: 12px;
+  }
+  .teacher-task-counts {
+    gap: 8px 12px;
+  }
+}
+</style>

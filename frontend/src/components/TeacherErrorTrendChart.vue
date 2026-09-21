@@ -8,9 +8,10 @@ import type { TeacherDashboard } from '@/types/teacher'
 const props = defineProps<{ data: TeacherDashboard['error_trend'] }>()
 const element = ref<HTMLElement | null>(null)
 let chart: ECharts | null = null
+let disposed = false
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 function render(): void {
-  if (!element.value) return
+  if (disposed || !element.value) return
   chart ??= init(element.value)
   chart.setOption(
     {
@@ -53,13 +54,17 @@ watch(
   },
   { deep: true },
 )
-onMounted(() => {
-  render()
+onMounted(async () => {
   window.addEventListener('resize', resize)
+  // A parent v-show may still be hidden during this child's mounted hook.
+  await nextTick()
+  render()
 })
 onBeforeUnmount(() => {
+  disposed = true
   window.removeEventListener('resize', resize)
   chart?.dispose()
+  chart = null
 })
 </script>
 <template>

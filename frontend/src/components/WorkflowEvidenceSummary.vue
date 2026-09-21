@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readableText, evidenceText } from '@/presentation/userLanguage'
 import { computed } from 'vue'
 
 import type { TeacherDiagnosisWorkflow } from '@/types/teacher'
@@ -59,23 +60,27 @@ function formatDate(value: string): string {
     <div class="workflow-summary-line">
       <div>
         <small>待确认的诊断结果</small>
-        <strong>{{ explanation?.summary || '尚未生成诊断摘要' }}</strong>
+        <strong>{{ readableText(explanation?.summary) || '尚未生成诊断摘要' }}</strong>
       </div>
       <span>需要教师决定</span>
     </div>
 
+    <details v-if="explanation?.summary">
+      <summary>查看解释原文</summary>
+      <p>{{ explanation.summary }}</p>
+    </details>
     <div class="workflow-proof-columns">
       <section>
         <h4>设备表现</h4>
         <ul v-if="ruleHits.length">
           <li v-for="hit in ruleHits" :key="hit.rule_id">
-            <b>{{ hit.summary }}</b>
+            <b>{{ readableText(hit.summary) }}</b>
+            <details>
+              <summary>查看原始规则与证据</summary>
+              <pre>{{ JSON.stringify(hit.evidence, null, 2) }}</pre>
+            </details>
             <small v-if="hit.evidence.length">
-              {{
-                hit.evidence
-                  .map((item) => `${item.fact}：${item.observed_value ?? '已观测到'}`)
-                  .join('；')
-              }}
+              {{ hit.evidence.map((item) => evidenceText(item)).join('；') }}
             </small>
           </li>
         </ul>
@@ -130,3 +135,12 @@ function formatDate(value: string): string {
     </div>
   </div>
 </template>
+
+<style scoped>
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  font-size: 0.85em;
+}
+</style>

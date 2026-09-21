@@ -97,6 +97,7 @@ class RankedCause(StrictModel):
 
 
 class GuidanceHint(StrictModel):
+    teaching: dict[str, Any] | None = None
     cause_id: str
     level: Literal[1, 2, 3, 4]
     text: str

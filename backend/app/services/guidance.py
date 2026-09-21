@@ -25,6 +25,7 @@ from app.services.diagnosis_episode import (
     lifecycle_lock,
     upsert_episode,
 )
+from app.services.teaching_materials import attach_teaching_materials
 
 
 def _aware(value: datetime) -> datetime:
@@ -290,7 +291,13 @@ def _generate_guidance(
                 hint_level=evaluation.hint_level,
                 teacher_intervention_required=evaluation.teacher_intervention_required,
                 ranked_causes=[item.model_dump(mode="json") for item in evaluation.ranked_causes],
-                hints=[item.model_dump(mode="json") for item in evaluation.hints],
+                hints=attach_teaching_materials(
+                    db,
+                    diagnosis_result,
+                    tree_id=tree.id,
+                    scope=link.scope if link else {},
+                    hints=[item.model_dump(mode="json") for item in evaluation.hints],
+                ),
                 is_test_data=diagnosis_result.is_test_data,
                 created_at=utc_now(),
             )

@@ -1,3 +1,4 @@
+import { CheckRequestError, pendingCheck } from '@/api/diagnosisChecks'
 import axios from 'axios'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -50,6 +51,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   const failureKind = ref<RequestFailureKind | null>(null)
   const feedbackLoading = ref(false)
   const aiLoading = ref(false)
+  const checkPending = ref(false)
   const workflowLoading = ref(false)
   const workflow = ref<DiagnosisWorkflow | null>(null)
   let activeSessionScope: string | null = null
@@ -88,8 +90,10 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       ),
     ]
   })
+  const readOnly = computed(() => state.value !== 'ready' || failureKind.value !== null)
   const feedbackBlocked = computed(
     () =>
+      readOnly.value ||
       feedbackRecoveryState.value !== 'ready' ||
       pendingFeedback.value.length > 0 ||
       Boolean(localFeedbackError.value) ||
@@ -160,6 +164,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     if (activeSessionScope !== scope) {
       dashboard.value = null
       workflow.value = null
+      checkPending.value = false
       activeSessionScope = scope
       recoverySequence += 1
       aiSequence += 1
@@ -191,11 +196,18 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       try {
         const loadedWorkflow = await getLatestDiagnosisWorkflow(credentials)
         if (sequence !== loadSequence) return
-        workflow.value = loadedWorkflow
+        workflow.value =
+          loadedWorkflow?.diagnosis_result_id === loadedDashboard.diagnosis?.id ||
+          !loadedWorkflow?.diagnosis_result_id
+            ? loadedWorkflow
+            : null
+        checkPending.value =
+          Boolean(pendingCheck(credentials)) || loadedWorkflow?.check?.status === 'pending'
       } catch {
         if (sequence !== loadSequence) return
         // The additive graph surface must not take down the legacy student dashboard.
         workflow.value = null
+        checkPending.value = false
       }
       state.value = 'ready'
       failureKind.value = null
@@ -207,6 +219,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       if (['unauthorized', 'forbidden', 'conflict'].includes(failureKind.value)) {
         dashboard.value = null
         workflow.value = null
+        checkPending.value = false
       }
     } finally {
       await recoveryLoaded
@@ -307,6 +320,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     target: FeedbackRecoveryTarget,
   ): Promise<boolean> {
     if (feedbackLoading.value) return false
+    if (readOnly.value) return false
     const scopedCredentials = { ...credentials }
     const scope = feedbackSessionScope(scopedCredentials)
     if (activeSessionScope !== scope)
@@ -341,6 +355,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   }
 
   async function generateAIExplanation(credentials: DeviceCredentials): Promise<void> {
+    if (readOnly.value) return
     const scopedCredentials = { ...credentials }
     const scope = feedbackSessionScope(scopedCredentials)
     if (!dashboard.value?.diagnosis || activeSessionScope !== scope) return
@@ -366,6 +381,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   }
 
   async function runDiagnosisWorkflow(credentials: DeviceCredentials): Promise<void> {
+    if (readOnly.value) return
     const scopedCredentials = { ...credentials }
     const scope = feedbackSessionScope(scopedCredentials)
     if (activeSessionScope !== scope || !scopedCredentials.experimentSessionId) return
@@ -376,11 +392,26 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     }
     workflowLoading.value = true
     try {
-      const result = await startDiagnosisWorkflow(scopedCredentials)
+      const result = await startDiagnosisWorkflow(scopedCredentials, dashboard.value?.diagnosis?.id)
       if (activeSessionScope !== scope || sequence !== workflowSequence) return
       workflow.value = result
       await load(scopedCredentials)
+    } catch (error) {
+      if (
+        activeSessionScope === scope &&
+        error instanceof CheckRequestError &&
+        error.action === 'login'
+      ) {
+        dashboard.value = null
+        workflow.value = null
+        state.value = 'error'
+        failureKind.value = 'unauthorized'
+        errorMessage.value = error.message
+      }
+      throw error
     } finally {
+      if (activeSessionScope === scope)
+        checkPending.value = Boolean(pendingCheck(scopedCredentials))
       if (sequence === workflowSequence) workflowLoading.value = false
     }
   }
@@ -403,10 +434,12 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     errorMessage.value = ''
     failureKind.value = null
     workflow.value = null
+    checkPending.value = false
   }
 
   return {
     state,
+    readOnly,
     dashboard,
     errorMessage,
     failureKind,
@@ -420,6 +453,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     refreshFeedbackRecovery,
     recoverFeedback,
     aiLoading,
+    checkPending,
     workflowLoading,
     workflow,
     load,

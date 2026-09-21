@@ -1,3 +1,4 @@
+import type { CheckReceipt } from '@/api/diagnosisChecks'
 export type DiagnosisWorkflowStatus =
   | 'created'
   | 'collecting'
@@ -121,6 +122,7 @@ export interface WorkflowRetrievalAudit {
 }
 
 export interface DiagnosisWorkflowRecord {
+  check?: CheckReceipt | null
   id: string
   diagnosis_id?: string
   diagnosis_result_id: string | null

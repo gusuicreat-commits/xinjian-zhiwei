@@ -199,14 +199,14 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
       response.url().endsWith(`/diagnosis-workflows/devices/${backend.manifest.device_key}`) &&
       response.request().method() === 'POST',
   )
-  await page.getByRole('button', { name: '启动辅助诊断', exact: true }).click()
+  await page.getByRole('button', { name: '检查当前数据', exact: true }).click()
   const response = await started
   expect(response.status()).toBe(201)
   const workflow = await response.json()
   expect(workflow.status).toBe('waiting_feedback')
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20260920_0032')
+  expect(persisted.migration).toBe('20260920_0033')
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,
@@ -381,6 +381,7 @@ e.dispose()
   await page.getByPlaceholder('密码', { exact: true }).fill('synthetic-evaluation-login')
   await page.getByRole('button', { name: '进入教师端', exact: true }).click()
   await expect(page).toHaveURL(/\/teacher$/)
+  await page.getByText('管理实验会话与设备交接', { exact: true }).click()
   const panel = page.getByRole('region', { name: '实验设备占用管理' })
   await expect(panel.getByRole('button', { name: '结束占用', exact: true })).toBeVisible()
   await test
@@ -405,6 +406,17 @@ e.dispose()
     .fill('选课资格撤销，交接给下一位学生')
   await page.getByRole('button', { name: '确认结束占用', exact: true }).click()
   await expect(panel.getByRole('button', { name: '继续确认原操作', exact: true })).toBeVisible()
+  for (const name of ['课堂概览', '资料与审核']) {
+    await page.getByRole('tab', { name, exact: true }).click()
+    await expect(page.getByRole('status', { name: '设备交接恢复提示' })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: '查看待确认的设备交接', exact: true }),
+    ).toBeVisible()
+  }
+  expect(sent).toHaveLength(1)
+  await page.getByRole('button', { name: '查看待确认的设备交接', exact: true }).click()
+  await expect(panel.getByRole('button', { name: '继续确认原操作', exact: true })).toBeVisible()
+  expect(sent).toHaveLength(1)
   await page.reload()
   await panel.getByRole('button', { name: '继续确认原操作', exact: true }).click()
   await expect(panel.getByText('当前没有实验占用', { exact: true })).toBeVisible()
@@ -453,4 +465,108 @@ e.dispose()
   )
   expect(verified.stdout).toContain('handover database invariants verified')
   expect(pageErrors).toEqual([])
+})
+
+test('teaching references are visible from persisted package guidance and survive refresh', async ({
+  page,
+  backend,
+}, testInfo) => {
+  await login(page, backend)
+  await ingestAndDiagnose(page, backend)
+  const reference = page.locator('.teaching-reference').first()
+  await expect(reference).toBeVisible()
+  await reference.locator('summary').click()
+  await expect(reference).toContainText('测试资料，待硬件与教师确认')
+  await expect(reference).toContainText('版本 2.0.3')
+  await expect(reference).toContainText('不是实测结果')
+  await expect(reference).toContainText('不代表已经执行')
+  const before = await reference.innerText()
+  const snapshot = await backend.snapshot()
+  await page.reload()
+  await page.locator('.teaching-reference').first().locator('summary').click()
+  await expect(page.locator('.teaching-reference').first()).toHaveText(before, {
+    useInnerText: true,
+  })
+  const after = await backend.snapshot()
+  expect(after.feedback).toEqual(snapshot.feedback)
+  expect(after.ai_call_ids).toEqual(snapshot.ai_call_ids)
+  expect(after.workflows).toEqual(snapshot.workflows)
+  await testInfo.attach('teaching-reference-panel', {
+    body: await page.getByRole('region', { name: '当前问题的排查与反馈' }).screenshot(),
+    contentType: 'image/png',
+  })
+})
+
+test('new-data checks preserve identity after response loss and do not rerun on refresh', async ({
+  page,
+  backend,
+}, testInfo) => {
+  await login(page, backend)
+  await ingestAndDiagnose(page, backend)
+  const before = await backend.snapshot()
+  await page.getByRole('button', { name: '用最新数据重新检查', exact: true }).click()
+  await expect(
+    page
+      .getByLabel('检查时效与范围')
+      .getByText('暂无新的检查依据，保留上次诊断。', { exact: true }),
+  ).toBeVisible()
+  const unchanged = await backend.snapshot()
+  expect(unchanged.workflows).toEqual(before.workflows)
+  expect(unchanged.ai_call_ids).toEqual(before.ai_call_ids)
+  const now = new Date().toISOString()
+  const response = await page.request.post(`${backendURL}/api/v1/device/ingest`, {
+    headers: headers(backend),
+    data: {
+      protocolVersion: '1.0',
+      schemaVersion: '1',
+      requestId: crypto.randomUUID(),
+      bootId: 'recheck-browser',
+      sequenceNo: 2,
+      sentAt: now,
+      isTestData: true,
+      records: backend.manifest.records.map((record) => ({ ...record, occurredAt: now })),
+    },
+  })
+  expect(response.status()).toBe(201)
+  const sent: unknown[] = []
+  const endpoint = `/diagnosis-workflows/devices/${backend.manifest.device_key}`
+  page.on('request', (r) => {
+    if (r.url().endsWith(endpoint) && r.method() === 'POST') sent.push(r.postDataJSON())
+  })
+  await page.route(
+    `**${endpoint}`,
+    async (route) => {
+      const saved = await route.fetch()
+      expect(saved.status()).toBe(201)
+      await route.abort('failed')
+    },
+    { times: 1 },
+  )
+  await page.getByRole('button', { name: '用最新数据重新检查', exact: true }).click()
+  await expect(page.getByRole('button', { name: '确认上次检查结果', exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '数据记录', exact: true }).click()
+  await expect(page.getByRole('status', { name: '检查结果待确认' })).toBeVisible()
+  await page.getByRole('tab', { name: '实验参考', exact: true }).click()
+  await expect(page.getByRole('status', { name: '检查结果待确认' })).toBeVisible()
+  await page.getByRole('tab', { name: '当前实验', exact: true }).click()
+  const committed = await backend.snapshot()
+  expect(committed.workflows).toHaveLength(before.workflows.length + 1)
+  await page.reload()
+  await expect(page.getByRole('button', { name: '确认上次检查结果', exact: true })).toBeVisible()
+  expect(sent).toHaveLength(1)
+  await page.getByRole('button', { name: '确认上次检查结果', exact: true }).click()
+  await expect(page.getByRole('button', { name: '用最新数据重新检查', exact: true })).toBeVisible()
+  expect(sent).toHaveLength(2)
+  expect(sent[1]).toEqual(sent[0])
+  const after = await backend.snapshot()
+  expect(after.workflows).toEqual(committed.workflows)
+  expect(after.ai_call_ids).toEqual(committed.ai_call_ids)
+  await page.getByText('本次诊断依据与记录', { exact: true }).click()
+  await expect(page.getByRole('region', { name: '本次检查依据' })).toContainText(
+    '重新检查只分析已上传数据',
+  )
+  await testInfo.attach('recheck-comparison', {
+    body: await page.getByRole('region', { name: '本次检查依据' }).screenshot(),
+    contentType: 'image/png',
+  })
 })

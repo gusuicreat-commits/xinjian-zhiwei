@@ -49,7 +49,7 @@ PACKAGE_FILES: dict[str, type] = {
 }
 
 # Diagnostic rule/package semantics version, distinct from the web application release.
-DIAGNOSIS_ENGINE_VERSION = "2.0.0"
+DIAGNOSIS_ENGINE_VERSION = "2.1.0"
 
 
 def engine_compatible(requirement: str) -> bool:
@@ -317,6 +317,15 @@ def validate_experiment_package(bundle: ExperimentPackageBundle) -> PackageValid
             message="confirmed case roots reference package fault-tree causes",
         ),
     ]
+    from app.experiment_packages.teaching import teaching_links_valid
+
+    checks.append(
+        PackageCheck(
+            code="teaching.references",
+            passed=teaching_links_valid(bundle),
+            message="teaching identities, scoped links and prerequisite order must be valid",
+        )
+    )
     checks.extend(_run_package_tests(bundle))
     return PackageValidationReport(
         valid=all(item.passed for item in checks),

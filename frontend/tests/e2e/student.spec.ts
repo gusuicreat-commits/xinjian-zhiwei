@@ -1,3 +1,4 @@
+import { auditLayout } from './layoutAudit'
 import { expect, type Page, test } from '@playwright/test'
 
 const device = {
@@ -150,9 +151,13 @@ test('handles login, no-data state and session refresh', async ({ page }) => {
   const errors = collectErrors(page)
   await mockStudentApi(page, dashboard())
   await login(page)
+  await page.getByRole('tab', { name: '数据记录', exact: true }).click()
   await expect(page.getByText('设备尚未上传日志')).toBeVisible()
   await expect(page.getByText('设备尚未上传传感器读数')).toBeVisible()
-  await expect(page.getByText('当前未匹配故障规则')).toBeVisible()
+  await page.getByRole('tab', { name: '当前实验', exact: true }).click()
+  await expect(
+    page.locator('.primary-summary').filter({ hasText: '当前未匹配故障规则' }),
+  ).toBeVisible()
   await page.reload()
   await expect(page.getByText('学生实验工作台')).toBeVisible()
   expect(errors).toEqual([])
@@ -172,7 +177,9 @@ test('shows a normal deterministic diagnosis with its limitation', async ({ page
     }),
   )
   await login(page)
-  await expect(page.getByText('当前未匹配故障规则')).toBeVisible()
+  await expect(
+    page.locator('.primary-summary').filter({ hasText: '当前未匹配故障规则' }),
+  ).toBeVisible()
   await expect(page.getByText(/不代表真实设备诊断结果/)).toBeVisible()
 })
 
@@ -243,6 +250,7 @@ test('shows abnormal evidence and submits teacher-help feedback', async ({ page 
   )
   await login(page)
   await expect(page.getByRole('heading', { name: '读取失败示例命中' })).toBeVisible()
+  await page.getByText('本次诊断依据与记录', { exact: true }).click()
   await expect(page.getByText('连接异常')).toBeVisible()
   await page.getByRole('button', { name: '请求教师协助' }).click()
   await expect(page.getByText('已记录：请求教师协助')).toBeVisible()
@@ -252,6 +260,82 @@ test('shows abnormal evidence and submits teacher-help feedback', async ({ page 
 
 test('shows workflow provenance, missing evidence and teacher review history', async ({ page }) => {
   const payload = dashboard({
+    task: {
+      configured: true,
+      title: 'DHT11 温湿度实验（模拟）',
+      template_id: 'synthetic-template',
+      notice: null,
+    },
+    readings: [
+      {
+        id: 'snapshot-reading',
+        sensor_type: 'dht11',
+        metric_key: 'temperature',
+        value: 23.5,
+        unit: '°C',
+        observed_at: '2026-07-20T08:58:00Z',
+        is_test_data: true,
+      },
+    ],
+    logs: [
+      {
+        id: 'snapshot-log',
+        level: 'error',
+        message: '测试记录：传感器读取失败',
+        event_code: 'SENSOR_READ_FAILED',
+        occurred_at: '2026-07-20T08:59:00Z',
+        is_test_data: true,
+      },
+    ],
+    guidance: [
+      {
+        id: 'snapshot-guidance',
+        tree_id: 'snapshot-tree',
+        tree_title: '读取异常排查（测试）',
+        tree_status: 'test',
+        hint_level: 1,
+        failure_count: 1,
+        teacher_intervention_required: false,
+        is_test_data: true,
+        ranked_causes: [],
+        hints: [
+          {
+            cause_id: 'connection',
+            level: 1,
+            text: '先观察传感器供电和数据线是否松动。',
+            teaching: {
+              contract_version: 'teaching-reference-v1',
+              status: 'available',
+              experiment_version_id: 'synthetic-version',
+              package_version: '2.0.3',
+              package_hash: 'synthetic-screenshot-only',
+              is_test_data: true,
+              concepts: [
+                {
+                  concept_id: 'connection',
+                  description:
+                    '传感器的数据读取依赖供电、通信连接和代码配置；读取失败本身不能确认器件损坏。',
+                  references: [],
+                },
+              ],
+              steps: [
+                {
+                  step_id: 'observe',
+                  title: '观察连接与采样记录',
+                  expected_state: '连接完整，后续上传新的有效读数；预期仍需现场验证。',
+                  prerequisite_step_ids: [],
+                },
+              ],
+            },
+          },
+          {
+            cause_id: 'configuration',
+            level: 1,
+            text: '对照本次实验接线，检查代码里的传感器引脚配置。',
+          },
+        ],
+      },
+    ],
     diagnosis: {
       id: 'workflow-diagnosis',
       evaluated_at: '2026-07-20T09:00:00Z',
@@ -340,15 +424,22 @@ test('shows workflow provenance, missing evidence and teacher review history', a
   })
 
   await login(page)
+  await page.getByText('本次诊断依据与记录', { exact: true }).click()
   await expect(page.getByText('辅助诊断进度')).toBeVisible()
-  await expect(page.getByText('当前判断')).toBeVisible()
-  await expect(page.getByText('设备运行记录、可能原因分析、1 份已审核操作资料')).toBeVisible()
+  await expect(page.getByText('本工作流记录的判断', { exact: true })).toBeVisible()
+  await expect(
+    page.getByText('本次参考：设备运行记录、可能原因分析、1 份已审核操作资料'),
+  ).toBeVisible()
   await expect(page.getByText('manual-sensor / chunk-1')).toHaveCount(0)
   await expect(page.getByText('RRF 0.8300')).toHaveCount(0)
-  await expect(page.getByText('缺少供电电压读数')).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: '现在该做什么' }).getByText('缺少供电电压读数'),
+  ).toBeVisible()
   await expect(page.getByText('审核详情仅教师可见')).toBeVisible()
   await expect(page.getByText('证据可用')).toHaveCount(0)
   await expect(page.getByText('teacher-1')).toHaveCount(0)
+  await page.getByText('本次诊断依据与记录', { exact: true }).click()
+  await auditLayout(page, 'student')
   await expect(page.getByText('context_builder')).toHaveCount(0)
 })
 
@@ -435,4 +526,242 @@ test('blocks fresh feedback when recovery status cannot be queried', async ({ pa
   await login(page)
   await expect(page.getByRole('button', { name: '重新查询反馈状态' })).toBeVisible()
   await expect(page.getByRole('button', { name: '请求教师协助' })).toBeDisabled()
+})
+
+test('temporary load failure preserves a marked read-only page, permission failure removes it', async ({
+  page,
+}) => {
+  await mockStudentApi(page, dashboard())
+  await login(page)
+  const focus = page.getByRole('region', { name: '现在该做什么' })
+  await expect(focus).toBeVisible()
+  await page.route('**/api/v1/student/dashboard', (route) =>
+    route.fulfill({ status: 503, json: { detail: 'test outage' } }),
+  )
+  await page.getByRole('button', { name: '刷新数据', exact: true }).click()
+  await expect(page.getByRole('alert', { name: '数据暂未更新' })).toContainText('上次成功读取')
+  await expect(focus).toBeVisible()
+  await expect(focus.getByRole('button', { name: '检查当前数据', exact: true })).toBeDisabled()
+  await page.route('**/api/v1/student/dashboard', (route) => route.fulfill({ json: dashboard() }))
+  await page.getByRole('button', { name: '重新连接并刷新', exact: true }).click()
+  await expect(page.getByRole('alert', { name: '数据暂未更新' })).toHaveCount(0)
+  await expect(focus.getByRole('button', { name: '检查当前数据', exact: true })).toBeEnabled()
+  await page.route('**/api/v1/student/dashboard', (route) =>
+    route.fulfill({ status: 403, json: { detail: 'revoked' } }),
+  )
+  await page.getByRole('button', { name: '刷新数据', exact: true }).click()
+  await expect(focus).toHaveCount(0)
+  await page.getByRole('button', { name: '重新登录', exact: true }).click()
+  await expect(page).toHaveURL(/\/login$/)
+})
+
+test('a conflicting check offers refresh without silently submitting a new request', async ({
+  page,
+}) => {
+  await mockStudentApi(page, dashboard())
+  await page.route('**/diagnosis-workflows/devices/*/checks/latest', (route) =>
+    route.fulfill({ json: null }),
+  )
+  let submitted = 0
+  await page.route(`**/diagnosis-workflows/devices/${device.device_id}`, async (route) => {
+    submitted += 1
+    await route.fulfill({ status: 409, json: { detail: 'baseline changed' } })
+  })
+  await login(page)
+  await page.getByRole('button', { name: '检查当前数据', exact: true }).click()
+  const recovery = page.getByRole('alert', { name: '检查恢复提示' })
+  await expect(recovery).toContainText('不会自动重新提交')
+  expect(submitted).toBe(1)
+  await recovery.getByRole('button', { name: '查看最新状态', exact: true }).click()
+  await expect(recovery).toHaveCount(0)
+  expect(submitted).toBe(1)
+})
+
+test('a small screen exposes the first action without horizontal scrolling', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockStudentApi(page, dashboard())
+  await login(page)
+  const focus = page.getByRole('region', { name: '现在该做什么' })
+  await expect(focus).toContainText('先检查已上传的数据')
+  await expect(focus.getByRole('button', { name: '检查当前数据' })).toBeVisible()
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+  ).toBe(true)
+})
+
+test('normal readings remain available and tab navigation never submits work', async ({ page }) => {
+  await page.setViewportSize({ width: 1195, height: 850 })
+  await mockStudentApi(
+    page,
+    dashboard({
+      readings: [
+        {
+          id: 'r-normal',
+          sensor_type: 'dht11',
+          metric_key: 'temperature',
+          value: 23.5,
+          unit: '°C',
+          observed_at: '2026-07-20T08:59:00Z',
+          is_test_data: true,
+        },
+      ],
+    }),
+  )
+  await login(page)
+  const writes: string[] = []
+  page.on('request', (r) => {
+    if (['POST', 'PATCH', 'DELETE'].includes(r.method())) writes.push(r.url())
+  })
+  await expect(page.getByRole('region', { name: '当前实验读数' })).toBeVisible()
+  await expect(page.getByRole('img', { name: '传感器读数折线图' })).toBeVisible()
+  await page.getByRole('tab', { name: '数据记录', exact: true }).click()
+  await expect(page.getByRole('region', { name: '实验数据记录' })).toBeVisible()
+  // The first tab switch must draw without a window resize masking zero-width initialization.
+  const dataCanvas = page.getByRole('img', { name: '传感器读数折线图' }).locator('canvas').first()
+  await expect(dataCanvas).toBeVisible()
+  expect((await dataCanvas.boundingBox())!.width).toBeGreaterThan(100)
+
+  await expect(page.getByRole('region', { name: '现在该做什么' })).toBeHidden()
+  await page.getByRole('tab', { name: '数据记录', exact: true }).press('End')
+  await expect(page.getByRole('tab', { name: '实验参考', exact: true })).toBeFocused()
+  await expect(page.getByRole('tab', { name: '实验参考', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await page.getByRole('tab', { name: '实验参考', exact: true }).press('Home')
+  await expect(page.getByRole('region', { name: '当前实验读数' })).toBeVisible()
+  expect(writes).toEqual([])
+})
+
+test('the selected problem survives task switches and feedback keeps its scope', async ({
+  page,
+}) => {
+  const issues = ['A', 'B'].map((key) => ({
+    id: `episode-${key}`,
+    error_type: 'SENSOR_READ_FAILED',
+    status: 'open',
+    failure_count: 1,
+    resolution_source: null,
+    scope: { kind: 'component', keys: [key] },
+  }))
+  await mockStudentApi(
+    page,
+    dashboard({
+      issues,
+      diagnosis: {
+        id: 'multi-diagnosis',
+        evaluated_at: '2026-07-20T09:00:00Z',
+        is_test_data: true,
+        evidence: [],
+        matches: [
+          {
+            rule_id: 'multi-rule',
+            error_type: 'SENSOR_READ_FAILED',
+            priority: 1,
+            summary: '两个组件有读取异常',
+            evidence: [],
+          },
+        ],
+      },
+      guidance: issues.map((issue) => ({
+        id: `guide-${issue.id}`,
+        episode_id: issue.id,
+        tree_id: 'tree',
+        tree_title: '测试树',
+        tree_status: 'test',
+        hint_level: 1,
+        failure_count: 1,
+        teacher_intervention_required: false,
+        is_test_data: true,
+        ranked_causes: [],
+        hints: [
+          { cause_id: 'connection', level: 1, text: `仅检查组件${issue.scope.keys[0]}的连接。` },
+        ],
+      })),
+    }),
+  )
+  await login(page)
+  const writes: Record<string, unknown>[] = []
+  page.on('request', (r) => {
+    if (r.method() === 'POST' && r.url().endsWith('/feedback')) writes.push(r.postDataJSON())
+  })
+  await page.getByText('请选择一个问题', { exact: true }).click()
+  await page.getByRole('option', { name: /B/ }).click()
+  await expect(page.getByText('仅检查组件B的连接。', { exact: true }).first()).toBeVisible()
+  await page.getByRole('tab', { name: '数据记录', exact: true }).click()
+  await page.getByRole('tab', { name: '实验参考', exact: true }).click()
+  await expect(page.locator('.el-select__selected-item').filter({ hasText: 'B' })).toBeVisible()
+  await page.getByRole('tab', { name: '当前实验', exact: true }).click()
+  await expect(page.getByText('仅检查组件A的连接。', { exact: true })).toBeHidden()
+  expect(writes).toEqual([])
+  await page.getByRole('button', { name: '请求教师协助', exact: true }).click()
+  await expect.poll(() => writes.length).toBe(1)
+  expect(writes[0]).toMatchObject({ episode_id: 'episode-B', action: 'request_teacher_help' })
+})
+
+test('explains saved internal codes and monitoring counts while preserving originals', async ({
+  page,
+}) => {
+  const original =
+    '本次规则报告：DEVICE_OFFLINE、HEARTBEAT_STALE。当前推理结果为 unknown，尚不能给出有证据支持的原因排序。'
+  const payload = dashboard()
+  Object.assign(payload, {
+    diagnosis: {
+      id: 'language-check',
+      evaluated_at: '2026-07-20T09:00:00Z',
+      is_test_data: true,
+      matches: [
+        {
+          rule_id: 'offline',
+          error_type: 'DEVICE_OFFLINE',
+          priority: 110,
+          summary: original,
+          evidence: [
+            {
+              fact: 'runtime_health_failure',
+              observed_value: 1,
+              details: [{ check: 'device_online' }],
+            },
+          ],
+        },
+      ],
+      evidence: [],
+    },
+    device_state_explanation: {
+      ...payload.device_state_explanation,
+      status_title: '设备状态待核验',
+      status_summary: original,
+      meaning: '平台暂时无法确认设备的实时状态，这不表示硬件已经损坏。',
+      next_step: '查看当前问题已有的排查步骤。',
+    },
+  })
+  await mockStudentApi(page, payload)
+  await login(page)
+  await expect(page.locator('.primary-summary')).toContainText('目前还不能确定原因')
+  await expect(page.locator('.primary-summary')).not.toContainText('DEVICE_OFFLINE')
+  await page.getByText('本次诊断依据与记录', { exact: true }).click()
+  await expect(page.locator('.evidence-list')).toContainText(
+    '1 项检查未满足要求（不是硬件故障次数）',
+  )
+  await page.getByText('查看技术详情', { exact: true }).click()
+  await expect(page.locator('.technical-facts')).toContainText(original)
+  await page.getByText('查看技术详情', { exact: true }).click()
+  if (process.env.UI_LAYOUT_AUDIT === '1') {
+    for (const width of [1195, 390]) {
+      await page.setViewportSize({ width, height: 850 })
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width)
+      await page.evaluate(() => {
+        ;(document.activeElement as HTMLElement)?.blur()
+        window.getSelection()?.removeAllRanges()
+        window.scrollTo(0, 0)
+      })
+      await page.screenshot({
+        animations: 'disabled',
+        path: `${process.env.UI_LAYOUT_OUTPUT_DIR}/language-records-${width}.png`,
+        fullPage: true,
+      })
+    }
+  }
 })

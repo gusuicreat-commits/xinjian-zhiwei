@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ from app.models.device import Device
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_workflow import DiagnosisWorkflowReview, DiagnosisWorkflowRun
 from app.services.auth import user_access
+from app.services.diagnosis_checks import latest_check, receipt, run_check
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
     WorkflowScopeViolation,
@@ -28,7 +29,6 @@ from app.services.diagnosis_workflow import (
     resolve_experiment_session,
     review_workflow,
     serialize_workflow,
-    start_workflow,
     teacher_can_review,
 )
 
@@ -96,7 +96,7 @@ def start_diagnosis_workflow(
         raise HTTPException(status_code=403, detail="device id mismatch")
     try:
         experiment_session = resolve_experiment_session(db, device, experiment_session_id)
-        workflow = start_workflow(
+        workflow, command = run_check(
             db, _graph(request), device, settings, payload, experiment_session
         )
     except WorkflowScopeViolation as exc:
@@ -117,7 +117,9 @@ def start_diagnosis_workflow(
             },
         ) from exc
     revalidate_student_access(request, db)
-    return serialize_workflow(workflow, audience="student")
+    result = serialize_workflow(workflow, audience="student")
+    result.check = receipt(command)
+    return result
 
 
 @router.get(
@@ -126,10 +128,12 @@ def start_diagnosis_workflow(
 )
 def get_latest_device_workflow(
     device_id: str,
+    response: Response,
     device: AuthenticatedDevice,
     db: DatabaseSession,
     experiment_session_id: ExperimentSessionHeader,
 ) -> DiagnosisWorkflowResponse | None:
+    response.headers["Cache-Control"] = "no-store"
     if device_id != device.device_key:
         raise HTTPException(status_code=403, detail="device id mismatch")
     try:
@@ -146,7 +150,31 @@ def get_latest_device_workflow(
         .order_by(DiagnosisWorkflowRun.created_at.desc(), DiagnosisWorkflowRun.id.desc())
         .limit(1)
     )
-    return serialize_workflow(workflow, audience="student") if workflow is not None else None
+    if workflow is None:
+        return None
+    result = serialize_workflow(workflow, audience="student")
+    command = latest_check(db, experiment_session.id)
+    result.check = receipt(command) if command else None
+    return result
+
+
+@router.get("/devices/{device_id}/checks/latest")
+def get_latest_check(
+    device_id: str,
+    response: Response,
+    device: AuthenticatedDevice,
+    db: DatabaseSession,
+    experiment_session_id: ExperimentSessionHeader,
+):
+    response.headers["Cache-Control"] = "no-store"
+    if device_id != device.device_key:
+        raise HTTPException(status_code=403, detail="device id mismatch")
+    try:
+        session = resolve_experiment_session(db, device, experiment_session_id)
+    except (WorkflowConflict, WorkflowScopeViolation) as exc:
+        raise HTTPException(status_code=403, detail="invalid session") from exc
+    command = latest_check(db, session.id)
+    return receipt(command) if command else None
 
 
 @router.get("/review-queue/pending", response_model=list[DiagnosisWorkflowResponse])

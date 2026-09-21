@@ -17,3 +17,43 @@ expected_behaviors:
   metric: gpio_actual_level
   command_metric: gpio_command_level
   within_seconds: null
+bindings:
+- tree_id: led-output-failure-v2
+  cause_id: software.output_configuration
+  component_id: status_led
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - gpio.output_level
+  - gpio.command_high
+  step_ids:
+  - configure
+- tree_id: led-output-failure-v2
+  cause_id: wiring.led_polarity
+  component_id: status_led
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - led.polarity
+  step_ids:
+  - connect
+- tree_id: led-output-failure-v2
+  cause_id: hardware.led_failure
+  component_id: status_led
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - gpio.actual_level_high
+  - led.physically_on
+  - gpio.unverified_level
+  step_ids:
+  - observe

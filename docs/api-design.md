@@ -129,12 +129,12 @@ X-Device-Token: <secret token>
 
 ### `/diagnosis-workflows/*`
 
-- `POST /diagnosis-workflows/devices/{device_id}`：使用设备凭据和必填
+- `POST /diagnosis-workflows/devices/{device_id}`：使用学生账号 Bearer（设备凭据仅兼容明确测试设备）和必填
   `X-Experiment-Session-ID` 启动 LangGraph 工作流。响应的 `id` 与
   `diagnosis_id` 相同，`graph_thread_id` 必为 `diagnosis:{diagnosis_id}`。
 - `GET /diagnosis-workflows/devices/{device_id}/latest`：仅获取该
   student/experiment_session/device 三元组的最新流程。
-- `GET /diagnosis-workflows/{diagnosis_id}`：设备凭据和实验会话归属同时一致才可读取。
+- `GET /diagnosis-workflows/{diagnosis_id}`：学生身份、设备和实验会话归属同时一致才可读取；设备凭据仅限测试兼容。
 - `GET /diagnosis-workflows/review-queue/pending`：教师 Bearer + `intervention.manage`；教师按班级范围过滤，管理员可查全部。
 - `GET /diagnosis-workflows/review-queue/recent`：同权限查看最近 50 条已审核流程及追加式审核历史。
 - `GET /diagnosis-workflows/metrics/summary`：同范围聚合流程状态、恢复、节点耗时、AI Token/成本和学生解决率。响应内 `needs_rag_count` 是旧 Schema 兼容字段，新流程固定为 0。
@@ -148,16 +148,16 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 
 ### POST `/student/session`
 
-使用设备 ID 与设备令牌完成临时学生端会话验证。响应明确返回 `auth_mode=device_credential_placeholder`；该接口不创建用户，也不签发服务端学生令牌。
+正式学生先通过 `/auth/session` 取得个人账号 Bearer，选择任务并创建实验会话；本接口用 Bearer、`X-Device-ID` 与会话头验证当前会话，返回 `auth_mode=student_account`。设备ID/令牌仅兼容明确标记的测试设备，不能作为正式学生身份；本接口本身不创建用户或签发令牌。
 
 ### GET `/student/dashboard`
 
-使用设备凭据读取当前设备状态、最近 100 条日志、最近 500 条读数、最新诊断、对应提示、
+按学生账号、设备与有效实验会话读取设备状态、该会话最近 100 条日志、最近 500 条读数、诊断、对应提示、
 最新反馈及该诊断对应的教师处置状态。处置状态只包含公开结果，不返回教师私人备注。
 
 ### GET `/student/feedback-recovery`
 
-使用设备认证头和必需的 `X-Experiment-Session-ID` 找回该实验会话的反馈确认记录，不要求浏览器保留原诊断 ID 或请求 UUID。接口仅查询，不提交反馈、不确认处理状态、不恢复诊断图；响应带 `Cache-Control: no-store`。
+使用学生账号 Bearer、设备ID和必需的 `X-Experiment-Session-ID`（设备认证仅限测试兼容）找回该实验会话的反馈确认记录，不要求浏览器保留原诊断 ID 或请求 UUID。接口仅查询，不提交反馈、不确认处理状态、不恢复诊断图；响应带 `Cache-Control: no-store`。
 
 | 字段 | 含义 |
 | --- | --- |
@@ -173,7 +173,7 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 
 ### POST `/student/diagnoses/{diagnosis_result_id}/feedback`
 
-保存 `resolved`、`unresolved` 或 `request_teacher_help`。继续使用设备认证头，并且必须提供
+保存 `resolved`、`unresolved` 或 `request_teacher_help`。使用学生账号 Bearer 和设备ID（设备认证仅限测试兼容），并且必须提供
 `X-Experiment-Session-ID`；JSON 必须包含 UUID `request_id`，以及 action 和可选 note。
 
 ```json
@@ -200,8 +200,8 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 重放也必须先通过归属校验。关闭会话可重放已完成响应或补确认已经消费的反馈，不能因此继续执行未消费的新操作。
 反馈继承诊断的 `is_test_data`。求助仍通过已核实的课堂绑定幂等创建工单；无合法反馈归属时不先保存反馈兜底。
 
-调用方应同步更新，部署新后端前先完成 Alembic `20260912_0027`。重试与历史记录兼容详情见
-[完整流程问题整改](workflow-remediation.md)。当前仍是设备凭据与已有实验会话模式，不是新增完整学生账号认证。
+调用方应同步更新；部署前按[实现状态](implementation-status.md)核对代码迁移Head并在目标环境验证。
+[完整流程问题整改](workflow-remediation.md)保留0027阶段的历史记录；个人账号准入已在2026-09-19实施。
 
 ### GET `/teacher/dashboard`
 
@@ -282,3 +282,27 @@ pending --formal_approver--> approved
 当前继续提供设备凭据保护的学生总览 API，以及审阅令牌保护的知识工作区管理 API；
 教师聚合使用正式 Bearer 账号、班级范围和 RBAC。项目不提供公开设备注册。默认
 `AI_ENABLED=false`，是否启用 Provider 由部署方明确配置和审批；统一 `AIClient` 是可替换边界。
+
+
+### 教学参考可选响应字段（2026-09-20）
+
+学生dashboard的`guidance[].hints[].teaching`与指导API的同名字段保存`teaching-reference-v1`快照。
+字段包括status（available/missing/unavailable）、experiment_version_id、package_version、package_hash、
+is_test_data、concepts（concept_id/description/references）和steps（step_id/title/expected_state/prerequisite_step_ids）。
+旧记录缺字段或null时不补造内容。steps只作实验参考，不属于新的允许动作或设备证据；
+expected_state是预期，不是实测。读取不生成新指导、反馈或模型调用，权限沿用所属诊断与会话。
+
+## 重新检查命令（2026-09-20）
+
+`POST /api/v1/diagnosis-workflows/devices/{device_id}` 保持原请求字段，新增可选
+`request_id`（UUID）、`baseline_id`、`target_episode_id`。新前端总是传身份和所见基准。
+身份作用域为经验证的当前实验会话；目标问题必须属于基准。原参数校验通过后才接收命令。
+返回201的原工作流对象增加 `check`：身份、基准、工作流、检查时间、状态、数据时间范围、
+新记录数、测试标记及逐问题对比。`no_new_data` 返回原工作流，不新增诊断或模型调用。
+不同身份但输入相同的并发检查可共用结果；新输入遇过期基准409，不能自动换身份重试。
+
+`GET /api/v1/diagnosis-workflows/devices/{device_id}/checks/latest` 只读回执（没有则null），
+权限及会话验证与启动一致。`pending`回执包含原请求参数，供丢失浏览器记录时显式恢复，
+不包含私有输入快照。工作流latest也带最近check；前端必须核对诊断ID后组合展示。
+网络中断/503保留身份；同身份不同参数409。401/403/409/422不自动重新提交。
+历史诊断不补造对比记录，GET不会触发图执行。

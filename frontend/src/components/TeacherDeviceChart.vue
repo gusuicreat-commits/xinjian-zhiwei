@@ -10,12 +10,13 @@ import type { TeacherDashboard } from '@/types/teacher'
 const props = defineProps<{ data: TeacherDashboard['device_status'] }>()
 const element = ref<HTMLElement | null>(null)
 let chart: ECharts | null = null
+let disposed = false
 use([PieChart, LegendComponent, TooltipComponent, CanvasRenderer])
 const labels = { online: '在线', offline: '离线', never_seen: '未上报', abnormal: '异常' }
 const colors = { online: '#243bff', offline: '#111111', never_seen: '#aaa9a3', abnormal: '#666666' }
 
 function render(): void {
-  if (!element.value) return
+  if (disposed || !element.value) return
   chart ??= init(element.value)
   chart.setOption(
     {
@@ -57,13 +58,17 @@ watch(
   },
   { deep: true },
 )
-onMounted(() => {
-  render()
+onMounted(async () => {
   window.addEventListener('resize', resize)
+  // A parent v-show may still be hidden during this child's mounted hook.
+  await nextTick()
+  render()
 })
 onBeforeUnmount(() => {
+  disposed = true
   window.removeEventListener('resize', resize)
   chart?.dispose()
+  chart = null
 })
 </script>
 <template>

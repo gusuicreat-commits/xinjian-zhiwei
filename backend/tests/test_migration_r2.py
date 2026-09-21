@@ -59,7 +59,7 @@ def test_empty_database_upgrade_matches_models(migration_db):
     engine, migrate = migration_db
     migrate("upgrade", "head")
     with engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260920_0032"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260920_0033"
     migrate("check")
 
 
@@ -143,3 +143,41 @@ def test_historical_upgrade_preserves_content_and_does_not_guess_scope(migration
             _seed(conn, "knowledge_cases", source_draft_id=source)
     migrate("upgrade", "head")
     migrate("check")
+
+
+def test_0032_upgrade_preserves_history_and_receipts_block_destructive_downgrade(migration_db):
+    engine, migrate = migration_db
+    migrate("upgrade", "20260920_0032")
+    with engine.begin() as conn:
+        device = _seed(conn, "devices")
+        before = _seed(conn, "diagnosis_results", device_id=device["id"])
+        user = _seed(conn, "users")
+        course = _seed(conn, "courses")
+        classroom = _seed(conn, "classes", course_id=course["id"])
+        task = _seed(conn, "experiment_assignments", class_id=classroom["id"])
+        session = _seed(
+            conn,
+            "experiment_sessions",
+            device_id=device["id"],
+            student_user_id=user["id"],
+            experiment_assignment_id=task["id"],
+        )
+    migrate("upgrade", "head")
+    migrate("check")
+    with engine.begin() as conn:
+        table = Table("diagnosis_results", MetaData(), autoload_with=conn)
+        assert dict(conn.execute(table.select()).mappings().one()) == before
+        assert conn.scalar(text("SELECT count(*) FROM diagnosis_checks")) == 0
+        _seed(
+            conn,
+            "diagnosis_checks",
+            session_id=session["id"],
+            student_user_id=user["id"],
+            device_id=device["id"],
+            status="pending",
+        )
+    with pytest.raises(AssertionError, match="Cannot discard persisted check receipts"):
+        migrate("downgrade", "20260920_0032")
+    with engine.connect() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM diagnosis_checks")) == 1
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260920_0033"

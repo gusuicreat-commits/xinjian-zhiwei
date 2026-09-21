@@ -254,13 +254,16 @@ describe('DiagnosisPanel', () => {
     expect(wrapper.text()).toContain('连接异常')
     expect(wrapper.text()).toContain('检查通用连接状态')
     expect(wrapper.text()).toContain('这意味着什么')
-    expect(wrapper.text()).toContain('建议先做什么')
+    expect(wrapper.text()).toContain('接下来：')
     expect(wrapper.text()).toContain('查看技术详情')
     expect(wrapper.text()).toContain('SENSOR_READ_FAILED')
     expect(wrapper.text()).toContain('I2C ACK FAILED')
     expect(wrapper.text()).toContain('连续重试')
 
-    await wrapper.findAll('button').at(-1)?.trigger('click')
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '请求教师协助')!
+      .trigger('click')
     expect(wrapper.emitted('feedback')).toEqual([['request_teacher_help', null]])
   })
 
@@ -286,7 +289,7 @@ describe('DiagnosisPanel', () => {
 
     expect(workflowPanel.text()).toContain('辅助诊断进度')
     expect(workflowPanel.text()).toContain('结果已提交教师确认')
-    expect(workflowPanel.text()).toContain('当前判断')
+    expect(workflowPanel.text()).toContain('本工作流记录的判断')
     expect(workflowPanel.text()).toContain('建议检查连接')
     expect(workflowPanel.text()).toContain('设备运行记录、可能原因分析、1 份已审核操作资料')
     expect(workflowPanel.text()).toContain('缺少供电电压读数')
@@ -379,7 +382,7 @@ describe('DiagnosisPanel', () => {
 
 it('lets a valid new session start its first workflow without a previous diagnosis', async () => {
   const wrapper = mountPanel({ diagnosis: null, workflow: null, hasExperimentSession: true })
-  const button = wrapper.findAll('button').find((item) => item.text() === '启动辅助诊断')!
+  const button = wrapper.findAll('button').find((item) => item.text() === '检查当前数据')!
   expect(button.exists()).toBe(true)
   expect(button.attributes('disabled')).toBeUndefined()
   await button.trigger('click')
@@ -388,7 +391,7 @@ it('lets a valid new session start its first workflow without a previous diagnos
 
 it('explains and disables starting a workflow without an experiment session', async () => {
   const wrapper = mountPanel({ diagnosis: null, workflow: null, hasExperimentSession: false })
-  const button = wrapper.findAll('button').find((item) => item.text() === '启动辅助诊断')!
+  const button = wrapper.findAll('button').find((item) => item.text() === '检查当前数据')!
   expect(button.attributes('disabled')).toBeDefined()
   expect(wrapper.text()).toContain('请先连接有效的实验会话')
   await button.trigger('click')
@@ -410,7 +413,23 @@ it('keeps same-error component guidance separate until a problem is selected', a
       ...guidance,
       id,
       episode_id: id,
-      hints: [{ cause_id: id, level: 1, text: `只检查部件${id}` }],
+      hints: [
+        {
+          cause_id: id,
+          level: 1,
+          text: `只检查部件${id}`,
+          teaching: {
+            contract_version: 'teaching-reference-v1',
+            status: 'available',
+            experiment_version_id: 'v',
+            package_version: '2.0.3',
+            package_hash: 'h',
+            is_test_data: true,
+            steps: [],
+            concepts: [{ concept_id: id, description: `部件${id}专属知识`, references: [] }],
+          },
+        },
+      ],
     })),
   })
   expect(wrapper.text()).not.toContain('只检查部件a')
@@ -418,7 +437,344 @@ it('keeps same-error component guidance separate until a problem is selected', a
   await wrapper.find('select').setValue('a')
   expect(wrapper.text()).toContain('只检查部件a')
   expect(wrapper.text()).not.toContain('只检查部件b')
+  expect(wrapper.text()).toContain('部件a专属知识')
+  expect(wrapper.text()).not.toContain('部件b专属知识')
   const button = wrapper.findAll('button').find((item) => item.text() === '仍未解决')!
   await button.trigger('click')
   expect(wrapper.emitted('feedback')?.[0]).toEqual(['unresolved', 'a'])
+})
+
+it('shows one check entry and explains first check versus continuing old guidance', () => {
+  const wrapper = mountPanel()
+  const focus = wrapper.get('[aria-label="现在该做什么"]')
+  expect(focus.text()).toContain('先检查已上传的数据')
+  expect(focus.text()).toContain('刷新页面不会启动诊断')
+  expect(
+    wrapper.findAll('button').filter((button) => button.text() === '检查当前数据'),
+  ).toHaveLength(1)
+})
+it('uses only selected issue guidance and does not recommend a different component action', async () => {
+  const wrapper = mountPanel({
+    diagnosis,
+    issues: ['a', 'b'].map((id) => ({
+      id,
+      error_type: 'sensor_read_failure',
+      scope: { kind: 'component', keys: [id] },
+      status: 'open',
+    })),
+    guidance: ['a', 'b'].map((id) => ({
+      ...guidance,
+      id,
+      episode_id: id,
+      hints: [{ cause_id: id, level: 1, text: '检查组件' + id }],
+    })),
+  })
+  const focus = wrapper.get('[aria-label="现在该做什么"]')
+  expect(focus.text()).toContain('请先选择')
+  expect(focus.text()).not.toContain('检查组件a')
+  await wrapper.get('select').setValue('b')
+  expect(focus.find('h2').text()).toBe('b · 暂未提供通俗说明')
+  expect(wrapper.get('.guidance-work').text()).toContain('检查组件b')
+  expect(wrapper.get('.guidance-work').text()).not.toContain('检查组件a')
+})
+it('read-only data cannot submit checks, AI requests or feedback', () => {
+  const wrapper = mountPanel({ diagnosis, guidance: [guidance], readOnly: true })
+  expect(wrapper.get('[aria-label="现在该做什么"]').text()).toContain('暂不能提交操作')
+  for (const button of wrapper.findAll('button'))
+    expect(button.attributes('disabled')).toBeDefined()
+})
+
+it('keeps every currently allowed step adjacent to feedback, with supporting records initially collapsed', () => {
+  const wrapper = mountPanel({
+    diagnosis,
+    guidance: [
+      {
+        ...guidance,
+        hints: [
+          { cause_id: 'one', level: 1, text: '第一条允许的检查' },
+          { cause_id: 'two', level: 2, text: '第二条允许的检查' },
+          { cause_id: 'three', level: 2, text: '第三条允许的检查' },
+        ],
+      },
+    ],
+  })
+  const task = wrapper.get('[aria-label="当前问题的排查与反馈"]')
+  expect(task.findAll('.hint-action').map((item) => item.text())).toEqual([
+    '第一条允许的检查',
+    '第二条允许的检查',
+    '第三条允许的检查',
+  ])
+  expect(task.get('.feedback-actions').exists()).toBe(true)
+  expect(wrapper.get('.diagnosis-records').attributes('open')).toBeUndefined()
+  expect(wrapper.get('.reference-work').isVisible()).toBe(false)
+  expect(wrapper.get('.causes-panel').text()).toContain('不是发生概率')
+})
+
+it('does not present overall actions or another component summary as the selected issue guidance', async () => {
+  const wrapper = mountPanel({
+    diagnosis: {
+      ...diagnosis,
+      matches: [{ ...diagnosis.matches[0], summary: '仅组件a的现象说明' }],
+      explanation: { summary: '整次说明', steps: ['只在整体旧解释中的动作'], limitations: [] },
+    },
+    issues: ['a', 'b'].map((id) => ({
+      id,
+      error_type: 'sensor_read_failure',
+      scope: { kind: 'component', keys: [id] },
+      status: 'open',
+    })),
+    guidance: [
+      { ...guidance, episode_id: 'a', hints: [{ cause_id: 'a', level: 1, text: '组件a的操作' }] },
+    ],
+    deviceStateExplanation: { ...deviceStateExplanation, next_step: '只属于整体状态的操作' },
+  })
+  expect(wrapper.get('.guidance-work').text()).not.toContain('组件a的操作')
+  expect(wrapper.get('[aria-label="现在该做什么"]').text()).not.toContain('只属于整体状态的操作')
+  expect(
+    wrapper
+      .findAll('button')
+      .filter((button) => ['问题已解决', '仍未解决', '请求教师协助'].includes(button.text()))
+      .every((button) => button.attributes('disabled') !== undefined),
+  ).toBe(true)
+  await wrapper.get('select').setValue('b')
+  const focus = wrapper.get('[aria-label="现在该做什么"]')
+  expect(focus.get('h2').text()).toBe('b · 暂未提供通俗说明')
+  expect(focus.text()).not.toContain('仅组件a的现象说明')
+  expect(focus.text()).not.toContain('只属于整体状态的操作')
+  expect(wrapper.get('.guidance-work').text()).not.toContain('组件a的操作')
+  expect(wrapper.text()).not.toContain('只在整体旧解释中的动作')
+  expect(wrapper.get('.diagnosis-records').text()).toContain('属于整次诊断')
+})
+
+it('preserves selected issue and expanded records across work and reference views without issuing requests', async () => {
+  const wrapper = mountPanel({
+    diagnosis,
+    issues: ['a', 'b'].map((id) => ({
+      id,
+      error_type: 'read_failed',
+      status: 'open',
+      scope: { kind: 'component', keys: [id] },
+    })),
+    guidance: ['a', 'b'].map((id) => ({
+      ...guidance,
+      id,
+      episode_id: id,
+      hints: [
+        {
+          cause_id: id,
+          level: 1,
+          text: `只检查${id}`,
+          teaching: {
+            contract_version: 'teaching-reference-v1',
+            status: 'available',
+            package_version: '2.0.3',
+            is_test_data: true,
+            steps: [],
+            concepts: [{ concept_id: id, description: `仅${id}的知识`, references: [] }],
+          },
+        },
+      ],
+    })),
+  })
+  await wrapper.get('select').setValue('b')
+  const records = wrapper.get('.diagnosis-records')
+  records.element.setAttribute('open', '')
+  await wrapper.setProps({ view: 'reference' })
+  expect(wrapper.get('.work-view').isVisible()).toBe(false)
+  expect(wrapper.get('.reference-work').isVisible()).toBe(true)
+  expect(wrapper.get('.reference-work').text()).toContain('仅b的知识')
+  expect(wrapper.get('.reference-work').text()).not.toContain('仅a的知识')
+  wrapper.get('.reference-work .teaching-reference').element.setAttribute('open', '')
+  await wrapper.setProps({ view: 'work' })
+  expect(wrapper.get('.diagnosis-records').element).toBe(records.element)
+  expect(wrapper.get('.diagnosis-records').attributes('open')).toBe('')
+  expect(wrapper.get('select').element.value).toBe('b')
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '仍未解决')!
+    .trigger('click')
+  expect(wrapper.emitted('feedback')).toEqual([['unresolved', 'b']])
+  await wrapper.setProps({ view: 'reference' })
+  expect(wrapper.get('.reference-work .teaching-reference').attributes('open')).toBe('')
+  expect(wrapper.emitted('requestWorkflow')).toBeUndefined()
+  expect(wrapper.emitted('requestAi')).toBeUndefined()
+})
+
+it('keeps saved AI provenance separate from current disabled configuration and exposes limitations outside details', () => {
+  const wrapper = mountPanel({
+    diagnosis,
+    guidance: [guidance],
+    aiStatus,
+    aiExplanation: {
+      diagnosis_result_id: diagnosis.id,
+      status: 'succeeded',
+      notice: '已保存的解释',
+      explanation: {
+        summary: '已有 AI 解释',
+        steps: ['合法原步骤'],
+        limitations: ['尚未核验供电'],
+      },
+    },
+  })
+  expect(wrapper.text()).toContain('已保存 AI 解释')
+  expect(wrapper.text()).toContain('当前 AI 增强未启用')
+  const limits = wrapper.get('[aria-label="诊断限制"]')
+  expect(limits.text()).toContain('尚未核验供电')
+  expect(limits.element.closest('details')).toBeNull()
+  expect(
+    wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'AI 增强未启用')!
+      .attributes('disabled'),
+  ).toBeDefined()
+})
+
+it('keeps unknown, conflicts and all required limitations visible before supporting records are opened', () => {
+  const wrapper = mountPanel({
+    diagnosis: { ...diagnosis, explanation: { limitations: ['规则限制一', '规则限制二'] } },
+    workflow: {
+      ...workflow,
+      final_result: {
+        summary: '工作流说明',
+        limitations: ['工作流限制一', '工作流限制二'],
+        ai_reasoning: { status: 'unknown', conflict: true, missing_evidence: ['独立电压测量'] },
+      },
+    },
+  })
+  const focus = wrapper.get('[aria-label="现在该做什么"]')
+  for (const value of [
+    '规则限制一',
+    '规则限制二',
+    '工作流限制一',
+    '工作流限制二',
+    '仍为未知',
+    '证据存在冲突',
+    '独立电压测量',
+  ])
+    expect(focus.text()).toContain(value)
+  expect(focus.element.closest('details')).toBeNull()
+})
+
+it('does not show a feedback record for another selected problem', async () => {
+  const wrapper = mountPanel({
+    diagnosis,
+    issues: ['a', 'b'].map((id) => ({
+      id,
+      error_type: 'read_failed',
+      status: 'open',
+      scope: { keys: [id] },
+    })),
+    feedback: { episode_id: 'a', action: 'resolved' },
+  })
+  await wrapper.get('select').setValue('b')
+  expect(wrapper.find('.feedback-record').exists()).toBe(false)
+  await wrapper.get('select').setValue('a')
+  expect(wrapper.get('.feedback-record').text()).toContain('问题已解决')
+})
+
+it('keeps original-request confirmation separate from new feedback while a check is pending', async () => {
+  const wrapper = mountPanel({ diagnosis, guidance: [guidance], checkPending: true })
+  expect(wrapper.get('[aria-label="现在该做什么"]').text()).toContain('沿用原请求')
+  const feedbackButton = wrapper.findAll('button').find((button) => button.text() === '仍未解决')!
+  expect(feedbackButton.attributes('disabled')).toBeDefined()
+  await feedbackButton.trigger('click')
+  expect(wrapper.emitted('feedback')).toBeUndefined()
+  await wrapper
+    .findAll('button')
+    .find((button) => button.text() === '确认上次检查结果')!
+    .trigger('click')
+  expect(wrapper.emitted('requestWorkflow')).toEqual([[]])
+})
+
+it('keeps unlinked teaching references as an empty state without generating material', () => {
+  const wrapper = mountPanel({ view: 'reference', diagnosis, guidance: [] })
+  expect(wrapper.get('.reference-work').text()).toContain('当前没有明确关联的教学资料')
+  expect(wrapper.find('.teaching-reference').exists()).toBe(false)
+  expect(wrapper.emitted('requestAi')).toBeUndefined()
+})
+
+it('deduplicates identical limitation text while retaining every actual source', () => {
+  const wrapper = mountPanel({
+    diagnosis: { ...diagnosis, explanation: { limitations: ['同一条限制'] } },
+    workflow: { ...workflow, final_result: { limitations: ['同一条限制'] } },
+    aiExplanation: {
+      diagnosis_result_id: diagnosis.id,
+      status: 'succeeded',
+      explanation: { summary: '已存解释', steps: [], limitations: ['同一条限制'] },
+    },
+  })
+  const list = wrapper.get('[aria-label="诊断限制"]')
+  expect(list.findAll('li')).toHaveLength(1)
+  expect(list.text()).toContain('规则诊断、已保存 AI 解释、本工作流')
+  expect(list.text()).toContain('同一条限制')
+})
+
+it('keeps each associated teaching reference expandable next to its current step', async () => {
+  const wrapper = mountPanel({
+    diagnosis,
+    guidance: [
+      {
+        ...guidance,
+        hints: [
+          {
+            cause_id: 'connection',
+            level: 2,
+            text: '检查当前连接状态',
+            teaching: {
+              contract_version: 'teaching-reference-v1',
+              status: 'available',
+              package_version: '2.0.3',
+              is_test_data: true,
+              steps: [
+                {
+                  step_id: 'step-1',
+                  title: '接线检查',
+                  expected_state: '取得新的独立读数',
+                  prerequisite_step_ids: [],
+                },
+              ],
+              concepts: [
+                { concept_id: 'concept-1', description: '仅此步骤的参考说明', references: [] },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  })
+  const step = wrapper.get('.guidance-work .guidance-hint')
+  expect(step.get('.hint-action').text()).toBe('检查当前连接状态')
+  const reference = step.get('.teaching-reference')
+  expect(step.isVisible()).toBe(true)
+  expect(reference.get('summary').text()).toBe('为什么这样检查 · 实验参考')
+  expect(reference.get('summary').element.parentElement).toBe(reference.element)
+  expect(reference.attributes('open')).toBeUndefined()
+  expect(reference.text()).toContain('仅此步骤的参考说明')
+  expect(reference.text()).toContain('测试资料，待硬件与教师确认')
+  expect(reference.text()).toContain('预期观察（不是实测结果）')
+  reference.element.setAttribute('open', '')
+  await wrapper.setProps({ view: 'reference' })
+  await wrapper.setProps({ view: 'work' })
+  expect(wrapper.get('.guidance-work .teaching-reference').element).toBe(reference.element)
+  expect(wrapper.get('.guidance-work .teaching-reference').attributes('open')).toBe('')
+  expect(wrapper.emitted('requestAi')).toBeUndefined()
+  expect(wrapper.emitted('requestWorkflow')).toBeUndefined()
+})
+
+it('shows the saved AI source beside the main summary even with no limitations and AI currently disabled', () => {
+  const wrapper = mountPanel({
+    diagnosis,
+    aiStatus,
+    deviceStateExplanation: {
+      ...deviceStateExplanation,
+      source: 'ai',
+      status_summary: '本次已保存的综合说明',
+    },
+  })
+  const main = wrapper.get('[aria-label="现在该做什么"]')
+  expect(main.get('.primary-summary').text()).toBe('本次已保存的综合说明')
+  expect(main.get('.summary-source').text()).toContain('已保存的 AI 综合解释')
+  expect(main.get('.summary-source').element.closest('details')).toBeNull()
+  expect(wrapper.find('[aria-label="诊断限制"]').exists()).toBe(false)
+  expect(wrapper.get('.ai-availability').text()).toContain('当前 AI 增强未启用')
 })

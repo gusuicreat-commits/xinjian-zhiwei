@@ -214,7 +214,24 @@ export interface RankedCause {
   }>
 }
 
+export interface TeachingReference {
+  contract_version: 'teaching-reference-v1'
+  status: 'available' | 'missing' | 'unavailable'
+  experiment_version_id: string | null
+  package_version: string | null
+  package_hash: string | null
+  is_test_data: boolean
+  concepts: Array<{ concept_id: string; description: string; references: string[] }>
+  steps: Array<{
+    step_id: string
+    title: string
+    expected_state: string
+    prerequisite_step_ids: string[]
+  }>
+}
+
 export interface GuidanceHint {
+  teaching?: TeachingReference | null
   cause_id: string
   level: 1 | 2 | 3 | 4
   text: string

@@ -147,6 +147,8 @@ class ExperimentTemplateContext(StrictModel):
 
 
 class DiagnosisContext(StrictModel):
+    recheck_recovery_allowed: bool | None = None
+    recheck_source_time_quality: dict[str, str | None] = Field(default_factory=dict)
     # Server-owned scope for deterministic API runs. Old records stay unscoped.
     feedback_scope: Optional[dict[str, str]] = None
     diagnosis_id: Optional[str] = None

@@ -11,6 +11,9 @@ import {
 } from '@/api/sessionManagement'
 
 const props = defineProps<{ accessToken: string; userId: string }>()
+const emit = defineEmits<{
+  'status-change': [status: { pendingCount: number; error: string; loading: boolean }]
+}>()
 const sessions = ref<ManagedSession[]>([])
 const pending = ref<PendingRelease[]>([])
 const error = ref('')
@@ -22,7 +25,19 @@ let alive = true
 onBeforeUnmount(() => {
   alive = false
   generation++
+  emit('status-change', { pendingCount: 0, error: '', loading: false })
 })
+// The parent only receives a display summary after this component's existing authorization checks.
+watch(
+  () => [authorized.value, pending.value.length, error.value, loading.value],
+  () =>
+    emit('status-change', {
+      pendingCount: authorized.value ? pending.value.length : 0,
+      error: error.value,
+      loading: loading.value,
+    }),
+  { immediate: true },
+)
 const rows = computed(() => [
   ...sessions.value,
   ...pending.value

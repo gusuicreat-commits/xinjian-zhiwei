@@ -1,14 +1,7 @@
-import { expect, test } from '@playwright/test'
+import { auditLayout } from './layoutAudit'
+import { expect, test, type Page } from '@playwright/test'
 
-test('keeps Phase 7 teacher metrics, charts and intervention content with AI disabled', async ({
-  page,
-}) => {
-  const consoleErrors: string[] = []
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text())
-  })
-  page.on('pageerror', (error) => consoleErrors.push(error.message))
-
+async function mockTeacherWorkspace(page: Page, extraPermissions: string[] = []) {
   await page.route('**/api/v1/auth/session', async (route) => {
     await route.fulfill({
       json: {
@@ -19,7 +12,7 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
         username: 'browser-teacher',
         display_name: '浏览器测试教师',
         roles: ['teacher'],
-        permissions: ['dashboard.read', 'class.read'],
+        permissions: ['dashboard.read', 'class.read', ...extraPermissions],
         is_test_data: true,
       },
     })
@@ -188,19 +181,63 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
       },
     })
   })
+}
 
+test('organizes teacher tasks without losing evidence or writing on navigation', async ({
+  page,
+}) => {
+  const consoleErrors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text())
+  })
+  page.on('pageerror', (error) => consoleErrors.push(error.message))
+
+  await mockTeacherWorkspace(page)
+
+  await page.setViewportSize({ width: 1195, height: 850 })
   await page.goto('/teacher/login')
   await page.getByPlaceholder('教师用户名').fill('browser-teacher')
   await page.getByPlaceholder('密码').fill('browser-test-password')
   await page.getByRole('button', { name: '进入教师端' }).click()
   await expect(page).toHaveURL(/\/teacher$/)
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.url())
+  })
+  await expect(page.getByRole('tab', { name: '课堂处置', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByRole('heading', { name: '学生求助与教学介入' })).toBeVisible()
+  await expect(page.getByText('学生主动求助')).toBeVisible()
+  await expect(page.getByText('传感器读取失败', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('在线设备数')).toBeHidden()
+  await expect(page.getByRole('heading', { name: '诊断解释审核' })).toBeHidden()
+  await expect(page.getByText('管理实验会话与设备交接')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '认领', exact: true })).toBeHidden()
+  await page.getByRole('button', { name: /phase9-browser-device.*查看详情/ }).click()
+  await expect(page.getByRole('button', { name: '认领', exact: true })).toBeVisible()
+  await expect(page.getByText('当前记录未提供学生明确执行过的步骤')).toBeVisible()
+  await page.getByRole('textbox', { name: '搜索异常设备或错误代码' }).fill('SENSOR_READ_FAILED')
+  await page.getByRole('button', { name: 'Phase 9 浏览器测试设备', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: 'Phase 9 浏览器测试设备', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('tab', { name: '课堂概览', exact: true }).click()
   await expect(page.getByText('在线设备数')).toBeVisible()
   await expect(page.getByText('高频错误排行')).toBeVisible()
   await expect(page.getByText('错误趋势图')).toBeVisible()
-  await expect(page.getByText('需要教师介入的设备')).toBeVisible()
-  await expect(page.getByText('学生主动求助')).toBeVisible()
-  await expect(page.getByText('SENSOR_READ_FAILED').first()).toBeVisible()
-  await expect(page.getByText('知识案例审核入口')).toBeVisible()
+  for (const name of ['设备状态图', '高频错误横向柱状图', '七日错误趋势图']) {
+    const canvas = page.getByRole('img', { name, exact: true }).locator('canvas').first()
+    await expect(canvas).toBeVisible()
+    expect((await canvas.boundingBox())!.width).toBeGreaterThan(100)
+  }
+
+  await expect(page.getByRole('heading', { name: '学生求助与教学介入' })).toBeHidden()
+  await page.getByRole('tab', { name: '资料与审核', exact: true }).click()
+  await expect(page.getByText('知识案例与审核状态')).toBeVisible()
+  await expect(page.getByText('修订率')).toBeHidden()
+  await page.getByText('系统详情与诊断统计', { exact: true }).click()
   await expect(page.getByText('修订率')).toBeVisible()
   await expect(page.getByText('12.5ms')).toBeVisible()
   await expect(page.getByLabel('诊断工作流指标')).toContainText('运行中/其他1')
@@ -214,5 +251,106 @@ test('keeps Phase 7 teacher metrics, charts and intervention content with AI dis
   await expect(page.getByText('manual-sensor / chunk-1')).toHaveCount(0)
   await expect(page.getByText('RRF 0.8300')).toHaveCount(0)
   await expect(page.getByText('缺少电压读数')).toBeVisible()
+  await page.getByRole('tab', { name: '资料与审核', exact: true }).focus()
+  await page.keyboard.press('Home')
+  await expect(page.getByRole('tab', { name: '课堂处置', exact: true })).toBeFocused()
+  await expect(page.getByRole('textbox', { name: '搜索异常设备或错误代码' })).toHaveValue(
+    'SENSOR_READ_FAILED',
+  )
+  await expect(page.getByRole('button', { name: '认领', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Phase 9 浏览器测试设备', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('tab', { name: '课堂处置', exact: true }).focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: '课堂概览', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await page.keyboard.press('End')
+  await expect(page.getByRole('tab', { name: '资料与审核', exact: true })).toBeFocused()
+  await expect(page.getByText('传感器手册')).toBeVisible()
+  expect(writes).toEqual([])
+  // Capture the default information hierarchy after validating the expanded details.
+  await page.getByRole('button', { name: /phase9-browser-device.*收起诊断依据/ }).click()
+  await page.getByText('系统详情与诊断统计', { exact: true }).click()
+  await page.getByRole('tab', { name: '课堂处置', exact: true }).click()
+  await page.getByRole('button', { name: /phase9-browser-device.*收起详情/ }).click()
+  await page.getByRole('textbox', { name: '搜索异常设备或错误代码' }).fill('')
+  await auditLayout(page, 'teacher')
   expect(consoleErrors).toEqual([])
+})
+
+test('keeps authorized pending handoffs visible across tasks and reload without resubmission', async ({
+  page,
+}) => {
+  await mockTeacherWorkspace(page, ['assignment.manage'])
+  const session = {
+    id: 'pending-session',
+    device_id: 'handoff-device',
+    display_name: '交接测试设备',
+    student_name: '测试学生',
+    class_name: '测试班级',
+    assignment_title: '测试任务',
+    started_at: '2026-07-25T08:00:00Z',
+    status: 'ended',
+    version_no: 1,
+    is_test_data: true,
+  }
+  await page.route('**/api/v1/teacher/experiment-sessions', (route) => route.fulfill({ json: [] }))
+  await page.route('**/api/v1/teacher/experiment-sessions/pending-session', (route) =>
+    route.fulfill({ json: session }),
+  )
+  await page.goto('/teacher/login')
+  await page.getByPlaceholder('教师用户名').fill('browser-teacher')
+  await page.getByPlaceholder('密码').fill('browser-test-password')
+  await page.getByRole('button', { name: '进入教师端' }).click()
+  await expect(page).toHaveURL(/\/teacher$/)
+  await page.evaluate((record) => {
+    sessionStorage.setItem(
+      'xinjian-session-release:browser-test-teacher',
+      JSON.stringify([
+        {
+          session: record,
+          payload: {
+            request_id: 'original-handoff-request',
+            expected_version: 1,
+            reason: '测试交接原请求',
+          },
+        },
+      ]),
+    )
+  }, session)
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())) writes.push(request.url())
+  })
+  await page.reload()
+  const notice = page.getByRole('status', { name: '设备交接恢复提示' })
+  await expect(notice).toContainText('有 1 项设备交接操作待确认')
+  await expect(page.getByRole('button', { name: '继续确认原操作', exact: true })).toBeVisible()
+  for (const tab of ['课堂概览', '资料与审核']) {
+    await page.getByRole('tab', { name: tab, exact: true }).click()
+    await expect(notice).toContainText('有 1 项设备交接操作待确认')
+    await expect(page.getByRole('button', { name: '继续确认原操作', exact: true })).toBeHidden()
+  }
+  await notice.getByRole('button', { name: '查看待确认的设备交接' }).click()
+  await expect(page.getByRole('tab', { name: '课堂处置', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByRole('button', { name: '继续确认原操作', exact: true })).toBeVisible()
+  expect(writes).toEqual([])
+
+  // Revoked access must not turn stored private records into a visible reminder or table.
+  await page.route('**/api/v1/teacher/experiment-sessions/pending-session', (route) =>
+    route.fulfill({ status: 403, json: {} }),
+  )
+  await page.reload()
+  await expect(page.getByRole('button', { name: '刷新占用列表' })).toBeHidden()
+  await expect(notice).toBeHidden()
+  await page.getByText('管理实验会话与设备交接', { exact: true }).click()
+  await expect(page.getByText('当前没有实验占用', { exact: true })).toBeVisible()
+  await expect(page.getByText('测试学生', { exact: true })).toHaveCount(0)
+  expect(writes).toEqual([])
 })
