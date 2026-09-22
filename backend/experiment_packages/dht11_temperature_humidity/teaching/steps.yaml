@@ -1,13 +1,16 @@
 steps:
 - step_id: connect
   title: 按接线表连接 DHT11
-  expected_state: VCC、GND、DATA 分别连接正确
+  expected_state: 按四针裸 DHT11 引脚图连接 3.3V、GND、DATA→GPIO4，DATA 外接 4.7kΩ 上拉，NC 不接；购买后仍需以实物引脚图复核。
 - step_id: configure
   title: 配置代码
-  expected_state: 示例 GPIO4（pending_hardware）、DHT11 类型和 采样间隔待硬件确认
+  expected_state: 使用统一固件配置和设备协议 V1；固件以 3 秒采样、至少 2 秒 DHT11 请求间隔、测试标记和会话 ID运行。
 - step_id: observe
   title: 观察串口数据
-  expected_state: 温度和湿度持续输出
+  expected_state: 只有真实驱动返回有效读数时才记录温度和湿度；没有读数时保持 unknown，不生成合成值。
+- step_id: identify
+  title: 回看设备身份和实验版本
+  expected_state: 设备 ID、固件版本、实验包版本和测试标记可追溯；这些信息不代表硬件已经正常。
 expected_behaviors: []
 bindings:
 - tree_id: dht11-read-failure-v2

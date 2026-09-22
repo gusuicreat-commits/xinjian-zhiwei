@@ -1,6 +1,6 @@
 hardware:
   family: esp32
-  board_model: esp32-devkit
+  board_model: esp32-devkitc-v4-wroom-32e
   components:
   - id: dht11
     kind: temperature_humidity_sensor
@@ -9,6 +9,9 @@ hardware:
       verification_status: pending_hardware
       source_type: project_design
       is_test_data: true
+      package_form: bare_4pin
+      supply_voltage_v: 3.3
+      external_pullup_ohm: 4700
 interfaces:
 - id: dht11_gpio
   type: gpio
@@ -17,8 +20,9 @@ interfaces:
   pins:
     data: 4
   parameters:
-    mode: input_pullup
+    mode: input_with_external_pullup
     minimum_interval_ms: 2000
+    configured_sample_interval_ms: 3000
     verification_status: pending_hardware
 connections:
 - component: dht11
@@ -76,7 +80,7 @@ required_parameters:
   sensor_type: DHT11
   minimum_interval_ms: 2000
   verification_status: pending_hardware
-  notes: 引脚、电路、采样参数为未验证示例；不得当作正式接线或教师经验。
+  notes: 采用 ESP32-DevKitC V4/WROOM-32E、四针裸 DHT11、3.3V、4.7kΩ 外部上拉、3 秒采样的项目设计候选；硬件购买和实测前仍不得升级为 verified。
   consecutive_failure_threshold: null
   consecutive_failure_status: pending_hardware
   truth_status:

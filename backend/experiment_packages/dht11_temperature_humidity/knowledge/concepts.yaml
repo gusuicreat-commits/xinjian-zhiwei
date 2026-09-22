@@ -1,11 +1,11 @@
 concepts:
 - concept_id: dht11.minimum_interval
-  description: 当前 2000ms 是待硬件确认的示例，不是正式最小周期；实际器件手册、驱动版本与周期需共同确认。
+  description: Aosong DHT11 要求两次请求至少间隔 2 秒；本项目固件配置为 3 秒采样作为安全工程默认。硬件实测前，该配置仍不等于已验证的课堂周期。
   references:
   - hardware.yaml
   - teaching/steps.yaml
 - concept_id: dht11.single_bus
-  description: 数据引脚、供电和公共地共同构成单总线读取的必要条件。
+  description: 四针裸 DHT11 使用单总线 DATA；本项目候选接线为 3.3V、GND、DATA→GPIO4、4.7kΩ 外部上拉，NC 不接。购买的具体模块仍需按实物引脚图复核。
   references:
   - hardware.yaml
 - concept_id: dht11.failure_counts
@@ -13,4 +13,9 @@ concepts:
     5 保留为可配置示例，待硬件校准。
   references:
   - diagnosis/rules.yaml
+  - hardware.yaml
+- concept_id: dht11.protocol_evidence
+  description: 心跳、温度/湿度读数和读取失败日志是不同类型的设备记录；平台收到记录不等于已经独立测量或确认了物理状态。DHT11 读数对应前一次转换，固件会保留这一时间语义。
+  references:
+  - docs/device-protocol.md
   - hardware.yaml

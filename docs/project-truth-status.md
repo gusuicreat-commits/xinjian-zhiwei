@@ -1,6 +1,6 @@
 # 芯鉴知微项目真实性看板
 
-更新：2026-09-20。范围：DHT11 / LED 工作区 `2.0.3` 草稿及完整流程整改；未导入或发布到运行数据库，未执行真实硬件实验，未取得教师/课程签署材料。
+更新：2026-09-22。范围：DHT11 工作区 `2.0.4` 草稿、LED 工作区 `2.0.3` 草稿及完整流程整改；未导入或发布到运行数据库，未执行真实硬件实验，未取得教师/课程签署材料。
 
 
 2026-09-17 软件修复补充：第二轮修复与本地验收见 [R2 报告](../output/audits/remediation-r2-latest.md)。本地迁移新增至 `0029`；对现有运行库只读检查得到版本 `20260818_0021`，未升级运行库、未部署。历史待核查清单含116条检查项，涉及97条记录，未自动回填或改写。软件代码通过不改变下表硬件/教师确认状态。
@@ -36,7 +36,7 @@
 
 | 关键点 | 当前状态 | 已知事实与证据边界 | 依据/定位 | 下一步与确认责任 |
 | --- | --- | --- | --- | --- |
-| DHT11 最终 GPIO | 🟡 pending_hardware | GPIO4 仍为显式标注的项目示例，不是通用标准 | D 包 hardware.yaml / truth_status.final_gpio | 硬件负责人核实板卡、原理图、接线；教师复核课程 |
+| DHT11 工程候选接线 | 🟡 pending_hardware | 已固定 ESP32-DevKitC V4/WROOM-32E、四针裸 DHT11、DATA→GPIO4、3.3V、4.7kΩ 上拉；仍未做实物核验 | D 包 hardware.yaml；firmware/esp32_dht11/README.md；Aosong 原始说明书 | 购件后按实物引脚图、连续读取和断线对照复核 |
 | DHT11 累计/连续计数口径 | ✅ verified（代码） | 规则统计 failure_count_in_window；consecutive_failure_count 为 null，不推导连续失败 | matcher.py；D 包 rules.yaml；test_experiment_trust.py | 维持回归覆盖；不将指导历史失败数混入采样计数 |
 | DHT11 合理失败阈值 | 🟡 pending_hardware | 累计阈值 5 是可配置示例；连续阈值未知 | D 包 rules.yaml；truth_status.failure_threshold | 实测成功/失败序列后校准，教师同时确认可接受误报 |
 | DHT11 真实错误日志 | 🟡 pending_hardware | DHT11_READ_FAILED→sensor.read_failed 是当前数据契约，不是所有实物故障必然输出 | D 包 hardware.yaml / truth_status.fault_log_behavior | 固件/硬件负责人保留逐次真实日志和版本 |
@@ -54,7 +54,7 @@
 | 提示步骤与升级门槛 | 🟠 pending_teacher | 当前是待审核排查建议，不是真实教师经验；故障树为 placeholder | 两包 truth_status.teaching_actions_and_escalation | 教师确认操作权限、测量方式和介入时机 |
 | Evidence 名称与 UUID | ✅ verified（代码） | 包声明对齐持久化类型；UUID 属于实际测试数据库记录；有类型校验与 HTTP→DB 回归 | package loader；diagnosis.py；test_experiment_trust.py | 真实设备的来源与时序还需硬件验证 |
 | 显式正常状态 | ✅ verified（代码） | 需要心跳、周期、有效字段、预期行为与无异常同时满足；缺参数或证据为 unknown | runtime_health.py；matcher.py；回归测试 | normal 仅指已配置的上报监测条件，不是硬件健康认证 |
-| 心跳/采样周期和超时 | 🟡 pending_hardware | 90 秒为示例监测时限，不是心跳发送周期；读数最大间隔和 LED 响应窗口留空 | 两包 runtime_expectations / truth_status | 实测周期与延迟，教师确认容差；不自动填默认值 |
+| 心跳/采样周期和超时 | 🟡 pending_hardware | 固件配置 3 秒采样，DHT11 最低请求间隔 2 秒；平台 90 秒仍是监测时限，不是实测心跳结论 | D 包 hardware.yaml；firmware/esp32_dht11/include/firmware_config.h；Aosong 原始说明书 | 实测周期、延迟、断网恢复，教师确认课堂容差 |
 | 通用异常边界 | ✅ verified（代码） | DEVICE_OFFLINE、HEARTBEAT_STALE、DATA_STALE 集中在基础层；包仅提供运行预期 | base_health_rules.yaml；loader.py；回归测试 | 不能把不可达直接解释成断电或器件损坏 |
 | engine 兼容声明执行 | ✅ verified（代码） | 导入、发布校验和运行装载执行版本范围检查；无效或不兼容范围被拒绝 | `test_business_package_boundary.py`；本轮实施报告 | 此检查不证明硬件/课程适用或所有教学工件已消费 |
 | concepts/steps 教学参考 | ✅ verified（限定软件路径） | 新指导按明确关联保存并展示；首次/反馈/AI降级复用快照；旧记录不补造关联，未关联资料不自动成为建议 | [实现状态](implementation-status.md)；[验收报告](../output/audits/teaching-materials-latest.md) | 真实教学内容待教师审核；不声称模型已使用参考或已验证课堂效果 |

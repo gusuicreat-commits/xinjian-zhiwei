@@ -79,8 +79,8 @@ draft → pending → approved → published → superseded/revoked
 
 ## 当前示例与新增实验步骤
 
-当前完整包为 `dht11_temperature_humidity@2.0.3` 和
-`gpio_led_output@2.0.3`。它们用于证明同一套加载、规则、故障树和证据链可以处理不同实验。
+当前完整包为 `dht11_temperature_humidity@2.0.4` 和
+`gpio_led_output@2.0.3`。DHT11 工作区版本 2.0.4 仍是测试草稿；两包用于证明同一套加载、规则、故障树和证据链可以处理不同实验。
 
 两个包及其案例均为合成测试资料，并明确标记测试数据；没有真实硬件和教师审核时不能作为
 正式实验知识发布。`metadata.compatibility.engine` 在导入、发布检查和运行装载时执行版本范围校验。
@@ -159,7 +159,7 @@ LED 旧 level 原始映射增加 `match.metric: null`，只处理没有显式新
 
 ## 教学参考契约（2026-09-20，引擎2.1.0）
 
-当前工作区为2.0.3测试草稿，新增以下可选字段；旧包缺字段仍可读，原始快照及hash不改变。
+当前 DHT11 工作区为2.0.4测试草稿，新增以下可选字段；旧包缺字段仍可读，原始快照及hash不改变。
 
 - `teaching/steps.yaml.bindings`：每条包含tree_id、cause_id、component_id、levels、concept_ids、step_ids。
   同树/原因/组件/等级只能有一条绑定；所有引用必须存在，至少引用一个知识点或步骤。

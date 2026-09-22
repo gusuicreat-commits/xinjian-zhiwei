@@ -175,7 +175,7 @@ def test_http_guidance_snapshot_survives_feedback_and_all_ai_modes(mode):
         before = dashboard(env)["guidance"]
         materials = [h["teaching"] for g in before for h in g["hints"]]
         assert materials and any(m["status"] == "available" for m in materials)
-        assert all(m["package_version"] == "2.0.3" for m in materials)
+        assert all(m["package_version"] == "2.0.4" for m in materials)
         assert all(m["is_test_data"] for m in materials)
         request = {"request_id": str(uuid4()), "action": "unresolved"}
         path = f"/api/v1/student/diagnoses/{workflow['diagnosis_result_id']}/feedback"
@@ -204,7 +204,7 @@ def test_new_release_does_not_rewrite_guidance_and_revocation_stops_display():
         with env.sessions() as db:
             old = db.get(ExperimentVersion, env.versions[env.package])
             docs = deepcopy(old.package_content)
-            docs["metadata.yaml"]["package"]["version"] = "2.0.4"
+            docs["metadata.yaml"]["package"]["version"] = "2.0.5"
             docs["knowledge/concepts.yaml"]["concepts"][0]["description"] = "新版资料不能覆盖旧诊断"
             actor = db.scalar(select(User).where(User.username == "synthetic-teacher"))
             _, new = import_experiment_package(db, actor, docs, is_test_data=True)

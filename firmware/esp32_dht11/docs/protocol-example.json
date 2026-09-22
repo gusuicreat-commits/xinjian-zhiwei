@@ -1,0 +1,55 @@
+{
+  "protocolVersion": "1.0",
+  "schemaVersion": "1",
+  "requestId": "123e4567-e89b-12d3-a456-426614174000",
+  "bootId": "boot-example",
+  "sequenceNo": 2,
+  "uptimeMs": 6000,
+  "firmwareVersion": "0.2.0",
+  "isTestData": true,
+  "records": [
+    {
+      "type": "reading",
+      "occurredAt": "2026-09-22T04:00:03Z",
+      "payload": {
+        "sensor_type": "dht11",
+        "metric_key": "temperature",
+        "value": 24.0,
+        "unit": "°C",
+        "metadata": {
+          "measurement_semantics": "previous_conversion",
+          "conversion_triggered_uptime_ms": 3000,
+          "read_completed_uptime_ms": 6018,
+          "event_time_quality": "device_reported"
+        }
+      }
+    },
+    {
+      "type": "reading",
+      "occurredAt": "2026-09-22T04:00:03Z",
+      "payload": {
+        "sensor_type": "dht11",
+        "metric_key": "humidity",
+        "value": 55.0,
+        "unit": "%RH",
+        "metadata": {
+          "measurement_semantics": "previous_conversion",
+          "conversion_triggered_uptime_ms": 3000,
+          "read_completed_uptime_ms": 6018,
+          "event_time_quality": "device_reported"
+        }
+      }
+    },
+    {
+      "type": "heartbeat",
+      "occurredAt": "2026-09-22T04:00:06Z",
+      "payload": {
+        "metadata": {
+          "source": "xinjian-esp32-dht11",
+          "dht11_sample_primed": false,
+          "event_time_quality": "device_reported"
+        }
+      }
+    }
+  ]
+}
