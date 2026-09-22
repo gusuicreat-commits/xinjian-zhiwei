@@ -2,14 +2,14 @@ hints:
 - cause_id: wiring.data_pin_mismatch
   levels:
     1: 检查连线是否松动。
-    2: 断电后逐项核对接线。
-    3: 测量供电并运行最小程序。
+    2: 断电后逐项核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。
+    3: 通电测量 VCC-GND，再运行最小读取程序并保留连续日志。
     4: 保留现场并请求教师帮助。
 - cause_id: software.gpio_mismatch
   levels:
     1: 检查代码引脚。
-    2: 核对 示例 GPIO4（pending_hardware） 和 DHT11 类型。
-    3: 核对初始化和采样间隔。
+    2: 核对 GPIO4 和 DHT11 类型。
+    3: 核对上电等待、单总线初始化和 3 秒采样间隔。
     4: 提交代码请教师复核。
 - cause_id: hardware.sensor_failure
   levels:

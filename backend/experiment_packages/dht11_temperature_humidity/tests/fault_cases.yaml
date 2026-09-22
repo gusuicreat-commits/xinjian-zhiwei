@@ -1,9 +1,19 @@
 cases:
 - name: 窗口累计失败触发读取异常
   facts:
+    failure_count_in_window: 5
+  expected:
+    error_type: SENSOR_READ_FAILED
+    candidate_causes:
+    - wiring.data_pin_mismatch
+    - software.gpio_mismatch
+    - hardware.sensor_failure
+- name: 更高累计失败仍不等于连续失败
+  facts:
     failure_count_in_window: 20
   expected:
     error_type: SENSOR_READ_FAILED
     candidate_causes:
     - wiring.data_pin_mismatch
     - software.gpio_mismatch
+    - hardware.sensor_failure

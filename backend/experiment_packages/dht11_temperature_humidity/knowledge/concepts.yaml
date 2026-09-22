@@ -9,8 +9,7 @@ concepts:
   references:
   - hardware.yaml
 - concept_id: dht11.failure_counts
-  description: failure_count_in_window 是窗口累计失败数；consecutive_failure_count 当前未知，不能从累计次数推导。阈值
-    5 保留为可配置示例，待硬件校准。
+  description: failure_count_in_window 是窗口累计失败数；consecutive_failure_count 当前未知，不能从累计次数推导。阈值 5 只是当前规则配置，须用真实序列校准。
   references:
   - diagnosis/rules.yaml
   - hardware.yaml

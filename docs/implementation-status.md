@@ -18,7 +18,7 @@ DHT11、3.3V、4.7kΩ 外部上拉、GPIO4 和 3 秒采样。硬件仍未购买�
 
 官方资料登记在 [firmware/esp32_dht11/docs/sources.json](../firmware/esp32_dht11/docs/sources.json)，
 原始文件在被忽略的 `data/knowledge/raw/esp32-dht11/`，含抓取时间、状态和 SHA-256。DHT11
-包升为 `2.0.4` 草稿并与固件参数对齐；旧发布快照、运行数据库、教师/课程状态未修改。
+包升为 `2.0.5` 草稿并与固件参数对齐；旧发布快照、运行数据库、教师/课程状态未修改。
 
 验证结果：PlatformIO 6.1.19 使用 Espressif32 7.0.1、Arduino core
 `3.20017.241212+sha.dcc1105b`、ArduinoJson 7.4.2 编译成功；目标固件占用约 75.5% Flash、
@@ -114,7 +114,7 @@ context_builder
 
 当前完整示例包：
 
-1. `dht11_temperature_humidity@2.0.4`
+1. `dht11_temperature_humidity@2.0.5`
 2. `gpio_led_output@2.0.3`
 
 两者使用同一通用加载、规则、故障树和证据链，没有在核心 Python 代码中增加按实验名称判断的专用分支。两个包和案例均明确标记为测试数据，尚未经过真实硬件或教师正式审核。

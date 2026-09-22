@@ -5,3 +5,9 @@ cases:
   expected:
     error_type: null
     candidate_causes: []
+- name: 低于阈值的累计失败仍不触发异常
+  facts:
+    failure_count_in_window: 4
+  expected:
+    error_type: null
+    candidate_causes: []

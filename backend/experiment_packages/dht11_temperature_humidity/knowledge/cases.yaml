@@ -17,7 +17,7 @@ cases:
   - software.gpio_mismatch
   - hardware.sensor_failure
   solutionSteps:
-  - 断电后核对 VCC、GND 和 示例 GPIO4（pending_hardware） 数据线。
+  - 断电后核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。
   - 核对代码中的 GPIO、DHT11 类型和采样间隔。
   - 仍失败时用已知正常传感器做对照测试。
   teacherNotes: null
@@ -30,7 +30,7 @@ cases:
   qualityCheckPassed: false
   reviewStatus: draft
   sourceRef: experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml
-  version: 2.0.4
+  version: 2.0.5
   isTestData: true
   facts:
     verification_status: unverified

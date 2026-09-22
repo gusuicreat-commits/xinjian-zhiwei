@@ -4,7 +4,7 @@ steps:
   expected_state: 按四针裸 DHT11 引脚图连接 3.3V、GND、DATA→GPIO4，DATA 外接 4.7kΩ 上拉，NC 不接；购买后仍需以实物引脚图复核。
 - step_id: configure
   title: 配置代码
-  expected_state: 使用统一固件配置和设备协议 V1；固件以 3 秒采样、至少 2 秒 DHT11 请求间隔、测试标记和会话 ID运行。
+  expected_state: 使用统一固件配置和设备协议 V1；固件以 3 秒采样、至少 2 秒 DHT11 请求间隔、测试标记和会话 ID 运行。
 - step_id: observe
   title: 观察串口数据
   expected_state: 只有真实驱动返回有效读数时才记录温度和湿度；没有读数时保持 unknown，不生成合成值。

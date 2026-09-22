@@ -1,4 +1,4 @@
-version: 2.0.4
+version: 2.0.5
 trees:
 - id: dht11-read-failure-v2
   title: DHT11 窗口累计读取失败
@@ -37,7 +37,7 @@ trees:
       params: *id001
     hints:
       1: 先观察传感器供电和数据线是否松动。
-      2: 断电后按接线表核对 VCC、GND 和 示例 GPIO4（pending_hardware）。
+      2: 断电后按接线表核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。
       3: 用万用表确认供电，再只运行最小读取程序。
       4: 保留接线照片和日志，请教师协助检查。
   - id: software.gpio_mismatch
@@ -51,8 +51,8 @@ trees:
       params: *id001
     hints:
       1: 检查代码里的传感器引脚。
-      2: 确认代码使用 示例 GPIO4（pending_hardware） 且类型为 DHT11。
-      3: 核对初始化顺序和以实际器件手册和驱动为准的采样间隔（pending_hardware）。
+      2: 确认代码使用 GPIO4 且类型为 DHT11。
+      3: 核对上电等待、单总线初始化和 3 秒采样间隔；DHT11 请求不得短于 2 秒。
       4: 提交代码片段和失败日志，请教师复核。
   - id: hardware.sensor_failure
     title: 传感器本体异常
