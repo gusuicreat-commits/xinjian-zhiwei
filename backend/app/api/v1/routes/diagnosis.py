@@ -32,7 +32,8 @@ from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 from app.services.ai_diagnosis import explain_diagnosis, get_ai_status
 from app.services.data_scope import diagnosis_session, find_active_experiment_session
-from app.services.diagnosis import build_diagnosis_context, diagnose, save_diagnosis_result
+from app.services.diagnosis import diagnose, save_diagnosis_result
+from app.services.diagnosis_checks import freeze
 from app.services.diagnosis_episode import diagnosis_issues, upsert_episode
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
@@ -129,16 +130,7 @@ def run_device_diagnosis(
         "device_id": device.id,
     }
     try:
-        context = build_diagnosis_context(
-            db,
-            device,
-            lookback_seconds=payload.lookback_seconds,
-            experiment_template=payload.experiment_template,
-            experiment_id=payload.experiment_id,
-            experiment_version=payload.experiment_version,
-            experiment_version_id=payload.experiment_version_id,
-            experiment_session_id=session.id,
-        )
+        context = freeze(db, device, session, payload)
     except WorkflowScopeViolation as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (ExperimentDefinitionLoadError, ExperimentPackageLoadError) as exc:

@@ -1,13 +1,13 @@
 # 芯鉴知微 API 设计
 
-最后更新：2026-09-12。本文描述当前代码契约；完整字段、枚举和响应 Schema 以对应版本的 FastAPI OpenAPI（`/docs`）为准。本轮反馈契约变更尚未部署。
+代码核对日期：2026-09-27。本文按使用入口解释契约；精确字段与枚举见对应版本的 FastAPI OpenAPI（`/docs`）及 `backend/app/schemas/`、`backend/app/diagnosis/workflow_schemas.py`。服务层权限、幂等和跨字段约束不能仅从 OpenAPI 推断。持续规则见 [开发准则](development-guidelines.md)，部署与实际验收见 [实现状态](implementation-status.md)。
 
 ## 通用约定
 
 - API 前缀：`/api/v1`。
-- 请求和响应：JSON，时间戳必须为包含时区的 ISO 8601 字符串。
-- 未声明字段：拒绝并返回 422，避免设备字段拼写错误被静默忽略。
-- 测试数据：必须显式设置 `is_test_data: true`。
+- 通常请求和响应使用 JSON；文件上传、CSV 导出等按各端点定义。旧单条遥测要求带时区时间；批量设备协议对缺失或不可信设备时间有明确回退规则。
+- 声明为严格模型的请求拒绝未知字段；`metadata` 等扩展对象按各 Schema 保留。不能将自由字典等同于整份请求免校验。
+- 测试数据显式标记；常规接口为 `is_test_data: true`，批量协议为 `isTestData: true`。
 - 原始请求：入库到对应记录的 `raw_payload`，用于追溯；认证头不会写入原始载荷。
 
 ## 设备认证
@@ -30,7 +30,7 @@ X-Device-Token: <secret token>
 和心跳记录数组。服务端采用全有或全无事务；同一请求重放不重复写入，相同序列冲突返回
 409，缺失或不可信设备时间使用服务端接收时间并标记时间质量。默认限制为每批 100 条、
 262144 字节、单设备每分钟 120 个新请求。完整契约、错误码和重试语义见
-`docs/device-protocol.md`。
+[设备协议](device-protocol.md)。同设备的查重、限额检查、批次和回执保存由短数据库事务串行保护；原请求重放不再占用新额度。该额度为批次与三个旧逐条上传端点合计。四个入口都在解析JSON前限制实际流式字节数，等待设备锁后重新鉴权；旧端点每次成功写入计次，没有请求幂等身份。
 
 下列三个单条上传端点继续保留，以兼容旧客户端；新模拟器默认使用批量入口。
 
@@ -64,22 +64,22 @@ X-Device-Token: <secret token>
   `/knowledge/chunks/*`：文件导入与草稿分块工作区。
 - `/teacher-workflow/*`：处置动作、时间线、课堂消息和 CSV 报告。
 - `/health/live`、`/health/ready`、`/health/dependencies`、`/ops/status`：运维状态。
-- `/readiness/status`：证据驱动的项目就绪门禁。
+- `/readiness/status`：已批准文档、合格兼容案例、可加载的正式发布包分别列示；新增检查项状态`unverified`，无验收依据的软件/演示/硬件/组织布尔值保持false并说明待核实。
+- `/ops/status`：`pending_interventions`计open/claimed/unconfirmed；新增`resolved_awaiting_close`单列待关闭。`active_sessions`排除过期、撤销及停用用户。
 
 ### POST `/diagnosis/devices/{device_id}/run`
 
-使用路径设备 ID 和 `X-Device-Token` 认证。请求包含 1 至 604800 秒的回看窗口，以及可选的通用实验模板快照 `template_id + metric_ranges`。响应返回持久化结果 ID、规则集版本、输入指纹、按优先级排序的命中规则及证据。
+使用正式学生 Bearer 身份、路径设备 ID 和有效实验会话；设备令牌只兼容明确测试设备。`X-Experiment-Session-ID` 未传时只兼容唯一有效会话；无法唯一确定返回 409。请求含 1 至 604800 秒的回看窗口和可选旧模板参数。响应返回持久化诊断 ID、规则集版本、输入指纹、命中规则、证据及 `issues`。新学生端显式检查优先使用下述检查命令入口。
 
 可选模板快照是旧调用兼容边界，不表示设备端有权定义生产阈值。新任务应由服务端锁定已审核发布的实验包版本。
 
 ### POST `/diagnosis/results/{diagnosis_result_id}/guidance`
 
-使用设备 ID 和设备令牌认证。根据已保存的诊断上下文运行 YAML 故障树并保存原因排序、证据、提示等级和提示文本。同一诊断结果与同一故障树存在唯一约束，重复调用返回已有历史，不重复增加失败次数。
+使用与确定性诊断相同的学生身份及有效会话，核验诊断原归属。根据已保存上下文生成指导；新记录按“诊断＋故障树＋问题”唯一，旧无问题关联记录保留“诊断＋故障树”唯一。重复调用返回已有记录，不制造失败轮次。
 
 ### GET `/diagnosis/results/{diagnosis_result_id}/evidence`
 
-设备凭据只能读取属于本设备诊断的标准化证据。响应包含证据 UUID、类型、来源类型、来源
-记录 ID、标准化值和时间，不返回 `raw_payload`。AI 推理引用的证据 ID 必须来自这个集合。
+沿用正式学生身份及会话检查，必须匹配诊断原始归属；只有设备相同并不够。响应包含证据 UUID、类型、来源类型、来源记录 ID、标准化值和时间，不返回 `raw_payload`。AI 引用还须与具体候选相关，不能任取同诊断中的无关证据。
 
 ## Experiment Package 接口
 
@@ -104,7 +104,7 @@ X-Device-Token: <secret token>
 
 ### GET `/diagnosis/devices/{device_id}/guidance`
 
-返回当前设备的提示历史，按创建时间倒序排列。
+返回当前已验证实验会话中的提示历史，按创建时间倒序排列；不把设备上一位学生的指导混入。
 
 ### GET `/diagnosis/interventions`
 
@@ -119,7 +119,7 @@ X-Device-Token: <secret token>
 
 ### POST `/diagnosis/results/{diagnosis_result_id}/ai-explanation`
 
-使用设备凭据，只能解释当前设备的诊断结果。请求体可选 `user_question`。工作流先用显式字段匹配已审核结构化案例，将实验规范供给受约束原因排序；推理后再校验证据 ID、候选集、规则结果和允许动作。AI 不能修改确定性错误类型，也不能引用本次匹配之外的知识。
+使用学生身份和有效会话，只能解释属于当前会话的诊断结果；设备令牌仅限测试兼容。请求体可选 `user_question`。工作流先用显式字段匹配已审核结构化案例，将实验规范供给受约束原因排序；推理后再校验证据 ID、候选集、规则结果和允许动作。AI 不能修改确定性错误类型，也不能引用本次匹配之外的知识。
 
 送往 Provider 的上下文先经过 `phase9.5-allowlist-v1` 最小化：设备标识匿名化；日志只保留最多 3–10 条相关项；读数和心跳转换为统计摘要；令牌、密钥、Wi-Fi、学生身份、联系方式和自由文本中的敏感片段被删除或遮蔽。知识正文按字符上限截断，原始 Prompt 不写入审计表。
 
@@ -141,7 +141,7 @@ X-Device-Token: <secret token>
 - `POST /diagnosis-workflows/{workflow_id}/review`：提交 `approve/edit/reject`。`edit` 可修订解释文案，不能修改规则证据、证据分和 Level。
 
 响应状态包括 `created/collecting/deterministic_analysis/retrieving/ai_analysis/
-waiting_teacher/completed/rejected/failed`；其中 `retrieving` 是旧记录兼容状态，新图使用 `knowledge_context` 结构化匹配。工作流不替换原有确定性诊断 API；功能关闭或
+waiting_feedback/waiting_teacher/completed/rejected/failed`；其中 `retrieving` 仍用于当前 `knowledge_context` 结构化匹配阶段，不表示执行 RAG。工作流不替换原有确定性诊断 API；功能关闭或
 checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 `node_metrics`、
 `retrieval_audit`、规则/日志引用、故障树候选、知识引用和 `reviews` 用于可观察、可追溯
 展示；不返回知识正文、Prompt、认证信息或密钥。
@@ -165,7 +165,7 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 | `latest_applied` | 当前会话按提交时间排序的最近一条已应用记录；没有时为 null |
 | `has_more_pending` | 是否还有未返回的未决记录；处理当前记录后重新查询 |
 
-每条记录包含 `id`、`diagnosis_result_id`、UUID `request_id`、`action`、原始 `note`、`created_at`、`processing_status` 和 `is_test_data`。原备注保留空白与换行，供同载荷重放；接口不返回其他学生备注、认证凭据或完整诊断状态。
+每条记录包含 `id`、`diagnosis_result_id`、目标 `episode_id`、UUID `request_id`、`action`、原始 `note`、`created_at`、`processing_status` 和 `is_test_data`。原备注保留空白与换行，供同载荷重放；接口不返回其他学生备注、认证凭据或完整诊断状态。
 
 先核对设备、会话与学生，再逐条校验诊断/工作流原归属；不按当前设备绑定补造历史归属。旧记录缺少请求键、会话或有效处理状态时不纳入找回结果。无效设备凭据返回 401，缺会话头 422，越界、无效或停用学生的会话返回 403。
 
@@ -174,7 +174,7 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 ### POST `/student/diagnoses/{diagnosis_result_id}/feedback`
 
 保存 `resolved`、`unresolved` 或 `request_teacher_help`。使用学生账号 Bearer 和设备ID（设备认证仅限测试兼容），并且必须提供
-`X-Experiment-Session-ID`；JSON 必须包含 UUID `request_id`，以及 action 和可选 note。
+`X-Experiment-Session-ID`；JSON 必须包含 UUID `request_id`，以及 action、可选 note 和目标 `episode_id`。多问题诊断必须明确目标；只有唯一适用问题时可走兼容选择。
 
 ```json
 {
@@ -192,8 +192,8 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 
 | 同诊断下的请求 | 行为 |
 | --- | --- |
-| 相同 request_id、相同 action/note | 已应用则返回原反馈（仍为 201）；未决则恢复或补确认原提交，不重复推进 |
-| 相同 request_id、不同 action/note | 409，无新增副作用 |
+| 相同 request_id、相同 action/note/episode_id | 已应用则返回原反馈（仍为 201）；未决则恢复或补确认原提交，不重复推进 |
+| 相同 request_id、不同 action/note/episode_id | 409，无新增副作用 |
 | 新 request_id | 视为有意的新尝试，受会话和工作流状态约束；有其他未决反馈时 409 |
 | 网络结果不明或 503 | 保留原 request_id 和原载荷重试；503 detail.code 为 `DIAGNOSIS_FEEDBACK_RETRY_REQUIRED` |
 
@@ -201,7 +201,17 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 反馈继承诊断的 `is_test_data`。求助仍通过已核实的课堂绑定幂等创建工单；无合法反馈归属时不先保存反馈兜底。
 
 调用方应同步更新；部署前按[实现状态](implementation-status.md)核对代码迁移Head并在目标环境验证。
-[完整流程问题整改](workflow-remediation.md)保留0027阶段的历史记录；个人账号准入已在2026-09-19实施。
+[完整流程问题整改](archive/workflow-remediation.md)保留0027阶段的历史记录；个人账号准入已在2026-09-19实施。
+
+### 实验会话开始、结束与教师释放
+
+- `GET /student/assignments`、`GET /student/experiment-sessions`：查询当前学生可用任务和会话。
+- `POST /student/experiment-sessions`：使用 `request_id`、设备和任务 ID 开始会话，检查当前资格及设备占用并固定包版本。
+- `POST /student/experiment-sessions/{id}/end`：提交 `request_id`、`expected_version` 和 completed/cancelled 原因。
+- `GET /teacher/experiment-sessions`、`GET /teacher/experiment-sessions/{id}`：受权 teacher/admin 查询原任务班级范围中的会话。
+- `POST /teacher/experiment-sessions/{id}/release`：需 `assignment.manage`、`request_id`、`expected_version` 和非空原因；显式取消占用，不修改其他会话、不关闭故障或工单。
+
+同身份同载荷返回原回执，冲突 409；原回执重试仍核验当前权限。撤销学生资格不会自动把旧会话或历史数据交给下一名学生。
 
 ### GET `/teacher/dashboard`
 
@@ -213,11 +223,11 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 
 ### POST `/teacher-workflow/interventions/{case_id}/actions`
 
-要求具有 `intervention.manage` 权限且能访问工单所属班级。前端闭环使用
-`claim → resolve → close`；每次请求必须携带当前 `expected_version`，并发版本不一致返回
-409。`resolve` 必须提供公开解决说明，结果会通过学生 Dashboard 回显；解决或关闭同时将
-对应诊断 Episode 标记为已解决。服务端仍支持转交、内部备注和“证据不足”状态，私人备注
-不会进入学生端响应。
+要求具有 `intervention.manage` 权限且能访问工单记录所属班级。前端常用 `claim → resolve → close`；请求必须携带 `expected_version`，新客户端同时持久化 `request_id`。同身份同载荷重放，版本或载荷冲突返回 409；缺请求身份的旧客户端仍兼容版本检查。
+
+`resolve` 要求说明，只有明确公开的解决事件可以显示给学生；私密说明不能从冗余摘要泄漏。工单解决/关闭只改变工单状态，不自动关闭问题、更不证明硬件恢复。
+
+明确结束目标问题另用 `POST /teacher-workflow/interventions/{case_id}/problem-resolution`，必填 UUID `request_id` 和 `expected_revision`；可选 `recovery_diagnosis_id` 必须通过新相关恢复证据检查。无恢复依据时仅记录教师报告。旧工单没有可靠问题关联时拒绝猜测。
 
 ## 知识库接口
 
@@ -235,11 +245,11 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 
 ### POST `/knowledge/case-drafts/{draft_id}/approve`
 
-教师或正式批准人提交稳定 `case_id`、`confirmed_root_cause`、`final_solution_steps` 和 `confirmation_note`。服务端只创建 `approved + confirmed + facts_locked + quality_check_passed` 的正式案例。
+教师或正式批准人提交稳定 `case_id`、`confirmed_root_cause`、`final_solution_steps` 和 `confirmation_note`。还需符合 `confirmation_material` 的事实来源要求；候选外根因不能直接发布。服务端按草稿原状态和内部版本条件更新，并与正式案例插入同事务提交；来源草稿唯一，审批竞争返回 409。成功才创建 `approved + confirmed + facts_locked + quality_check_passed` 的正式案例。
 
 ### POST `/knowledge/case-drafts/{draft_id}/ai-polish`
 
-可选调用已配置 AI，只生成标题、症状描述、教学说明和解决摘要。服务端强制保留 `sourceIds`，禁止修改事实字段或在根因未确认时使用确定因果措辞，并保存模型与 Prompt 审计。
+可选调用已配置 AI，只生成标题、症状描述、教学说明和解决摘要。服务端强制保留 `sourceIds`，禁止修改事实字段或在根因未确认时使用确定因果措辞，并保存模型与 Prompt 审计。调用不持草稿锁；模型返回后重验权限、状态和版本，迟到冲突返回 409，已发生调用仍记账。
 
 ### GET/POST `/knowledge/sources`
 
@@ -272,15 +282,16 @@ pending --formal_approver--> approved
 | --- | --- |
 | 200 | 状态查询成功 |
 | 201 | 上传内容已保存 |
-| 401 | 设备不存在、已停用或令牌无效 |
+| 401 | 登录或设备认证无效、过期，或要求正式账号 |
+| 403 | 当前身份没有权限，或对象超出学生/会话/班级范围 |
 | 404 | 诊断结果不存在或不属于当前设备 |
 | 409 | 资源重复、非法状态流转、实验包版本已存在或审核条件不满足 |
-| 413 | 提取文本超过配置的最大字符数 |
+| 413 | 请求体、批次数量或提取文本超过配置上限 |
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
-| 503 | 知识工作区审阅凭据、AI Provider 或诊断工作流基础设施不可用 |
+| 429 | 新批次超过设备速率限制 |
+| 503 | 工作区未配置或工作流基础设施暂不可用；常规模型失败由确定性降级处理 |
 
-当前继续提供设备凭据保护的学生总览 API，以及审阅令牌保护的知识工作区管理 API；
-教师聚合使用正式 Bearer 账号、班级范围和 RBAC。项目不提供公开设备注册。默认
+正式学生总览使用个人账号及会话，设备凭据仅限测试兼容；部分知识整理工作区仍由审阅令牌保护。教师聚合使用正式 Bearer 账号、班级范围和 RBAC。项目不提供公开设备注册。默认
 `AI_ENABLED=false`，是否启用 Provider 由部署方明确配置和审批；统一 `AIClient` 是可替换边界。
 
 

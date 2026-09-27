@@ -26,7 +26,7 @@
 #define XJ_CA_CERT ""
 #endif
 #ifndef XJ_FIRMWARE_VERSION
-#define XJ_FIRMWARE_VERSION "0.2.0"
+#define XJ_FIRMWARE_VERSION "0.2.2"
 #endif
 #ifndef XJ_IS_TEST_DATA
 #define XJ_IS_TEST_DATA 1

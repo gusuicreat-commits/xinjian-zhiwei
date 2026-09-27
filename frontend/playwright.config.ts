@@ -15,7 +15,11 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Use Playwright's pinned browser by default; system Chrome is opt-in.
+        ...(process.env.E2E_CHROME_CHANNEL ? { channel: process.env.E2E_CHROME_CHANNEL } : {}),
+      },
     },
   ],
   webServer: externalServer

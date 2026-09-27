@@ -1,9 +1,14 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import Settings
 from app.main import app
 
 
-def test_health_check_returns_structured_status() -> None:
+@pytest.mark.parametrize("environment", ["development", "test"])
+def test_health_check_returns_structured_status(monkeypatch, environment) -> None:
+    settings = Settings(_env_file=None, app_env=environment)
+    monkeypatch.setattr("app.api.v1.routes.health.get_settings", lambda: settings)
     with TestClient(app) as client:
         response = client.get("/api/v1/health")
 
@@ -12,7 +17,7 @@ def test_health_check_returns_structured_status() -> None:
         "status": "ok",
         "service": "芯鉴知微 API",
         "version": "1.0.0",
-        "environment": "development",
+        "environment": environment,
     }
 
 
@@ -69,3 +74,42 @@ def test_openapi_exposes_health_endpoint() -> None:
     assert "/api/v1/student/session" in response.json()["paths"]
     assert "/api/v1/student/dashboard" in response.json()["paths"]
     assert "/api/v1/student/diagnoses/{diagnosis_result_id}/feedback" in response.json()["paths"]
+
+
+def test_ops_only_counts_current_authorizations_and_pending_work(api_context):
+    from datetime import timedelta
+    from uuid import uuid4
+
+    from test_episode_lifecycle_r2 import log, run
+
+    from app.api.v1.routes.health import ops_status
+    from app.models import AuthSession, InterventionCase, User
+    from app.models.base import utc_now
+
+    log(api_context)
+    diagnosis = run(api_context)
+    with api_context["session_factory"]() as db:
+        user = db.query(User).first()
+        for expires, revoked in [
+            (utc_now() + timedelta(hours=1), None),
+            (utc_now() - timedelta(hours=1), None),
+            (utc_now() + timedelta(hours=1), utc_now()),
+        ]:
+            db.add(
+                AuthSession(
+                    user_id=user.id, token_hash=uuid4().hex, expires_at=expires, revoked_at=revoked
+                )
+            )
+        case = InterventionCase(
+            diagnosis_result_id=diagnosis["id"], status="unconfirmed", is_test_data=True
+        )
+        db.add(case)
+        db.commit()
+        assert ops_status(None, db).active_sessions == 1
+        assert ops_status(None, db).pending_interventions == 1
+        case.status = "resolved"
+        user.is_active = False
+        db.commit()
+        result = ops_status(None, db)
+        assert result.active_sessions == result.pending_interventions == 0
+        assert result.resolved_awaiting_close == 1

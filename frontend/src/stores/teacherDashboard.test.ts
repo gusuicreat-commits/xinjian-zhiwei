@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  actOnTeacherIntervention,
   getDiagnosisWorkflowMetrics,
   getPendingDiagnosisWorkflows,
   getRecentDiagnosisWorkflows,
@@ -143,5 +144,71 @@ describe('teacher dashboard store', () => {
       average_node_duration_ms: null,
       in_progress: 3,
     })
+  })
+  it('ignores responses from a logged out account and older refreshes', async () => {
+    const pending: Array<(value: TeacherDashboard) => void> = []
+    vi.mocked(getTeacherDashboard).mockImplementation(
+      () => new Promise((resolve) => pending.push(resolve)),
+    )
+    const store = useTeacherDashboardStore()
+    const old = store.load('A')
+    store.clear()
+    const current = store.load('B')
+    pending[1]!({ ...dashboard, data_notice: 'B' })
+    await current
+    pending[0]!({ ...dashboard, data_notice: 'A' })
+    await old
+    expect(store.dashboard?.data_notice).toBe('B')
+    const first = store.load('B')
+    const second = store.load('B')
+    pending[3]!({ ...dashboard, data_notice: 'new' })
+    await second
+    pending[2]!({ ...dashboard, data_notice: 'old' })
+    await first
+    expect(store.dashboard?.data_notice).toBe('new')
+  })
+
+  it('does not refresh the previous account after a late mutation', async () => {
+    vi.mocked(getTeacherDashboard).mockResolvedValue(dashboard)
+    let complete!: () => void
+    vi.mocked(actOnTeacherIntervention).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = () => resolve({} as never)
+        }),
+    )
+    const store = useTeacherDashboardStore()
+    await store.load('A')
+    const action = store.act('A', 'case', {
+      action: 'claim',
+      expected_version: 1,
+      is_private: false,
+    })
+    store.clear()
+    await store.load('B')
+    const calls = vi.mocked(getTeacherDashboard).mock.calls.length
+    complete()
+    expect(await action).toBe(false)
+    expect(vi.mocked(getTeacherDashboard).mock.calls.length).toBe(calls)
+  })
+
+  it('distinguishes unavailable queue from empty queue and clears forbidden data', async () => {
+    vi.mocked(getTeacherDashboard).mockResolvedValue(dashboard)
+    vi.mocked(getPendingDiagnosisWorkflows).mockResolvedValue([{ id: 'private' } as never])
+    const store = useTeacherDashboardStore()
+    await store.load('A')
+    vi.mocked(getPendingDiagnosisWorkflows).mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 403 },
+    })
+    await store.load('A')
+    expect(store.state).toBe('ready')
+    expect(store.workflowQueue).toEqual([])
+    expect(store.workflowSections.queue.state).toBe('error')
+    expect(store.workflowSections.queue.failureKind).toBe('forbidden')
+    expect(store.workflowSections.history.state).toBe('ready')
+    vi.mocked(getPendingDiagnosisWorkflows).mockResolvedValue([])
+    await store.load('A')
+    expect(store.workflowSections.queue.state).toBe('ready')
   })
 })

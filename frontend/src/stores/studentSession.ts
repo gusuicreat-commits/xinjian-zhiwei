@@ -92,6 +92,10 @@ export const useStudentSessionStore = defineStore('student-session', () => {
   }
 
   async function authenticateAccount(username: string, password: string): Promise<void> {
+    if (REVIEW_MODE) {
+      await login({ ...reviewStudentCredentials })
+      return
+    }
     logout()
     const revision = authRevision
     loading.value = true

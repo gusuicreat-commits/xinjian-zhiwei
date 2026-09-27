@@ -1,6 +1,6 @@
 # Experiment Package 与证据治理
 
-最后更新：2026-09-20
+代码核对日期：2026-09-27。本文维护包结构、运行契约及语义边界；制作与审核规则统一见 [开发准则](development-guidelines.md)，软件/硬件/教学验收状态见 [项目真实性看板](project-truth-status.md)。
 
 ## 目标
 
@@ -51,12 +51,13 @@ draft → pending → approved → published → superseded/revoked
 ```
 
 管理员负责状态变更。已导入的 `experiment + version` 不允许覆盖；修改任何内容必须提高
-版本号并重新走校验和审核。新版本发布后，旧版本可以用于历史重放，但不会再成为当前版本。
+版本号并重新走校验和审核。新版本发布后旧版本标为 superseded，固定该版本的既有会话仍可使用，但它不再是当前版本；revoked 则阻断教学使用，历史事实保留。发布竞争按实验父记录串行处理，不能产生两个当前版本。
+
+状态名 pending 是实验包状态；案例草稿使用 pending_review，不能互换。软件校验通过和管理员状态流转不等于实物或教学验收。
 
 ## 运行时绑定
 
-实验任务可绑定 `experiment_version_id`。工作流启动时优先使用任务绑定版本；客户端不能
-把任务切换到另一个实验包。`DiagnosisContext`、`DiagnosisState`、`diagnosis_results` 和
+实验任务可绑定 `experiment_version_id`；新会话开始时固定允许使用的包版本。后续工作流使用会话固定版本，任务改版不会偷偷迁移既有会话；客户端不能把任务切换到另一包。历史会话没有固定字段时按现有兼容路径校验，不回填历史来源。`DiagnosisContext`、`DiagnosisState`、`diagnosis_results` 和
 `diagnosis_workflow_runs` 都记录实验身份、版本 ID 和包哈希。
 
 未绑定实验包的旧请求继续使用原 Experiment Definition 路径，保证已有功能兼容。新实验
@@ -90,27 +91,21 @@ draft → pending → approved → published → superseded/revoked
 四级提示，至少提供一个正常样例和一个故障样例，运行
 `python -m app.cli.verify_experiment_packages`，再通过 API 导入和发布。
 
-## 未来 RAG
+## 证据和测试资料的语义边界
 
-RAG 不是 Experiment Package 的必需能力。知识规模扩大后，可以只对已审核、已发布的案例
-建立可重建向量索引；规则、故障树、证据表、版本绑定和发布流程保持不变。向量召回只能
-补充参考，不能成为硬件故障事实源。
-
-## 信息可信化整改（2026-09-09）
-
-当次工作区示例包版本为 2.0.1、状态 draft；没有修改数据库中已发布的 2.0.0 快照，也没有执行导入/发布。所有配置仍待硬件确认。
+以下是当前包与引擎的契约，不是某次修复完成报告。工作区内容不代表已经导入运行数据库，配置是否可用于真实硬件仍须独立确认。
 
 ### 案例与候选
 
 两包案例使用 `sourceType: test_data`、`facts.verification_status: unverified`、`isTestData: true`、`reviewStatus: draft`、`rootCauseStatus: unknown`；清除根因值、教师署名、确认时间，撤销 factsLocked/qualityCheckPassed。沿用现有枚举，不新增 test_data 或 unverified 审核状态。Schema 拒绝 sourceType=test_data 的案例冒充 approved/confirmed。包导入保守继承案例测试标记，调用方不能仅靠省略 is_test_data 把示例包变为正式包。
 
-两个故障树改为 placeholder；同一异常症状对各原因等权支持，不再借同一日志重复加权优先认定某根因。它们仍提供待验证候选，不是真实教师诊断经验。
+两个故障树当前标为 placeholder；同一异常症状对各原因等权支持，不再借同一日志重复加权优先认定某根因。它们仍提供待验证候选，不是真实教师诊断经验。
 
 ### 失败计数
 
 DHT11 规则使用 `failure_count_in_window`，现保留阈值 5，含义是所选窗口内累计的指定组件失败事件数；阈值仍在 rules.yaml 可配置，待硬件校准。规则证据 details 同时记录累计数及 `consecutive_failure_count: null`。没有经过验证的逐次成功/失败完整序列，因此未实现或启用连续失败阈值，不以累计次数冒充连续失败。
 
-`required_parameters.consecutive_failure_threshold: null` 是待确认占位，不是正在运行的规则。工作流 `failure_count/historical_failures` 仍是指导/反馈历史，不改名、不挪作设备采样计数。
+`required_parameters.consecutive_failure_threshold: null` 是待确认占位，不是正在运行的规则。工作流 `failure_count/historical_failures` 表达持久化问题中的异常证据轮次；`attempt_count` 表达未解决排查尝试。它们都不能替代设备采样失败计数。
 
 ### LED 证据语义
 
@@ -129,7 +124,7 @@ LED `state_matches_command` 比较相同 component/interface、相同非空 comm
 
 通用规则保存在 `backend/app/diagnosis/base_health_rules.yaml`，由现有规则引擎统一执行；未复制到任何实验包。声明 runtime_expectations 的实验会合并该基础规则，规则版本/hash 包括基础来源。历史未声明该字段的实验沿用兼容规则，不重写历史包。
 
-hardware.yaml 新增可选 runtime_expectations：
+hardware.yaml 的可选 runtime_expectations 包含：
 
 - `verification_status`：当前 pending_hardware。
 - `offline_after_seconds`：当前 90，沿用项目示例策略，不是硬件标准。
@@ -145,21 +140,24 @@ normal 的 scope 固定为 reported_telemetry_only，并携带 pending_hardware�
 
 ### 接入与校验
 
-legacy 日志归一化现在支持 sensor_snapshot.component_id/interface_id；仍由已声明组件和规则参数匹配，未凭错误码猜组件。DHT11 的错误事件、temperature/humidity，LED 四类观测均与实际持久化名称对齐。对声明新 runtime_expectations 的包，新增 evidence.runtime_types 校验，阻止声明类型与静态映射输出类型不一致；旧包维持兼容。
+legacy 日志归一化支持 sensor_snapshot.component_id/interface_id；仍由已声明组件和规则参数匹配，未凭错误码猜组件。DHT11 的错误事件、temperature/humidity，LED 四类观测均与实际持久化名称对齐。对声明新 runtime_expectations 的包，新增 evidence.runtime_types 校验，阻止声明类型与静态映射输出类型不一致；旧包维持兼容。
 
 包内 facts 样例仍只验证规则结构，零命中样例明确不声称正常。HTTP→持久化→context→Evidence UUID、显式正常、LED 语义隔离和累计计数的回归覆盖在 `backend/tests/test_experiment_trust.py`。这些都是自动化合成数据测试，不能当真实硬件案例。
 
-## 项目真实性治理补充（工作区 2.0.2）
+## 参数来源与版本变更
 
-本轮在 2.0.1 整改基础上补齐逐项 `required_parameters.truth_status`，每项记录状态、项目来源定位与确认所需材料。区分 pending_hardware、pending_teacher、pending_course_confirmation；案例 facts 同步记录 teacher_status/student_case_status/course_status。它们是审核注记，现有引擎不据此自动生成或修改 GPIO、阈值、周期、教师经验或真实案例。
+`required_parameters.truth_status` 逐项记录待硬件、待教师或待课程确认状态、来源定位和所需材料。
+案例 facts 的教师/学生案例/课程状态也是审核注记，不能据此自动补出 GPIO、阈值、周期或经验。
+LED 旧 level 映射用 `match.metric: null` 与显式 command/electrical/optical 指标分开，避免同一报文重复映射。
 
-LED 旧 level 原始映射增加 `match.metric: null`，只处理没有显式新 metric 的旧报文；带 pin=2 的新命令/电气/光学观测不会再触发多映射冲突。GPIO_COMMAND 与 GPIO_ACTUAL_LEVEL 是语义类别，其值为 1 时分别对应上文的 HIGH 状态；都不等于 LED_PHYSICALLY_ON。
-
-源码包版本更新为 2.0.2，未导入或发布；之前 2.0.1 的设计说明和验证记录保留为历史。负责人摘要、待确认清单和范围外已知问题集中维护于 [项目真实性看板](project-truth-status.md)。
+工作区内容哈希由加载器按解析后的文档计算；导入后以服务端规范化快照重新计算 hash。
+`scripts/check_version.py` 将源码包与明确 Git 基准比较，再核对 `scripts/package_versions.json` 和指定的
+当前版本说明。内容有变化必须升版本；只更新 hash 不能绕过基准比较。历史报告保留当时版本，不批量改写。
+版本检查不是包发布，也不代表硬件适用性通过；完整包校验仍由 loader 和包内样例执行。
 
 ## 教学参考契约（2026-09-20，引擎2.1.0）
 
-当前 DHT11 工作区为2.0.5测试草稿，新增以下可选字段；旧包缺字段仍可读，原始快照及hash不改变。
+以下为当前可选字段；旧包缺字段仍可读，原始快照及 hash 不改变。
 
 - `teaching/steps.yaml.bindings`：每条包含tree_id、cause_id、component_id、levels、concept_ids、step_ids。
   同树/原因/组件/等级只能有一条绑定；所有引用必须存在，至少引用一个知识点或步骤。
@@ -169,7 +167,7 @@ LED 旧 level 原始映射增加 `match.metric: null`，只处理没有显式新
 运行选择只接受持久化问题中的单一component范围，匹配固定包、树、原因和实际提示等级。
 接口级/组件不明/多组件歧义保持缺失。实验步骤及其依赖只是参考，不是自动追加的允许动作。
 动作仍来自已生成的故障树提示；独立hints.yaml当前仍是被校验存储的工件，不会覆盖故障树提示。
-两处既有提示文字不完全相同；本轮不通过同步文字改变动作。未来若统一，须独立说明兼容影响。
+两处既有提示文字不完全相同；当前不通过同步文字改变动作。未来若统一，须独立说明兼容影响。
 
 `GuidanceHistory.hints[].teaching` 保存契约版本、包版本ID/hash、资料状态、测试标记、知识点和步骤全文。
 与原指导同事务写入，旧指导读取不回填；学生API与指导API复用同一JSON快照，反馈重试不改写。
@@ -178,4 +176,4 @@ LED 旧 level 原始映射增加 `match.metric: null`，只处理没有显式新
 
 参考文字不进入推理/解释/润色Provider投影，不新增模型调用、Prompt字段或AI缓存契约。
 学生页面通过原文显示“知识说明”“预期观察（不是实测结果）”，明确测试材料状态；不提供执行完成按钮。
-本轮不改变计数、提示升级、复测流程、恢复判据或教师审核事实。
+教学参考不改变计数、提示升级、复测流程、恢复判据或教师审核事实。

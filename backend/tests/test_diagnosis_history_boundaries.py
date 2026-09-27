@@ -28,7 +28,13 @@ def record(db, device, at, *, failure=True, observation=None, scope=None, status
                 is_test_data=False,
             )
         ]
+        context.recheck_source_time_quality = {
+            f"device_log:{context.logs[0].id}": "device_reported"
+        }
     outcome = diagnose(context)
+    # Explicit synthetic scope; heartbeat-only fixtures cannot prove sensor recovery.
+    for match in outcome.matches:
+        match.scope = {"kind": "component", "keys": ["test-sensor"]}
     if not failure:
         context.normal_assessment = {
             "status": status,
@@ -37,11 +43,23 @@ def record(db, device, at, *, failure=True, observation=None, scope=None, status
             ],
         }
         if observation:
-            from app.diagnosis.schemas import ContextHeartbeat
+            from app.diagnosis.schemas import ContextObservation
 
-            context.heartbeats = [
-                ContextHeartbeat(id=observation, observed_at=at, received_at=at, is_test_data=False)
+            context.observations = [
+                ContextObservation(
+                    id=observation,
+                    observed_at=at,
+                    component_id="test-sensor",
+                    metric="temperature",
+                    value=25,
+                    status="normal",
+                    source="sensor_reading",
+                    source_ref=observation,
+                )
             ]
+            context.recheck_source_time_quality = {
+                f"sensor_reading:{observation}": "device_reported"
+            }
     return save_diagnosis_result(db, device, context, outcome)
 
 

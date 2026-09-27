@@ -1,4 +1,5 @@
 #include "dht11_reader.h"
+#include "monotonic_clock.h"
 
 namespace {
 bool waitForLevel(uint8_t gpio, int level, uint32_t timeout_us) {
@@ -35,7 +36,7 @@ Dht11Frame decodeDht11Frame(const uint8_t raw[5]) {
 
 Dht11Frame readDht11(uint8_t data_gpio) {
     Dht11Frame frame;
-    frame.trigger_started_ms = millis();
+    frame.trigger_started_ms = monotonicMillis();
     pinMode(data_gpio, OUTPUT);
     digitalWrite(data_gpio, LOW);
     delay(18);
@@ -48,6 +49,7 @@ Dht11Frame readDht11(uint8_t data_gpio) {
     if (!waitForLevel(data_gpio, LOW, 120) || !waitForLevel(data_gpio, HIGH, 120) ||
         !waitForLevel(data_gpio, LOW, 120)) {
         frame.status = Dht11ReadStatus::Timeout;
+        frame.read_finished_ms = monotonicMillis();
         return frame;
     }
     noInterrupts();
@@ -55,12 +57,14 @@ Dht11Frame readDht11(uint8_t data_gpio) {
         if (!waitForLevel(data_gpio, HIGH, 100)) {
             interrupts();
             frame.status = Dht11ReadStatus::Timeout;
+        frame.read_finished_ms = monotonicMillis();
             return frame;
         }
         const uint32_t high_started = micros();
         if (!waitForLevel(data_gpio, LOW, 120)) {
             interrupts();
             frame.status = Dht11ReadStatus::Timeout;
+        frame.read_finished_ms = monotonicMillis();
             return frame;
         }
         const uint32_t high_us = static_cast<uint32_t>(micros() - high_started);
@@ -68,7 +72,7 @@ Dht11Frame readDht11(uint8_t data_gpio) {
         if (high_us > 50) frame.raw[bit / 8] |= 1U;
     }
     interrupts();
-    frame.read_finished_ms = millis();
+    frame.read_finished_ms = monotonicMillis();
     const Dht11Frame decoded = decodeDht11Frame(frame.raw);
     frame.status = decoded.status;
     frame.temperature_c = decoded.temperature_c;

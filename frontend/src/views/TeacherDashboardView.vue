@@ -210,6 +210,8 @@ async function reportProblemResolved(item: TeacherIntervention): Promise<void> {
     item.evidence_revision == null
   )
     return
+  const actingToken = sessionStore.accessToken
+  const actingUser = sessionStore.session.user_id
   try {
     await ElMessageBox.confirm(
       '记录教师报告的问题已解决。这不会声明硬件已通过复测，也不会自动关闭工单。若上次请求未确认，将继续确认原请求。',
@@ -219,22 +221,26 @@ async function reportProblemResolved(item: TeacherIntervention): Promise<void> {
         cancelButtonText: '取消',
       },
     )
+    if (sessionStore.accessToken !== actingToken) return
     await reportTeacherProblemResolved(
-      sessionStore.accessToken,
-      sessionStore.session.user_id,
+      actingToken,
+      actingUser,
       item.case_id,
       item.evidence_revision,
     )
-    await dashboardStore.load(sessionStore.accessToken)
+    if (sessionStore.accessToken !== actingToken) return
+    await dashboardStore.load(actingToken)
+    if (sessionStore.accessToken !== actingToken) return
     ElMessage.success('问题状态已记录，工单处理状态保持独立')
   } catch (error) {
-    if (error === 'cancel' || error === 'close') return
+    if (sessionStore.accessToken !== actingToken || error === 'cancel' || error === 'close') return
     ElMessage.error('结果尚未确认或证据已更新，请刷新并核对原请求；不要重复提交新请求。')
   }
 }
 
 async function handleIntervention(item: TeacherIntervention): Promise<void> {
   if (!sessionStore.accessToken || !item.case_id || item.version_no === null) return
+  const actingToken = sessionStore.accessToken
   try {
     const pending =
       sessionStore.session && pendingInterventionCommand(sessionStore.session.user_id, item.case_id)
@@ -247,16 +253,19 @@ async function handleIntervention(item: TeacherIntervention): Promise<void> {
           cancelButtonText: '取消',
         },
       )
-      await dashboardStore.act(sessionStore.accessToken, item.case_id, pending.payload)
+      if (!(await dashboardStore.act(actingToken, item.case_id, pending.payload))) return
       ElMessage.success('原操作已确认，请查看最新工单状态')
       return
     }
     if (item.status === 'open') {
-      await dashboardStore.act(sessionStore.accessToken, item.case_id, {
-        action: 'claim',
-        expected_version: item.version_no,
-        is_private: false,
-      })
+      if (
+        !(await dashboardStore.act(actingToken, item.case_id, {
+          action: 'claim',
+          expected_version: item.version_no,
+          is_private: false,
+        }))
+      )
+        return
       ElMessage.success('已认领该学生求助')
       return
     }
@@ -271,12 +280,15 @@ async function handleIntervention(item: TeacherIntervention): Promise<void> {
           inputValidator: (value) => Boolean(value.trim()) || '请填写处理结果',
         },
       )
-      await dashboardStore.act(sessionStore.accessToken, item.case_id, {
-        action: 'resolve',
-        expected_version: item.version_no,
-        note: result.value.trim(),
-        is_private: false,
-      })
+      if (
+        !(await dashboardStore.act(actingToken, item.case_id, {
+          action: 'resolve',
+          expected_version: item.version_no,
+          note: result.value.trim(),
+          is_private: false,
+        }))
+      )
+        return
       ElMessage.success('处理结果已同步给学生')
       return
     }
@@ -286,15 +298,18 @@ async function handleIntervention(item: TeacherIntervention): Promise<void> {
         cancelButtonText: '取消',
         type: 'warning',
       })
-      await dashboardStore.act(sessionStore.accessToken, item.case_id, {
-        action: 'close',
-        expected_version: item.version_no,
-        is_private: false,
-      })
+      if (
+        !(await dashboardStore.act(actingToken, item.case_id, {
+          action: 'close',
+          expected_version: item.version_no,
+          is_private: false,
+        }))
+      )
+        return
       ElMessage.success('工单已关闭')
     }
   } catch (error) {
-    if (error === 'cancel' || error === 'close') return
+    if (sessionStore.accessToken !== actingToken || error === 'cancel' || error === 'close') return
     ElMessage.error('工单操作失败，可能已被其他教师更新，请刷新后重试')
   }
 }
@@ -303,6 +318,7 @@ async function handleWorkflowReview(
   action: 'approve' | 'edit' | 'reject',
 ): Promise<void> {
   if (!sessionStore.accessToken) return
+  const actingToken = sessionStore.accessToken
   try {
     const result = await ElMessageBox.prompt(
       action === 'approve'
@@ -323,24 +339,27 @@ async function handleWorkflowReview(
         inputValidator: (value) => action === 'approve' || Boolean(value.trim()) || '请填写内容',
       },
     )
-    await dashboardStore.reviewWorkflow(
-      sessionStore.accessToken,
-      workflowId,
-      action === 'edit'
-        ? {
-            action,
-            comment: '教师修订了自然语言诊断总结',
-            edited_result: {
-              summary: result.value.trim(),
-            },
-          }
-        : { action, comment: result.value.trim() || undefined },
+    if (
+      !(await dashboardStore.reviewWorkflow(
+        actingToken,
+        workflowId,
+        action === 'edit'
+          ? {
+              action,
+              comment: '教师修订了自然语言诊断总结',
+              edited_result: {
+                summary: result.value.trim(),
+              },
+            }
+          : { action, comment: result.value.trim() || undefined },
+      ))
     )
+      return
     ElMessage.success(
       action === 'approve' ? '诊断已批准' : action === 'edit' ? '诊断已修订并批准' : '诊断已驳回',
     )
   } catch (error) {
-    if (error === 'cancel' || error === 'close') return
+    if (sessionStore.accessToken !== actingToken || error === 'cancel' || error === 'close') return
     ElMessage.error('诊断审核失败，请刷新后重试')
   }
 }
@@ -450,7 +469,11 @@ onBeforeUnmount(() => {
               >台设备需关注</span
             >
             <button type="button" @click="navigateTo('class-resources')">
-              <b>{{ dashboardStore.workflowQueue.length }}</b
+              <b>{{
+                dashboardStore.workflowSections.queue.state === 'ready'
+                  ? dashboardStore.workflowQueue.length
+                  : '—'
+              }}</b
               >项诊断待审核
             </button>
           </div>
@@ -558,6 +581,8 @@ onBeforeUnmount(() => {
                     <el-button
                       v-if="item.case_id && item.episode_id && item.problem_status !== 'resolved'"
                       size="small"
+                      :disabled="REVIEW_MODE"
+                      :title="REVIEW_MODE ? '离线演示不支持真实问题状态变更' : undefined"
                       @click.stop="reportProblemResolved(item)"
                       >报告问题已解决</el-button
                     >
@@ -810,8 +835,35 @@ onBeforeUnmount(() => {
           <article class="teacher-panel intervention-panel">
             <header>
               <h2>诊断解释审核</h2>
-              <i>{{ dashboardStore.workflowQueue.length }}</i>
+              <i>{{
+                dashboardStore.workflowSections.queue.state === 'ready'
+                  ? dashboardStore.workflowQueue.length
+                  : '—'
+              }}</i>
             </header>
+            <p
+              v-if="dashboardStore.workflowSections.queue.state === 'error'"
+              role="alert"
+              class="teacher-compact-empty"
+            >
+              审核队列读取失败，无法判断是否有记录。已有记录仅供参考。
+              <router-link
+                v-if="
+                  ['unauthorized', 'forbidden'].includes(
+                    dashboardStore.workflowSections.queue.failureKind || '',
+                  )
+                "
+                to="/teacher/login"
+                >权限已变化，请重新登录</router-link
+              >
+              <el-button v-else size="small" @click="refresh">重新读取</el-button>
+            </p>
+            <p
+              v-else-if="dashboardStore.workflowSections.queue.state === 'loading'"
+              class="teacher-compact-empty"
+            >
+              正在读取审核队列…
+            </p>
             <div v-if="dashboardStore.workflowQueue.length" class="teacher-action-list">
               <article
                 v-for="item in dashboardStore.workflowQueue"
@@ -844,6 +896,7 @@ onBeforeUnmount(() => {
                       size="small"
                       type="success"
                       :loading="dashboardStore.workflowReviewingId === item.id"
+                      :disabled="dashboardStore.workflowSections.queue.state !== 'ready'"
                       @click.stop="handleWorkflowReview(item.id, 'approve')"
                       >批准</el-button
                     >
@@ -851,6 +904,7 @@ onBeforeUnmount(() => {
                       size="small"
                       type="primary"
                       :loading="dashboardStore.workflowReviewingId === item.id"
+                      :disabled="dashboardStore.workflowSections.queue.state !== 'ready'"
                       @click.stop="handleWorkflowReview(item.id, 'edit')"
                       >修订</el-button
                     >
@@ -858,6 +912,7 @@ onBeforeUnmount(() => {
                       size="small"
                       type="danger"
                       :loading="dashboardStore.workflowReviewingId === item.id"
+                      :disabled="dashboardStore.workflowSections.queue.state !== 'ready'"
                       @click.stop="handleWorkflowReview(item.id, 'reject')"
                       >驳回</el-button
                     >
@@ -866,13 +921,45 @@ onBeforeUnmount(() => {
                 <WorkflowEvidenceSummary v-if="expandedWorkflowId === item.id" :workflow="item" />
               </article>
             </div>
-            <p v-else class="teacher-compact-empty">暂无等待审核的诊断。</p>
+            <p
+              v-else-if="dashboardStore.workflowSections.queue.state === 'ready'"
+              class="teacher-compact-empty"
+            >
+              暂无等待审核的诊断。
+            </p>
           </article>
           <article class="teacher-panel workflow-history-panel">
             <header>
               <h2>近期诊断审核历史</h2>
-              <i>{{ dashboardStore.workflowHistory.length }}</i>
+              <i>{{
+                dashboardStore.workflowSections.history.state === 'ready'
+                  ? dashboardStore.workflowHistory.length
+                  : '—'
+              }}</i>
             </header>
+            <p
+              v-if="dashboardStore.workflowSections.history.state === 'error'"
+              role="alert"
+              class="teacher-compact-empty"
+            >
+              审核历史读取失败，无法判断是否有记录。已有记录仅供参考。
+              <router-link
+                v-if="
+                  ['unauthorized', 'forbidden'].includes(
+                    dashboardStore.workflowSections.history.failureKind || '',
+                  )
+                "
+                to="/teacher/login"
+                >权限已变化，请重新登录</router-link
+              >
+              <el-button v-else size="small" @click="refresh">重新读取</el-button>
+            </p>
+            <p
+              v-else-if="dashboardStore.workflowSections.history.state === 'loading'"
+              class="teacher-compact-empty"
+            >
+              正在读取审核历史…
+            </p>
             <div v-if="dashboardStore.workflowHistory.length" class="workflow-history-list">
               <article v-for="item in dashboardStore.workflowHistory" :key="item.id">
                 <button
@@ -897,7 +984,12 @@ onBeforeUnmount(() => {
                 <WorkflowEvidenceSummary v-if="expandedWorkflowId === item.id" :workflow="item" />
               </article>
             </div>
-            <p v-else class="teacher-compact-empty">暂无诊断审核历史。</p>
+            <p
+              v-else-if="dashboardStore.workflowSections.history.state === 'ready'"
+              class="teacher-compact-empty"
+            >
+              暂无诊断审核历史。
+            </p>
           </article>
           <article id="knowledge-review" class="teacher-panel knowledge-panel">
             <header>
@@ -918,6 +1010,11 @@ onBeforeUnmount(() => {
               >本页展示状态，案例审核操作通过现有审核接口进行</span
             >
           </article>
+          <p v-if="dashboardStore.workflowSections.metrics.state === 'error'" role="alert">
+            诊断统计读取失败，不能视为零。<el-button size="small" @click="refresh"
+              >重新读取</el-button
+            >
+          </p>
           <details v-if="workflowMetrics" class="teacher-system-details">
             <summary>系统详情与诊断统计</summary>
             <p>沿用当前账号可读取的统计；已解决诊断比例不代表课堂通过率。</p>

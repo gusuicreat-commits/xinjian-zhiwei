@@ -837,3 +837,42 @@ def test_checkpoint_dsn_rejects_sqlalchemy_driver_prefix() -> None:
             diagnosis_checkpoint_backend="postgres",
             diagnosis_checkpoint_dsn=("postgresql+psycopg://user:password@postgres/database"),
         )
+
+
+def test_new_workflow_keeps_episode_attempts_even_without_matching_guidance(
+    api_context, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from app.ai import diagnosis_graph as nodes
+    from app.models import DiagnosisResult
+    from app.services.diagnosis_episode import apply_episode_feedback, lifecycle_lock
+
+    _add_failure_log(api_context)
+    graph = build_diagnosis_graph(InMemorySaver())
+    settings = _settings()
+    with api_context["session_factory"]() as db:
+        device = db.scalar(select(Device).where(Device.device_key == "phase2-test-device"))
+        workflow = start_workflow(
+            db, graph, device, settings, DiagnosisWorkflowStartRequest(lookback_seconds=60)
+        )
+        diagnosis = db.get(DiagnosisResult, workflow.diagnosis_result_id)
+        feedback = DiagnosisFeedback(
+            device_id=device.id,
+            diagnosis_result_id=diagnosis.id,
+            action="unresolved",
+            is_test_data=True,
+        )
+        db.add(feedback)
+        with lifecycle_lock(db, diagnosis):
+            apply_episode_feedback(db, diagnosis, feedback)
+            db.commit()
+        state = dict(
+            graph.get_state({"configurable": {"thread_id": workflow.graph_thread_id}}).values
+        )
+        state["student_feedback"] = None
+        monkeypatch.setattr(nodes, "_guidance", lambda *args: [])
+        result = nodes.escalation_handler.__wrapped__(
+            state, SimpleNamespace(context=SimpleNamespace(db=db, settings=settings))
+        )
+        assert result["attempt_count"] == 1

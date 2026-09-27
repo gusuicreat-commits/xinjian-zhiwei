@@ -2,18 +2,37 @@
 
 ## 状态与边界
 
-设备协议 V1 已在无真实硬件条件下完成服务端、模拟器和自动化测试。当前 ESP32
-型号、传感器型号、GPIO、电压、接线、采样频率和正式指标字段仍待用户确认；协议只定义
-通用传输语义，不把任何厂商、型号或生产参数写死。仓库中的协议样例和模拟器请求均为
-`isTestData=true` 的合成测试数据。
+代码核对日期：2026-09-27。本文说明当前服务端传输契约，不是实物验收结果。仓库已有
+ESP32-DevKitC V4/WROOM-32E、裸DHT11、GPIO4、3.3V和3秒采样的候选配置，以及0.2.2固件；
+具体构建、接线来源和待实测范围见[固件说明](../firmware/esp32_dht11/README.md)。
+通用协议不把这些候选参数变成所有设备的固定要求。下面的通用样例及模拟器输入为
+`isTestData=true`合成数据，真实字段应与锁定实验包和设备适配一致。
 
 ## 认证与端点
 
 - 端点：`POST /api/v1/device/ingest`
-- 请求头：`Content-Type: application/json`、`X-Device-ID`、`X-Device-Token`
+- 请求头：`Content-Type: application/json`、`X-Device-ID`、`X-Device-Token`；正式会话数据还应携带原始 `X-Experiment-Session-ID`，缺省归属规则见下节
 - 传输：HTTP JSON；生产环境必须在受控网络中使用 HTTPS
 - 兼容端点：`/device/logs`、`/device/readings`、`/device/heartbeat` 继续可用
 - 令牌：服务端只保存 PBKDF2-SHA256 哈希；令牌不得进入 Git、日志或示例
+
+## 会话归属与学生可见性
+
+三类遥测记录保存可空的 `experiment_session_id`，不会根据设备今天绑定谁回填历史数据。
+当前接收逻辑由 [设备路由](../backend/app/api/v1/routes/device.py) 与
+[data_scope.py](../backend/app/services/data_scope.py) 共同执行：
+
+- 显式会话头必须对应已认证设备，并有可解析的原学生、任务关联；越界拒绝。为接收迟到数据，
+  摄入可以验证已结束的原会话，这不等于允许该学生继续操作实验。
+- 正式会话的记录时间须落在保存的使用区间内；区间外仍可接收入库，但会话关联保持空，
+  不改挂当前学生。时间先按下述时间质量规则处理，设备自行声明时间不是物理真实性认证。
+- 无会话头时，仅兼容唯一有效且学生、班级、任务、会话均有测试标记的演示会话，并检查
+  记录不早于会话开始。正式数据即使存在唯一活动会话，也不由此自动获得归属。
+- 没有可用会话或有多个活动会话时，摄入保留空关联；这不同于学生仪表盘的空态/409规则。
+- 回执 `accepted` 只证明该记录已保存，不能证明它已通过学生可见性检查。无法确定归属的记录
+  保留供受权管理检查，不向学生展示，不自动补造来源。
+
+全部遥测写入在等待设备锁后再次校验凭据和显式会话。同一请求重放原记录，不因设备交接改写既有归属。
 
 ## 请求结构
 
@@ -64,9 +83,9 @@
 ```
 
 `requestId` 必须是 UUID。`bootId` 标识一次设备启动，`sequenceNo` 在同一启动中单调递增。
-`sentAt` 和 `occurredAt` 建议使用带时区的 ISO 8601 UTC 时间；`uptimeMs` 为可选非负数。
+`sentAt` 和 `occurredAt` 建议使用带时区的 ISO 8601 UTC 时间；`uptimeMs` 为可选非负JSON整数，完整范围见容量章节。
 批次至少一条、默认最多 100 条，默认请求体最多 262144 字节，单设备默认每分钟最多
-120 个新请求。这些都是部署保护参数，不是硬件采样参数，可通过后端环境变量调整。
+120 个新请求。这些都是批次入口的部署保护参数，不是硬件采样参数，可通过后端环境变量调整；旧逐条接口不计入这套批次额度，不能据此宣称全部写入口已有相同保护。
 
 ## 响应结构
 
@@ -103,10 +122,15 @@
   未来的设备时间使用服务器接收时间，并标记 `timeQuality=server_fallback`。
 - 在线状态以服务端接收时间计算，不信任设备时钟。
 
+同一设备的 `/device/ingest` 请求在数据库设备行锁下重新检查当前设备凭据、会话归属、回执、
+序号和每分钟额度，并在同一事务保存全批数据与回执。相同请求同载荷返回原记录并标记
+`idempotentReplay=true`，不同载荷或相同启动序号竞争返回409，抢最后一个额度失败返回429。
+已有回执重放不重复占用额度；不同设备的准入锁相互独立。会话命令沿用 actor→device 锁顺序，
+摄入只锁 device，不反向索取 actor 锁。额度现为全部四个遥测写入端点合计（默认120次/分钟），旧逐条请求每次成功写入计一次，不能冒充幂等重放。所有入口解析JSON之前按实际流式字节累计限制大小；不信任Content-Length。超限返回413，未解析身份时错误中的request_id为null。
+
 ## 原子性与重试
 
-批次采用全有或全无策略：任一记录结构或业务字段无效，整个批次返回
-`422 INGESTION_RECORD_INVALID`，不创建请求记录，也不保存部分日志、读数或心跳。
+批次采用全有或全无策略：业务记录校验失败返回 `422 INGESTION_RECORD_INVALID`，不创建成功回执，也不保存部分日志、读数或心跳。外层请求/字段类型不合法可能先被FastAPI拒绝，仍为422，但错误体是框架校验列表，不能把所有422都当成同一个业务错误码。
 
 模拟器仅对网络错误、超时、408、425、429 和 5xx 重试；每次重试复用完全相同的
 `requestId` 和请求体，默认最多 3 次，延迟为 0.25 秒、0.5 秒的指数退避。其他 4xx
@@ -114,7 +138,7 @@
 
 ## 稳定错误
 
-新端点的业务错误位于 FastAPI `detail` 字段中，并包含：
+批次业务层的协议错误位于 FastAPI `detail` 字段中，结构如下；这不是所有依赖/Schema错误的统一格式：
 
 ```json
 {
@@ -131,18 +155,20 @@
 稳定错误码包括 `UNSUPPORTED_PROTOCOL_VERSION`、`UNSUPPORTED_SCHEMA_VERSION`、
 `INGESTION_REQUEST_CONFLICT`、`INGESTION_SEQUENCE_CONFLICT`、
 `INGESTION_RECORD_INVALID`、`INGESTION_BATCH_TOO_LARGE`、
-`INGESTION_BODY_TOO_LARGE` 和 `INGESTION_RATE_LIMITED`。
+`INGESTION_BODY_TOO_LARGE` 和 `INGESTION_RATE_LIMITED`。锁内重验失败还可能返回 `INVALID_DEVICE_TOKEN` 或 `INGESTION_SESSION_INVALID`。
+
+认证依赖使用 `detail.code`（例如缺凭据422、无效凭据401）；会话依赖可能返回字符串detail；请求Schema失败使用FastAPI校验列表。客户端先判断HTTP状态，再解析对应结构，不假定任何失败都有 `detail.error_code`。等待后的令牌失效同样可以是401，但来自协议错误结构。
 
 ## 兼容与演进
 
 - `protocolVersion=1.0` 和 `schemaVersion=1` 是当前唯一支持组合。
 - 新增可选字段时保持旧客户端可用；破坏性字段语义变更必须增加 schema 版本。
 - 真实硬件接入时应新增设备适配配置和契约测试，不改变通用字段含义。
-- 正式固件、GPIO、传感器字段、单位、采样/批量策略和错误码仍为待确认输入。
+- 新设备的固件、GPIO、字段、单位、采样与批量策略须明确登记和校验；当前DHT11候选固件已有代码契约，实物表现仍待验证。
 
-## 实验包 2.0.1 的证据语义补充（2026-09-09）
+## 记录语义与硬件事实边界
 
-DHT11 日志的组件标识可放在 `payload.sensor_snapshot.component_id`，例如 `dht11`；接口标识可放在同层 interface_id，未填时按组件的已声明接口解析。错误码映射仍由版本化实验包控制，当前错误码为未验证示例，不宣称等于真实驱动输出。
+DHT11 日志的组件标识可放在 `payload.sensor_snapshot.component_id`，例如 `dht11`；接口标识可放在同层 interface_id，未填时按组件的已声明接口解析。错误码映射由版本化实验包控制；当前DHT11固件代码会输出 `DHT11_READ_FAILED`，包映射为 `sensor.read_failed`。代码约定不能证明每种真实故障都会输出该错误，更不能凭它确认唯一根因。
 
 LED reading 的 metric_key 使用 level（旧值，来源未知）、gpio_command_level（命令）、gpio_actual_level（电气观测）或 led_physically_on（光学观测）。后三者分别要求 metadata.measurement_source 为 command / electrical_measurement / optical_observation；缺失或不匹配时标准观测 status=unknown。命令与电气观测还需 metadata.command_id 相同，且满足包配置的响应窗口才参与比较。数据契约支持这些语义不代表当前设备已经实现电气/光学检测，真实来源仍 pending_hardware。
 

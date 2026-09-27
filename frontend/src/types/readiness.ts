@@ -1,7 +1,7 @@
 export interface ReadinessItem {
   key: string
   label: string
-  status: 'ready' | 'blocked' | 'not_required' | 'test_only'
+  status: 'ready' | 'blocked' | 'not_required' | 'test_only' | 'unverified'
   evidence: string
   required_input: string | null
 }

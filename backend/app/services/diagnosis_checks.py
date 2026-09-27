@@ -11,11 +11,9 @@ from sqlalchemy.orm import Session
 from app.diagnosis.schemas import DiagnosisContext
 from app.models import (
     Device,
-    DeviceLog,
     DiagnosisCheck,
     DiagnosisResult,
     DiagnosisWorkflowRun,
-    SensorReading,
 )
 from app.services.data_scope import diagnosis_session, resolve_experiment_session
 from app.services.diagnosis import build_diagnosis_context, diagnose
@@ -102,17 +100,6 @@ def freeze(db, device, session, payload):
             experiment_version_id=payload.experiment_version_id,
             experiment_session_id=session.id,
         )
-        # Time provenance is a server-owned column, never a device-supplied payload field.
-        for model, items, source in (
-            (DeviceLog, context.logs, "device_log"),
-            (SensorReading, context.readings, "sensor_reading"),
-        ):
-            ids = [item.id for item in items]
-            if ids:
-                for identifier, quality in snapshot_db.execute(
-                    select(model.id, model.time_quality).where(model.id.in_(ids))
-                ):
-                    context.recheck_source_time_quality[f"{source}:{identifier}"] = quality
         context.feedback_scope = {
             "experiment_session_id": session.id,
             "student_user_id": session.student_user_id,
@@ -295,17 +282,14 @@ def run_check(db, graph, device, settings, payload, session):
             if baseline:
                 old_context = DiagnosisContext.model_validate(baseline.context_snapshot)
                 links = issue_links(db, baseline)
-                # A heartbeat or unrelated component cannot prove repair of these problems.
-                frozen.recheck_recovery_allowed = bool(links) and all(
-                    any(
-                        row.get("status") not in {"unknown", "invalid"}
-                        and frozen.recheck_source_time_quality.get(key) == "device_reported"
-                        and utc(row.get("observed_at") or row.get("occurred_at"))
-                        > utc(old_context.evaluated_at)
-                        for key, row in sources(frozen, link.scope).items()
-                        if key not in sources(old_context, link.scope)
-                    )
-                    for link in links
+                from app.services.recovery_evidence import fresh_related_evidence
+
+                frozen.recheck_recovery_allowed = fresh_related_evidence(
+                    frozen.model_dump(mode="json"),
+                    baseline.context_snapshot,
+                    [link.scope for link in links],
+                    old_context.evaluated_at,
+                    frozen.evaluated_at,
                 )
             if (
                 previous

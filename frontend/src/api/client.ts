@@ -22,3 +22,10 @@ export const apiClient = axios.create({
     Accept: 'application/json',
   },
 })
+
+// Fail closed for any future API path missed by a demo adapter.
+if (import.meta.env.MODE === 'review') {
+  apiClient.interceptors.request.use(() => {
+    throw new Error('离线演示不连接业务接口；该操作暂不支持。')
+  })
+}

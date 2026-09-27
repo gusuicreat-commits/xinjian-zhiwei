@@ -1,3 +1,4 @@
+import math
 import os
 from dataclasses import dataclass, field
 
@@ -11,15 +12,15 @@ def _required_env(name: str) -> str:
 
 def _positive_float_env(name: str, default: str) -> float:
     value = float(os.getenv(name, default))
-    if value <= 0:
-        raise ValueError(f"{name} must be positive")
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
     return value
 
 
 def _positive_int_env(name: str, default: str) -> int:
     value = int(os.getenv(name, default))
-    if value <= 0:
-        raise ValueError(f"{name} must be positive")
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
     return value
 
 
@@ -45,6 +46,18 @@ class SimulationConfig:
     schema_version: str = "1"
     retry_max_attempts: int = 3
     retry_base_delay_seconds: float = 0.25
+
+    def __post_init__(self):
+        for name in ("interval_seconds", "request_timeout_seconds", "retry_base_delay_seconds"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be finite and positive")
+        if (
+            isinstance(self.retry_max_attempts, bool)
+            or not isinstance(self.retry_max_attempts, int)
+            or self.retry_max_attempts <= 0
+        ):
+            raise ValueError("retry_max_attempts must be a positive integer")
 
     @classmethod
     def from_env(cls) -> "SimulationConfig":

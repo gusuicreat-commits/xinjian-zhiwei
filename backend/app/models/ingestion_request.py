@@ -61,3 +61,16 @@ class IngestionRequest(UuidPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     device = relationship("Device", back_populates="ingestion_requests")
+
+
+class LegacyIngestionAdmission(UuidPrimaryKeyMixin, Base):
+    """Recent legacy writes share the batch quota, without inventing request identities."""
+
+    __tablename__ = "legacy_ingestion_admissions"
+    __table_args__ = (Index("ix_legacy_admission_device_received", "device_id", "received_at"),)
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
+    )
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )

@@ -1,5 +1,7 @@
 # 完整流程评测问题整改
 
+> 分类：历史证据。保留当时版本、失败/通过结果和限制；不作为当前开发指令或当前验收状态。当前入口见 [文档索引](../README.md) 与 [实现状态](../implementation-status.md)。
+
 更新：2026-09-17。最新软件修复见下节；此前各轮验证保留为历史记录。
 
 
@@ -40,7 +42,7 @@
 | WF-ISSUE-02 反馈重试身份 | 同一 HTTP 请求重试会生成另一反馈并再次推进 | 请求必须带 UUID `request_id`；同诊断下同键同载荷重放原反馈，相同键不同 action/note 返回 409；真正的新尝试使用新键 | 不以文本永久去重；两次有意的“仍未解决”可以是不同尝试，但须遵守当前工作流状态 |
 | WF-ISSUE-03 反馈归属 | 仅凭设备相同即可先写反馈，再恢复流程 | 写入前核对请求会话、学生、设备、诊断及工作流归属；越界在任何反馈、Episode、调用或草稿变更前拒绝；重放路径同样先校验归属 | 补齐现有实验会话边界，没有把当前设备凭据模式升级成完整学生账号登录 |
 
-主要代码：[反馈入口](../backend/app/api/v1/routes/student.py)、[反馈提交服务](../backend/app/services/student_feedback.py)、[诊断恢复服务](../backend/app/services/diagnosis_workflow.py)、[故障树证据投影](../backend/app/ai/diagnosis_graph.py)、[推理校验](../backend/app/ai/reasoning.py)、[独立知识校验](../backend/app/knowledge/validation.py)。
+主要代码：[反馈入口](../../backend/app/api/v1/routes/student.py)、[反馈提交服务](../../backend/app/services/student_feedback.py)、[诊断恢复服务](../../backend/app/services/diagnosis_workflow.py)、[故障树证据投影](../../backend/app/ai/diagnosis_graph.py)、[推理校验](../../backend/app/ai/reasoning.py)、[独立知识校验](../../backend/app/knowledge/validation.py)。
 
 ## 反馈的重试、并发与恢复
 
@@ -67,7 +69,7 @@
 - 本地与服务端记录不一致时保留各自记录，不静默覆盖。存在未决记录或查询失败时拦住新的反馈，避免用新键绕过旧提交。
 - `sessionStorage` 仍只承诺当前标签页保存。关闭页面后需重新提供有效的设备凭据和同一实验会话，才能找回服务端记录。**请求从未到达服务器且浏览器记录也丢失时，无法找回**；没有补造历史请求键或身份。
 
-实现与测试：[重试记录](../frontend/src/api/feedbackRetry.ts)、[学生状态管理](../frontend/src/stores/studentDashboard.ts)、[状态边界测试](../frontend/src/stores/studentDashboard.test.ts)、[请求契约测试](../frontend/src/api/student.test.ts)、[存储边界测试](../frontend/src/api/feedbackRetry.test.ts)。
+实现与测试：[重试记录](../../frontend/src/api/feedbackRetry.ts)、[学生状态管理](../../frontend/src/stores/studentDashboard.ts)、[状态边界测试](../../frontend/src/stores/studentDashboard.test.ts)、[请求契约测试](../../frontend/src/api/student.test.ts)、[存储边界测试](../../frontend/src/api/feedbackRetry.test.ts)。
 
 ## 接口与数据库兼容变化
 
@@ -77,7 +79,7 @@
 - JSON 必须提供 UUID `request_id`；action/note 的内容语义保持不变。
 - 缺少必需字段或非法 UUID 返回 422；会话归属不符返回 403；不存在或不属于设备的诊断仍按入口隐藏为 404；键与载荷冲突返回 409；需要原请求重试的处理失败返回 503。
 
-新增迁移 [20260912_0027](../backend/migrations/versions/20260912_0027_feedback_request_scope.py)：为反馈增加可空的 `request_id`、`experiment_session_id`、`processing_status`，增加会话外键及 `(diagnosis_result_id, request_id)` 唯一约束。
+新增迁移 [20260912_0027](../../backend/migrations/versions/20260912_0027_feedback_request_scope.py)：为反馈增加可空的 `request_id`、`experiment_session_id`、`processing_status`，增加会话外键及 `(diagnosis_result_id, request_id)` 唯一约束。
 
 **部署新后端前必须先升级数据库到 `20260912_0027`，并同步发布带请求键和会话头的前端/调用方。** 老调用方不能继续省略这些字段。迁移文件存在不等于迁移已在目标环境执行；本轮没有操作生产数据库。
 
@@ -85,7 +87,7 @@
 
 ## 前轮验证记录（提交 3c7fcb1）
 
-该轮完整流程集合为 **25 个合成场景，全部通过**。原始失败记录继续保留在 [第二阶段报告](workflow-evaluation-phase2.md)，该次结果保存在 [整改后 PostgreSQL 评测记录](../output/workflow-evaluation/remediation-postgres.json)。报告仅含合成输入和 Mock 输出，不能作为真实硬件准确率。
+该轮完整流程集合为 **25 个合成场景，全部通过**。原始失败记录继续保留在 [第二阶段报告](workflow-evaluation-phase2.md)，该次结果保存在 [整改后 PostgreSQL 评测记录](../../output/workflow-evaluation/remediation-postgres.json)。报告仅含合成输入和 Mock 输出，不能作为真实硬件准确率。
 
 | 检查 | 本轮结果 |
 | --- | --- |
@@ -99,7 +101,7 @@
 | 学生端 Chrome Playwright | 4 passed；反馈路由实查 request_id 和会话头，使用 Mock API，不是浏览器连接真实后端的验收 |
 | 前端 TypeScript、ESLint、生产构建 | 通过；依赖库已有构建注解警告不影响退出结果 |
 
-后端回归入口：[完整流程评测](../backend/tests/test_workflow_evaluation.py)、[反馈可靠性](../backend/tests/test_feedback_reliability.py)、[候选证据映射](../backend/tests/test_candidate_evidence_mapping.py)。独立写定的合成预期保存在评测期望文件，不交给被测 AI；报告保留来源、UUID、输入/输出与单项检查，不包含登录密码或认证 token。
+后端回归入口：[完整流程评测](../../backend/tests/test_workflow_evaluation.py)、[反馈可靠性](../../backend/tests/test_feedback_reliability.py)、[候选证据映射](../../backend/tests/test_candidate_evidence_mapping.py)。独立写定的合成预期保存在评测期望文件，不交给被测 AI；报告保留来源、UUID、输入/输出与单项检查，不包含登录密码或认证 token。
 
 V2 CLI 原先的合法测试夹具没有为候选填写对应 Evidence 引用，因而被新关联校验正确拒绝；本轮补齐候选与夹具注册表的对应关系，没有放宽生产校验。这些只是 validator 合成条目，不称为真实落库或真实硬件 UUID；报告显式标记 `is_test_data`、`hardware_validation=not_run`、`teacher_confirmation=synthetic_fixture_only`。
 
@@ -119,7 +121,7 @@ pytest backend/tests -o addopts='' -q -ra
 
 ## 反馈找回与持续验收（本轮）
 
-前轮整改先提交为 `3c7fcb1`。本轮新增服务端只读找回、学生确认面板、首次诊断入口和旧响应隔离，以及 CI/本地门禁；没有新增数据库迁移。GET 契约见 [API 设计](api-design.md)，测试环境与复现参数见 [评测准则](evaluation.md)。
+前轮整改先提交为 `3c7fcb1`。本轮新增服务端只读找回、学生确认面板、首次诊断入口和旧响应隔离，以及 CI/本地门禁；没有新增数据库迁移。GET 契约见 [API 设计](../api-design.md)，测试环境与复现参数见 [评测准则](../evaluation.md)。
 
 真实联调使用合成身份和设备报文、Mock Provider，但页面请求经过真实 HTTP、FastAPI、诊断图、PostgreSQL 业务表与 Checkpoint，数据库结构通过 Alembic 创建。两条场景分别验证正常反馈重放/刷新，以及 pending 后关页重登/纯读找回/明确点击后只推进一次。它们不同于现有 Mock API 页面测试，也不代表硬件或真实模型效果。
 
@@ -129,7 +131,7 @@ pytest backend/tests -o addopts='' -q -ra
 | --- | --- |
 | 后端全量 | 342 passed，无 skipped/xfail；35.25 秒，1 项依赖弃用警告 |
 | 新增反馈找回专项 | 11 项，已包含在后端全量；覆盖双库、较早诊断、原备注、纯读/重放、归属、关闭会话、旧 NULL 与数量上限 |
-| PostgreSQL 完整流程 | 25/25 passed；[本轮 JSON](../output/workflow-evaluation/local-postgres.json)，真实 Provider 调用 0，hardware_validation=not_run |
+| PostgreSQL 完整流程 | 25/25 passed；[本轮 JSON](../../output/workflow-evaluation/local-postgres.json)，真实 Provider 调用 0，hardware_validation=not_run |
 | 模拟器 | 16 passed |
 | 两个 Experiment Package | 各 10 项校验通过，均为 2.0.2，内容与前轮提交不变 |
 | 合成诊断/结构化知识/V2 CLI | 全部通过；合成诊断 30/30 |
@@ -235,13 +237,13 @@ pytest backend/tests -o addopts='' -q -ra
 
 ## 报告整理（2026-09-16）
 
-自动报告按 [固定存放约定](test-reporting.md) 分成 Markdown 摘要、简明 JSON、按需 gzip 排错附件，默认只保存失败用例的完整轨迹。旧记录原地保留并从 Git 改动列表排除，主流程及检查条件不变。
+自动报告按 [固定存放约定](../test-reporting.md) 分成 Markdown 摘要、简明 JSON、按需 gzip 排错附件，默认只保存失败用例的完整轨迹。旧记录原地保留并从 Git 改动列表排除，主流程及检查条件不变。
 
 本轮后端 361 项通过；PostgreSQL 流程 25/25 通过；新版实际摘要 40 行、JSON 352 行。新报告专项覆盖失败证据保留、退出码、完整/关闭附件选项及仅清理同名旧附件。Ruff、CI YAML 解析、脚本语法、安全扫描、差异检查通过。源码指纹已核对；临时 schema 剩余 0。CI 摘要与附件上传已配置但尚未推送验证；前端本轮未重跑。真实硬件和独立语义审阅仍未完成。
 
 
 ## 第二轮根因修复（2026-09-17）
 
-已完成R2-01至R2-10代码修复、新增0029迁移、只读历史检查和防回归对应表。归属、权限投影、审批版本、故障生命周期与Provider外发使用统一入口；原反例、真实并发及正常路径已验证。详细结果见[固定本轮报告](../output/audits/remediation-r2-latest.md)，流程结果见[PostgreSQL摘要](../output/workflow-evaluation/r2-latest.md)。
+已完成R2-01至R2-10代码修复、新增0029迁移、只读历史检查和防回归对应表。归属、权限投影、审批版本、故障生命周期与Provider外发使用统一入口；原反例、真实并发及正常路径已验证。详细结果见[固定本轮报告](../../output/audits/remediation-r2-latest.md)，流程结果见[PostgreSQL摘要](../../output/workflow-evaluation/r2-latest.md)。
 
 本次后端全量520项通过，最后变更定向43项通过；模拟器16、前端64、Chrome页面7、真实联调2、PostgreSQL流程25项通过。迁移在隔离库验证。运行库只读检查版本0021，116项疑点涉及97条记录，未改写；运行库未迁移，修复未部署。真实硬件/付费模型/独立语义/远端CI仍未验证。

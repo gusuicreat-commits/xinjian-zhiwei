@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_review_access
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.classroom import AuthSession
+from app.models.base import utc_now
+from app.models.classroom import AuthSession, User
 from app.models.intervention import InterventionCase
 from app.models.knowledge import KnowledgeDocument
 from app.schemas.health import (
@@ -78,11 +79,17 @@ def ops_status(_: ReviewAccess, db: DatabaseSession) -> OpsStatusResponse:
     )
     pending = db.scalar(
         select(func.count(InterventionCase.id)).where(
-            InterventionCase.status.in_(["open", "claimed", "resolved"])
+            InterventionCase.status.in_(["open", "claimed", "unconfirmed"])
         )
     )
     active_sessions = db.scalar(
-        select(func.count(AuthSession.id)).where(AuthSession.revoked_at.is_(None))
+        select(func.count(AuthSession.id))
+        .join(User)
+        .where(
+            AuthSession.revoked_at.is_(None),
+            AuthSession.expires_at > utc_now(),
+            User.is_active.is_(True),
+        )
     )
     return OpsStatusResponse(
         version=settings.app_version,
@@ -94,4 +101,10 @@ def ops_status(_: ReviewAccess, db: DatabaseSession) -> OpsStatusResponse:
         test_knowledge_documents=int(test or 0),
         pending_interventions=int(pending or 0),
         active_sessions=int(active_sessions or 0),
+        resolved_awaiting_close=int(
+            db.scalar(
+                select(func.count(InterventionCase.id)).where(InterventionCase.status == "resolved")
+            )
+            or 0
+        ),
     )

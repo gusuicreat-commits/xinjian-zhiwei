@@ -4,15 +4,16 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Union
 
-from pydantic import ValidationError
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.base import utc_now
+from app.models.classroom import ExperimentSession
 from app.models.device import Device
 from app.models.device_heartbeat import DeviceHeartbeat
 from app.models.device_log import DeviceLog
-from app.models.ingestion_request import IngestionRequest
+from app.models.ingestion_request import IngestionRequest, LegacyIngestionAdmission
 from app.models.sensor_reading import SensorReading
 from app.schemas.device import (
     DeviceBatchIngestRequest,
@@ -22,7 +23,14 @@ from app.schemas.device import (
     DeviceLogCreate,
     SensorReadingCreate,
 )
-from app.services.data_scope import ingestion_session_id
+from app.services.data_scope import (
+    ScopeConflict,
+    ScopeViolation,
+    ingestion_session_id,
+    resolve_experiment_session,
+)
+from app.services.device_protocol import _normalize_protocol_record as _normalize_protocol_record
+from app.services.device_protocol import _parse_device_time
 
 
 @dataclass(frozen=True)
@@ -45,64 +53,126 @@ def _payload_hash(payload: DeviceBatchIngestRequest) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _parse_device_time(value: Optional[str], server_received_at: datetime) -> tuple[datetime, str]:
-    if not value:
-        return server_received_at, "server_fallback"
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return server_received_at, "server_fallback"
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        return server_received_at, "server_fallback"
-    parsed = parsed.astimezone(timezone.utc)
-    if parsed.year < 2020 or parsed > server_received_at + timedelta(days=1):
-        return server_received_at, "server_fallback"
-    return parsed, "device_reported"
-
-
-def _normalize_protocol_record(
-    *,
-    record_type: str,
-    occurred_at_raw: Optional[str],
-    raw_payload: dict[str, Any],
-    is_test_data: bool,
-    firmware_version: Optional[str],
-    server_received_at: datetime,
-) -> tuple[Union[DeviceLogCreate, SensorReadingCreate, DeviceHeartbeatCreate], str]:
-    values = dict(raw_payload)
-    legacy_time = values.pop("occurred_at", None) or values.pop("observed_at", None)
-    values.pop("is_test_data", None)
-    occurred_at, time_quality = _parse_device_time(
-        occurred_at_raw or (str(legacy_time) if legacy_time is not None else None),
-        server_received_at,
+def lock_ingestion_device(
+    db, device, experiment_session_id, request_id="", authenticated_hash=None
+):
+    authenticated_hash = authenticated_hash if authenticated_hash is not None else device.token_hash
+    locked = db.scalar(
+        select(Device)
+        .where(Device.id == device.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
-    try:
-        if record_type == "log":
-            values["occurred_at"] = occurred_at
-            values["is_test_data"] = is_test_data
-            return DeviceLogCreate.model_validate(values), time_quality
-        if record_type == "reading":
-            values["observed_at"] = occurred_at
-            values["is_test_data"] = is_test_data
-            return SensorReadingCreate.model_validate(values), time_quality
-        values["observed_at"] = occurred_at
-        values["is_test_data"] = is_test_data
-        if firmware_version is not None:
-            values["firmware_version"] = firmware_version
-        return DeviceHeartbeatCreate.model_validate(values), time_quality
-    except ValidationError as error:
-        safe_errors = [
-            {
-                "type": item["type"],
-                "location": [str(part) for part in item["loc"]],
-                "message": item["msg"],
-            }
-            for item in error.errors(include_url=False)
-        ]
-        raise ValueError(safe_errors) from error
+    if locked is None or not locked.is_active or locked.token_hash != authenticated_hash:
+        raise ProtocolIngestError(
+            401,
+            "INVALID_DEVICE_TOKEN",
+            "Device credentials are no longer valid",
+            request_id,
+            {},
+        )
+    if experiment_session_id is not None:
+        # Dependency validation may have happened before waiting for the lock.
+        db.scalar(
+            select(ExperimentSession)
+            .where(ExperimentSession.id == experiment_session_id)
+            .execution_options(populate_existing=True)
+        )
+        try:
+            resolve_experiment_session(db, locked, experiment_session_id, require_active=False)
+        except (ScopeViolation, ScopeConflict) as exc:
+            raise ProtocolIngestError(
+                403 if isinstance(exc, ScopeViolation) else 409,
+                "INGESTION_SESSION_INVALID",
+                str(exc),
+                request_id,
+                {},
+            ) from exc
+    return locked
+
+
+def check_ingestion_quota(db, device, requests_per_minute, request_id=""):
+    now = utc_now()
+    cutoff = now - timedelta(minutes=1)
+    # Receipts already account for batch writes; legacy admissions contain no receipt.
+    recent = sum(
+        int(
+            db.scalar(
+                select(func.count(model.id)).where(
+                    model.device_id == device.id,
+                    timestamp >= cutoff,
+                )
+            )
+            or 0
+        )
+        for model, timestamp in (
+            (IngestionRequest, IngestionRequest.server_received_at),
+            (LegacyIngestionAdmission, LegacyIngestionAdmission.received_at),
+        )
+    )
+    if recent >= requests_per_minute:
+        raise ProtocolIngestError(
+            429,
+            "INGESTION_RATE_LIMITED",
+            "device request rate exceeds the configured limit",
+            request_id,
+            {"requests_per_minute": requests_per_minute},
+            retryable=True,
+        )
+    return now
 
 
 def ingest_device_batch(
+    *,
+    db: Session,
+    device: Device,
+    payload: DeviceBatchIngestRequest,
+    expected_protocol_version: str,
+    expected_schema_version: str,
+    max_records: int,
+    requests_per_minute: int,
+    experiment_session_id: str | None = None,
+) -> DeviceBatchIngestResponse:
+    """Serialize admission and receipt creation across workers, per device.
+
+    Session commands lock actor then device; ingestion never takes an actor lock.
+    No network/model work is performed while the device row is locked.
+    """
+    authenticated_hash = device.token_hash
+    for attempt in range(2):
+        try:
+            locked = lock_ingestion_device(
+                db, device, experiment_session_id, payload.request_id, authenticated_hash
+            )
+            response = _ingest_device_batch_locked(
+                db=db,
+                device=locked,
+                payload=payload,
+                expected_protocol_version=expected_protocol_version,
+                expected_schema_version=expected_schema_version,
+                max_records=max_records,
+                requests_per_minute=requests_per_minute,
+                experiment_session_id=experiment_session_id,
+            )
+            db.commit()  # Also release the lock on an idempotent replay.
+            return response
+        except IntegrityError as exc:
+            db.rollback()
+            constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+            if attempt or constraint not in {
+                "uq_ingestion_requests_device_request",
+                "uq_ingestion_requests_device_boot_sequence",
+            }:
+                raise
+            # A writer outside this gate raced us: re-lock and inspect the actual
+            # committed receipt. Never turn an unrelated integrity error into success.
+        except Exception:
+            db.rollback()
+            raise
+    raise AssertionError("unreachable ingestion retry")
+
+
+def _ingest_device_batch_locked(
     *,
     db: Session,
     device: Device,
@@ -174,22 +244,7 @@ def ingest_device_batch(
             details={"existing_request_id": sequence_owner.request_id},
         )
 
-    server_received_at = utc_now()
-    recent_count = db.scalar(
-        select(func.count(IngestionRequest.id)).where(
-            IngestionRequest.device_id == device.id,
-            IngestionRequest.server_received_at >= server_received_at - timedelta(minutes=1),
-        )
-    )
-    if int(recent_count or 0) >= requests_per_minute:
-        raise ProtocolIngestError(
-            status_code=429,
-            error_code="INGESTION_RATE_LIMITED",
-            message="device request rate exceeds the configured limit",
-            request_id=payload.request_id,
-            details={"requests_per_minute": requests_per_minute},
-            retryable=True,
-        )
+    server_received_at = check_ingestion_quota(db, device, requests_per_minute, payload.request_id)
 
     normalized: list[
         tuple[
@@ -325,7 +380,6 @@ def ingest_device_batch(
         records=results,
     )
     ingestion.response_json = response.model_dump(mode="json", by_alias=True)
-    db.commit()
     return response
 
 
@@ -362,6 +416,30 @@ def cleanup_test_run(db: Session, device: Device, test_run_id: str) -> dict[str,
     }
 
 
+def ingest_legacy_record(db, device, payload, *, experiment_session_id, requests_per_minute):
+    try:
+        locked = lock_ingestion_device(db, device, experiment_session_id)
+        now = check_ingestion_quota(db, locked, requests_per_minute)
+        db.execute(
+            delete(LegacyIngestionAdmission).where(
+                LegacyIngestionAdmission.device_id == locked.id,
+                LegacyIngestionAdmission.received_at < now - timedelta(minutes=1),
+            )
+        )
+        db.add(LegacyIngestionAdmission(device_id=locked.id, received_at=now))
+        save = (
+            save_log
+            if isinstance(payload, DeviceLogCreate)
+            else save_reading
+            if isinstance(payload, SensorReadingCreate)
+            else save_heartbeat
+        )
+        return save(db, locked, payload, experiment_session_id=experiment_session_id)
+    except Exception:
+        db.rollback()
+        raise
+
+
 def save_log(
     db: Session,
     device: Device,
@@ -380,6 +458,7 @@ def save_log(
         occurred_at=payload.occurred_at,
         sensor_snapshot=payload.sensor_snapshot,
         raw_payload=payload.model_dump(mode="json"),
+        time_quality="device_reported",
         is_test_data=payload.is_test_data,
     )
     db.add(record)
@@ -407,6 +486,7 @@ def save_reading(
         observed_at=payload.observed_at,
         metadata_json=payload.metadata,
         raw_payload=payload.model_dump(mode="json"),
+        time_quality="device_reported",
         is_test_data=payload.is_test_data,
     )
     db.add(record)
@@ -432,6 +512,7 @@ def save_heartbeat(
         firmware_version=payload.firmware_version,
         metadata_json=payload.metadata,
         raw_payload=payload.model_dump(mode="json"),
+        time_quality="device_reported",
         is_test_data=payload.is_test_data,
         received_at=received_at,
     )

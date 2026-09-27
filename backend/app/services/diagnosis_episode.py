@@ -7,13 +7,14 @@ from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from threading import RLock
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session, object_session
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
 from app.models.device import Device
 from app.models.diagnosis_episode import DiagnosisEpisode, DiagnosisIssue
+from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.diagnosis_workflow import DiagnosisWorkflowRun
 from app.models.guidance_history import GuidanceHistory
@@ -171,15 +172,15 @@ def confirmed_recovery(diagnosis: DiagnosisResult, previous: DiagnosisResult) ->
         or _aware(diagnosis.evaluated_at) <= _aware(previous.evaluated_at)
     ):
         return False
-    # An empty/restricted window and a later evaluation time are not recovery evidence.
-    for name in ("observations", "readings", "heartbeats"):
-        for item in snapshot.get(name, []):
-            value = item.get("observed_at")
-            if value:
-                observed = _aware(datetime.fromisoformat(str(value).replace("Z", "+00:00")))
-                if _aware(previous.evaluated_at) < observed <= _aware(diagnosis.evaluated_at):
-                    return True
-    return False
+    from app.services.recovery_evidence import fresh_related_evidence
+
+    return fresh_related_evidence(
+        snapshot,
+        previous.context_snapshot or {},
+        [group["scope"] for group in _issue_groups(previous).values()],
+        previous.evaluated_at,
+        diagnosis.evaluated_at,
+    )
 
 
 def _primary_error(diagnosis: DiagnosisResult) -> str | None:
@@ -327,6 +328,21 @@ def _upsert_episode_locked(db, device, diagnosis, guidance, settings):
     return episode
 
 
+def episode_attempt_count(db, episode_id):
+    """Committed, authorized requests count once, including resumable pending work."""
+    if not episode_id:
+        return 0
+    return (
+        db.scalar(
+            select(func.count(DiagnosisFeedback.id)).where(
+                DiagnosisFeedback.episode_id == episode_id,
+                DiagnosisFeedback.action == "unresolved",
+            )
+        )
+        or 0
+    )
+
+
 def apply_episode_feedback(db, diagnosis, feedback):
     """Called once while saving a new feedback row under the lifecycle lock."""
     links = issue_links(db, diagnosis)
@@ -360,6 +376,15 @@ def apply_episode_feedback(db, diagnosis, feedback):
         raise EpisodeFeedbackConflict(
             "This problem is closed; replay the original receipt or run a new diagnosis"
         )
+    # Bind before counting: compatibility feedback also has explicit ownership.
+    feedback.episode_id = episode.id
+    db.flush()
+    if feedback.action == "unresolved":
+        episode.current_hint_level = max(
+            episode.current_hint_level, min(4, 1 + episode_attempt_count(db, episode.id))
+        )
+        if episode.current_hint_level == 4:
+            episode.status = "escalated"
     if feedback.action == "resolved":
         finish_problem(episode, revision, "student_feedback")
     elif feedback.action == "request_teacher_help":
@@ -482,18 +507,16 @@ def _new_evidence_after(diagnosis, keys, cutoff):
     ):
         for item in snapshot.get(field, []):
             candidates = {evidence_source_key(item, prefix)}
-            raw = item.get("raw_payload") or {}
-            if not candidates.intersection(keys) or raw.get("time_quality") == "server_fallback":
+            if not candidates.intersection(keys):
                 continue
-            time_quality = snapshot.get("recheck_source_time_quality")
-            if time_quality:
-                source = item.get("source") or {
-                    "logs": "device_log",
-                    "readings": "sensor_reading",
-                }.get(field)
-                source_key = f"{source}:{item.get('source_ref') or item.get('id')}"
-                if time_quality.get(source_key) != "device_reported":
-                    continue
+            time_quality = snapshot.get("recheck_source_time_quality") or {}
+            source = item.get("source") or {
+                "logs": "device_log",
+                "readings": "sensor_reading",
+            }.get(field)
+            source_key = f"{source}:{item.get('source_ref') or item.get('id')}"
+            if time_quality.get(source_key) != "device_reported":
+                continue
             value = item.get(time_field)
             if value:
                 try:

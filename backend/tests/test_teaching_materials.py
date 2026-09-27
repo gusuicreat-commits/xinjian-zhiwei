@@ -30,6 +30,11 @@ def documents():
     return docs
 
 
+def dht11_package_version():
+    bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
+    return bundle.metadata.package.version
+
+
 def select(bundle, **overrides):
     args = dict(
         tree_id=bundle.fault_trees.trees[0].id,
@@ -175,7 +180,7 @@ def test_http_guidance_snapshot_survives_feedback_and_all_ai_modes(mode):
         before = dashboard(env)["guidance"]
         materials = [h["teaching"] for g in before for h in g["hints"]]
         assert materials and any(m["status"] == "available" for m in materials)
-        assert all(m["package_version"] == "2.0.5" for m in materials)
+        assert all(m["package_version"] == dht11_package_version() for m in materials)
         assert all(m["is_test_data"] for m in materials)
         request = {"request_id": str(uuid4()), "action": "unresolved"}
         path = f"/api/v1/student/diagnoses/{workflow['diagnosis_result_id']}/feedback"

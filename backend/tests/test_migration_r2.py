@@ -59,7 +59,7 @@ def test_empty_database_upgrade_matches_models(migration_db):
     engine, migrate = migration_db
     migrate("upgrade", "head")
     with engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260920_0033"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260927_0034"
     migrate("check")
 
 
@@ -180,4 +180,4 @@ def test_0032_upgrade_preserves_history_and_receipts_block_destructive_downgrade
         migrate("downgrade", "20260920_0032")
     with engine.connect() as conn:
         assert conn.scalar(text("SELECT count(*) FROM diagnosis_checks")) == 1
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260920_0033"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260927_0034"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { REVIEW_MODE } from '@/review/fixtures'
 import { Connection, Lock, Monitor, User } from '@element-plus/icons-vue'
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -33,6 +34,7 @@ async function authenticate(): Promise<void> {
   try {
     await sessionStore.authenticateAccount(account.username.trim(), account.password)
     account.password = ''
+    if (REVIEW_MODE && sessionStore.isAuthenticated) await router.replace('/student')
     if (sessionStore.availableSessions.length === 1) {
       selectedSession.value = sessionStore.availableSessions[0]!.id
     }
@@ -81,13 +83,22 @@ async function submit(): Promise<void> {
       <div class="auth-card">
         <p class="auth-kicker">STUDENT SESSION</p>
         <h1 id="student-login-title">进入学生实验</h1>
-        <p class="auth-panel-copy">验证本人账号，再选择已获授权的实验。</p>
+        <p class="auth-panel-copy">
+          {{
+            REVIEW_MODE
+              ? '离线演示无需真实账号，请勿填写真实密码。'
+              : '验证本人账号，再选择已获授权的实验。'
+          }}
+        </p>
         <el-radio-group v-model="mode" aria-label="登录方式">
           <el-radio-button value="account">学生账号</el-radio-button>
           <el-radio-button value="demo">测试设备演示</el-radio-button>
         </el-radio-group>
 
-        <el-form v-if="mode === 'account'" class="login-form" @submit.prevent="authenticate">
+        <el-button v-if="REVIEW_MODE" type="primary" @click="authenticate"
+          >以演示学生身份进入</el-button
+        >
+        <el-form v-else-if="mode === 'account'" class="login-form" @submit.prevent="authenticate">
           <el-form-item required>
             <el-input v-model="account.username" placeholder="学生账号" autocomplete="username" />
           </el-form-item>

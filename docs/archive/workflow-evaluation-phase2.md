@@ -1,5 +1,7 @@
 # 第二阶段：完整流程评测与问题清单
 
+> 分类：历史证据。保留当时版本、失败/通过结果和限制；不作为当前开发指令或当前验收状态。当前入口见 [文档索引](../README.md) 与 [实现状态](../implementation-status.md)。
+
 > 历史失败基线：本页保留第二阶段原始输入、失败结果和当时的整改建议，不代表当前代码仍有相同缺陷。后续修复、兼容变化和最新验收记录见 [完整流程问题整改](workflow-remediation.md)。
 
 日期：2026-09-12。第一阶段基线提交：`97c4d27`。本阶段只新增隔离评测、反例和报告，没有修改生产诊断流程、接口、数据库模型或实验包。
@@ -57,7 +59,7 @@
 
 复现：为同一合成设备建立另一学生的有效会话，使用其 `X-Experiment-Session-ID` 向原学生诊断提交 resolved。实际返回 **201**、新增反馈，原流程从 waiting_feedback 变为 completed；预期是在写入前拒绝并保持所有记录不变。
 
-定位：[反馈路由](../backend/app/api/v1/routes/student.py)仅先验证 diagnosis.device_id，随后就保存反馈；[恢复服务](../backend/app/services/diagnosis_workflow.py)检查设备与记录内部归属，未比较本次请求者的实验会话。这与读取接口已有的会话边界不一致。
+定位：[反馈路由](../../backend/app/api/v1/routes/student.py)仅先验证 diagnosis.device_id，随后就保存反馈；[恢复服务](../../backend/app/services/diagnosis_workflow.py)检查设备与记录内部归属，未比较本次请求者的实验会话。这与读取接口已有的会话边界不一致。
 
 后续整改应在保存任何反馈、Episode 或草稿之前核对会话—学生—设备—诊断关系；拒绝路径必须零副作用。不能只在流程恢复后补校验。此复现不声称证明攻击者无需设备凭据，也不覆盖其他全部权限边界。
 
@@ -65,7 +67,7 @@
 
 复现：连续两次发送相同 unresolved 报文。第二次新增一个反馈 UUID，resume_count 从 1 到 2，Mock 总调用从 4 到 6。
 
-定位：[save_student_feedback](../backend/app/services/student_dashboard.py)每次创建新记录；当前反馈 Schema 只有 action/note，没有能识别同一次逻辑提交的键。因此问题是**重试契约缺失**，不能把所有相同文本都当重复操作。
+定位：[save_student_feedback](../../backend/app/services/student_dashboard.py)每次创建新记录；当前反馈 Schema 只有 action/note，没有能识别同一次逻辑提交的键。因此问题是**重试契约缺失**，不能把所有相同文本都当重复操作。
 
 后续应设计稳定的提交标识与数据库唯一约束：相同键同载荷重放原响应，相同键不同载荷冲突，不同键允许真实新尝试。拒绝或重放不得新增调用、Episode 变更或知识草稿。该项可能涉及小范围 Schema/迁移，需要与权限修复一起审阅；本轮未直接添加。
 
@@ -73,17 +75,17 @@
 
 复现：一次心跳加五次 DHT11 读取失败，候选原因 evidence_refs 指向真实的 `device_heartbeat` UUID。异常规则的失败证据 UUID 另有落库，不能用心跳填补关联缺口。
 
-定位：[fault_tree_analyzer](../backend/app/ai/diagnosis_graph.py)解析旧 log_id/reading_id，未匹配时使用第一条注册证据。第一阶段收紧了 AI 推理降级，但这一更上游的映射仍可产生看似合法的引用。
+定位：[fault_tree_analyzer](../../backend/app/ai/diagnosis_graph.py)解析旧 log_id/reading_id，未匹配时使用第一条注册证据。第一阶段收紧了 AI 推理降级，但这一更上游的映射仍可产生看似合法的引用。
 
 后续应根据故障树实际匹配条件关联规则事实及原始事件；匹配不到时保留空引用/unknown。不得固定换成“第一条失败日志”。就算关联到失败日志，也不能因此断言 DATA 断开或器件损坏。
 
 ## 评测实现与隔离
 
-- [workflow_inputs.json](../backend/evaluation/workflow_inputs.json)：合成上报、Mock 模式与操作序列。
-- [workflow_expectations.json](../backend/evaluation/workflow_expectations.json)：独立人工写定的异常集合、状态序列及要求；仅评测器读取，未交给被测图或 Mock。
-- [workflow_environment.py](../backend/app/evaluation/workflow_environment.py)：建立隔离 SQLite 或随机 PostgreSQL schema，使用现有包导入/状态转换建立测试版本，结束删除自己建立的 schema。此处 approved/published 是合成数据库的工作流测试，不是正式知识认证。
-- [workflow_runner.py](../backend/app/evaluation/workflow_runner.py)：通过真实路由驱动，保存实际输入/响应、过程快照、证据来源、AI 审计及预期对比。
-- [test_workflow_evaluation.py](../backend/tests/test_workflow_evaluation.py)：流程检查及篡改反例，验证替换 UUID、增加异常、越界动作、换包 hash、自动批准知识都会导致检查失败。
+- [workflow_inputs.json](../../backend/evaluation/workflow_inputs.json)：合成上报、Mock 模式与操作序列。
+- [workflow_expectations.json](../../backend/evaluation/workflow_expectations.json)：独立人工写定的异常集合、状态序列及要求；仅评测器读取，未交给被测图或 Mock。
+- [workflow_environment.py](../../backend/app/evaluation/workflow_environment.py)：建立隔离 SQLite 或随机 PostgreSQL schema，使用现有包导入/状态转换建立测试版本，结束删除自己建立的 schema。此处 approved/published 是合成数据库的工作流测试，不是正式知识认证。
+- [workflow_runner.py](../../backend/app/evaluation/workflow_runner.py)：通过真实路由驱动，保存实际输入/响应、过程快照、证据来源、AI 审计及预期对比。
+- [test_workflow_evaluation.py](../../backend/tests/test_workflow_evaluation.py)：流程检查及篡改反例，验证替换 UUID、增加异常、越界动作、换包 hash、自动批准知识都会导致检查失败。
 
 使用新建 FastAPI 测试应用挂载生产路由；不会启动生产 lifespan。真实业务函数及诊断图不被替换，只替换两个 AI client 工厂。报告不导出登录密码、设备 token、Authorization 或登录 access_token。Mock 输出只代表特定合成行为，不代表真实模型能力。
 

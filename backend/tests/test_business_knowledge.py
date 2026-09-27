@@ -11,6 +11,10 @@ pytest_plugins = ["test_knowledge_case_drafting"]
 def test_outside_candidate_confirmation_is_preserved_pending_a_new_package(persisted_draft):
     db, draft = persisted_draft
     original = db.get(DiagnosisResult, draft.diagnosis_result_id)
+    original.matched_rules = [
+        {**hit, "scope": {"kind": "component", "keys": ["synthetic-sensor"]}}
+        for hit in original.matched_rules
+    ]
     now = utc_now() + timedelta(seconds=1)
     recovery = DiagnosisResult(
         device_id=original.device_id,
@@ -25,7 +29,17 @@ def test_outside_candidate_confirmation_is_preserved_pending_a_new_package(persi
         context_snapshot={
             **original.context_snapshot,
             "normal_assessment": {"status": "normal", "checks": [{"status": "satisfied"}]},
-            "observations": [{"id": "fresh-observation", "observed_at": now.isoformat()}],
+            "observations": [
+                {
+                    "id": "fresh-observation",
+                    "observed_at": now.isoformat(),
+                    "source": "sensor_reading",
+                    "source_ref": "fresh-observation",
+                    "component_id": "synthetic-sensor",
+                    "status": "normal",
+                }
+            ],
+            "recheck_source_time_quality": {"sensor_reading:fresh-observation": "device_reported"},
         },
     )
     db.add(recovery)

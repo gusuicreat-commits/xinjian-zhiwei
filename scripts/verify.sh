@@ -29,18 +29,30 @@ TEST_DIAGNOSIS_CHECKPOINT_DSN=${TEST_DIAGNOSIS_CHECKPOINT_DSN:-$XINJIAN_EVAL_POS
 TEST_AI_QUOTA_POSTGRES_DSN=${TEST_AI_QUOTA_POSTGRES_DSN:-$XINJIAN_EVAL_POSTGRES_DSN}
 export TEST_DIAGNOSIS_CHECKPOINT_DSN TEST_AI_QUOTA_POSTGRES_DSN
 
+if [ -z "${XINJIAN_BACKUP_TEST_CONTAINER:-}" ]; then
+  echo "Full verification requires XINJIAN_BACKUP_TEST_CONTAINER for disposable backup/restore drills." >&2
+  exit 2
+fi
 "$backend_python" scripts/prepare_evaluation_postgres.py
-"$backend_bin/ruff" check backend simulator scripts/prepare_evaluation_postgres.py
+"$backend_bin/ruff" check backend simulator scripts/prepare_evaluation_postgres.py scripts/database_backup.py
 PYTHONPATH=backend "$backend_bin/pytest" backend/tests
 PYTHONPATH=simulator "$backend_bin/pytest" simulator/tests
 PYTHONPATH=backend "$backend_python" -m app.cli.run_synthetic_evaluation >/dev/null
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_experiment_packages
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_structured_knowledge
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_v2_evidence_workflow
+PYTHONPATH=backend "$backend_python" scripts/check_firmware_protocol.py
 PYTHONPATH=backend "$backend_python" -m app.cli.run_workflow_evaluation \
   --postgres --output "$workflow_report"
 "$backend_python" scripts/check_version.py
 scripts/security_scan.sh
+firmware_pio=${FIRMWARE_PIO:-pio}
+if ! command -v "$firmware_pio" >/dev/null 2>&1; then
+  echo "PlatformIO is required for firmware validation; set FIRMWARE_PIO to its executable." >&2
+  exit 2
+fi
+"$firmware_pio" run -d firmware/esp32_dht11
+"$backend_python" scripts/test_firmware_host.py
 
 (
   cd frontend
@@ -50,6 +62,7 @@ scripts/security_scan.sh
   npm run build
   npm run test:e2e
   npm run test:e2e:integration
+  npx playwright test --config playwright.review.config.ts
 )
 
 if [ "${1:-}" = "--docker" ]; then

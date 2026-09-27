@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from xinjian_simulator.client import DeviceApiClient
 from xinjian_simulator.config import SimulationConfig
 from xinjian_simulator.dsl import DslScenario, list_specs, load_spec
+from xinjian_simulator.reports import save_report
 from xinjian_simulator.runner import run_scenario
 from xinjian_simulator.scenarios import SCENARIO_FACTORIES
 
@@ -97,19 +98,6 @@ def _execute_spec(
         raise SystemExit("--iterations must be positive")
     configs = _configs_for_devices(spec.devices, interval_seconds)
     test_run_id = str(uuid4())
-    device_reports = []
-    for config in configs:
-        device_reports.append(
-            {
-                "device_id": config.device_id,
-                **run_scenario(
-                    DslScenario(spec),
-                    config,
-                    cycles,
-                    test_run_id=test_run_id,
-                ),
-            }
-        )
     report = {
         "report_schema_version": "1",
         "test_run_id": test_run_id,
@@ -118,17 +106,36 @@ def _execute_spec(
         "scenario_hash": spec.content_hash,
         "seed": spec.seed,
         "is_test_data": True,
-        "status": "completed",
+        "status": "running",
         "cycles": cycles,
         "replay_of": replay_of,
-        "completed_at": datetime.now(timezone.utc).isoformat(),
-        "devices": device_reports,
+        "devices": [
+            {"device_id": config.device_id, "cycles": 0, "record_ids": [], "status": "pending"}
+            for config in configs
+        ],
     }
-    REPORT_DIRECTORY.mkdir(exist_ok=True)
-    _report_path(test_run_id).write_text(
-        json.dumps(report, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    path = _report_path(test_run_id)
+    save_report(path, report)
+
+    def progress(snapshot):
+        report["devices"] = [
+            snapshot if row["device_id"] == snapshot["device_id"] else row
+            for row in report["devices"]
+        ]
+        save_report(path, report)
+
+    try:
+        for config in configs:
+            run_scenario(
+                DslScenario(spec), config, cycles, test_run_id=test_run_id, progress=progress
+            )
+    except BaseException:
+        report["status"] = "interrupted"
+        save_report(path, report)
+        raise
+    report["status"] = "completed"
+    report["completed_at"] = datetime.now(timezone.utc).isoformat()
+    save_report(path, report)
     return report
 
 
@@ -176,6 +183,10 @@ def main(default_scenario: Optional[str] = None) -> None:
         if args.command == "cleanup":
             report = _load_report(args.test_run_id)
             configs = _configs_for_devices(len(report["devices"]), None)
+            if {config.device_id for config in configs} != {
+                item["device_id"] for item in report["devices"]
+            }:
+                raise ValueError("cleanup device configuration differs from the saved run manifest")
             results = []
             for config in configs:
                 with DeviceApiClient(config) as client:

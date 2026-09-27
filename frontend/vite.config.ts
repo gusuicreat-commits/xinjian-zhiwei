@@ -28,10 +28,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (
-            id.includes('/node_modules/echarts/') ||
-            id.includes('/node_modules/zrender/')
-          ) {
+          if (id.includes('/node_modules/echarts/') || id.includes('/node_modules/zrender/')) {
             return 'charts'
           }
           return undefined
@@ -43,7 +40,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
+    exclude: ['tests/e2e/**', 'tests/review/**', 'node_modules/**', 'dist/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

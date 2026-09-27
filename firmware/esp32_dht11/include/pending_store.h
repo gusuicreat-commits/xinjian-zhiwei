@@ -8,6 +8,7 @@ struct PendingEnvelope {
     String body;
     uint16_t record_count = 0;
     uint8_t attempts = 0;
+    bool acknowledged = false;
 };
 
 class PendingStore {
@@ -16,8 +17,10 @@ public:
     bool load(PendingEnvelope& out);
     bool save(const PendingEnvelope& value);
     bool clear();
+    bool healthy() const { return healthy_; }
     bool hasPending() const { return pending_; }
 
 private:
     bool pending_ = false;
+    bool healthy_ = false;
 };

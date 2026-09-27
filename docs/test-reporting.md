@@ -1,51 +1,65 @@
-# 测试报告放在哪里、怎么看
+# 测试报告约定
 
-本项目将简明结果与排错附件分开：测试照常执行全部检查，精简的是保存和展示方式。报告长度不代表测试覆盖率。
+核对日期：2026-09-27。本文只维护报告位置、格式、退出码和保留方式。运行依赖与命令见 [测试与评测](evaluation.md)，历史结果不能替代本次执行。
 
-## 固定位置
+## 位置与生成范围
 
-| 内容 | 位置 | 是否进入 Git |
+| 内容 | 位置 | 生成条件与 Git 边界 |
 | --- | --- | --- |
-| 报告约定、运行命令 | 本文 | 是 |
-| 本机流程摘要（给人看） | `output/workflow-evaluation/local-latest.md` | 否 |
-| 简明机器结果、源码和输入指纹 | 同目录 `local-latest.json` | 否 |
-| 失败用例的完整排错附件 | 同目录 `local-latest.details.json.gz`，按需生成 | 否 |
-| CI 流程结果 | 同目录 `ci-postgres.*`；摘要同步到 Actions Job Summary | 否；上传 Actions artifact |
-| 浏览器原生报告、失败截图 | `frontend/playwright-report/`、`frontend/test-results/` | 否；上传 Actions artifact |
-| 以前的详细审计记录 | `output/audits/`、`output/workflow-evaluation/` 既有文件 | 否；原地保留 |
+| 本机流程摘要 | `output/workflow-evaluation/local-latest.md` | `verify.sh` 流程步骤或同名 CLI 输出；Git 忽略 |
+| 简明机器结果、源码和输入指纹 | 同目录 `local-latest.json` | 同上；不是整个 verify 的聚合报告 |
+| 完整排错附件 | 同目录 `local-latest.details.json.gz` | 按 details 策略生成；Git 忽略 |
+| CI 流程结果 | 同目录 `ci-postgres.*` | Markdown 写入 Job Summary，目录上传 artifact |
+| 浏览器结果 | `frontend/playwright-report/`、`frontend/test-results/` | CI 上传这两个目录；Mock E2E 本机默认仅 list 输出，真实联调生成 HTML/JSON，失败按配置保存截图 |
+| 专项取证 | `output/audits/` 与 `output/workflow-evaluation/` 中明确命名的结果 | 按需保存，Git 忽略；并非每次 verify 都自动生成 |
 
-自动报告不再放进 `docs/`，也不新建散落的日期文件夹。根 README 通过本文找到固定摘要入口。浏览器报告沿用 Playwright 的已有目录，不为统一外观搬动工具目录。
+自动运行报告不新增到 `docs/`。指南、要求映射和有独特决策价值的历史记录可以保留在文档目录，但必须标明用途和日期；不能把一次报告复制成第二份持续规则。
 
-## 如何运行
+## 完整流程报告
 
-完整本机门禁仍用 `scripts/verify.sh`，需要有效的 `BACKEND_PYTHON`（含后端及模拟器测试依赖）和专用 `XINJIAN_EVAL_POSTGRES_DSN`。流程部分也可单独运行：
+在仓库根目录，使用已安装后端依赖的 Python，并配置隔离测试 `XINJIAN_EVAL_POSTGRES_DSN`：
 
-```sh
+```bash
 PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
   --postgres --output output/workflow-evaluation/local-latest.json
 ```
 
-- 默认生成 Markdown 摘要和简明 JSON。通过用例只保留结果、检查数量等信息。
-- 失败/执行错误用例完整内容保存到独立 gzip JSON，包含快照、预期/实际值、事件等，不改变任何判定。
-- `--details all` 为所有已执行场景保存完整记录；仅用于需要详细取证的运行。
-- `--details none` 不保存完整附件，失败项名称仍保留在摘要及简明 JSON。
-- 缺数据库返回受阻、退出 2；场景未执行返回未完成、退出 2；失败退出 1；全部软件检查通过退出 0。压缩报告不改变退出码。
-- 新 JSON 增加 `report_format=workflow-summary-v1`；`cases` 中不再包含完整快照及检查值。需要这些数据的消费者须读取附件（通过场景需显式 `--details all`），不能继续假定简明文件是原始快照。
+`--output` 必填且以 `.json` 结尾；工具同时生成同名 Markdown。`verify.sh` 使用上述固定名称，也可通过 `WORKFLOW_EVALUATION_REPORT` 指定其他 JSON 路径。
 
-## 保留与清理
+| 参数 | 保存内容 |
+| --- | --- |
+| `--details failures`（默认） | 简明结果，加失败/执行错误场景的完整 gzip 附件 |
+| `--details all` | 简明结果，加全部已执行场景的完整附件，适用于保留专项取证 |
+| `--details none` | 仅简明结果；失败项名称仍保留 |
 
-本机常规执行复用固定文件名，覆盖上次自动摘要与结果；本次没有附件时删除该文件名对应的旧附件，避免误读上次失败。其他历史文件不自动删除。
+简明格式标记为 `report_format=workflow-summary-v1`。`cases` 保存场景状态、检查数量及失败项，不包含全部快照/预期/实际值；这些内容从附件读取。通过场景的完整材料必须显式使用 `--details all`。
 
-需要保留某次取证时，可以通过 `--output output/workflow-evaluation/<明确名称>.json --details all` 命名保存；由负责人决定何时删除。旧审计记录本轮不移动、不删除，历史文档链接继续有效。这是刻意保留，不是已经实施了历史自动清理。
+| 退出码 | 完整流程含义 |
+| --- | --- |
+| 0 | 全部流程场景的软件检查通过 |
+| 1 | 断言失败或执行错误 |
+| 2 | 数据库环境受阻，或场景未完成 |
 
-CI 摘要放 Job Summary，文件作为 artifact 保留 **14 天**，不提交源码库。这个期限是本项目选择，不是官方规定。Job Summary 中附件需从该次运行的 artifact 下载，不能把本机相对链接当在线地址。
+这套退出码不能套用到合成诊断 CLI：后者退出 0 只代表 `code_checks_passed=true`，语义未审阅时总体仍为 `incomplete`。不能把报告中的 software passed 写成语义、硬件或课堂通过。
 
-## 依据与边界
+## 保留与敏感信息
 
-- [Playwright Reporters](https://playwright.dev/docs/test-reporters)：支持简洁终端结果与完整 JSON 同时输出，详细失败信息与成功信息采用不同详略程度。
-- [GitHub Actions artifacts](https://docs.github.com/en/actions/tutorials/store-and-share-data)：测试结果等作为运行产物保存，并支持 `retention-days`。
-- [GitHub Job Summary](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#adding-a-job-summary)：通过 `GITHUB_STEP_SUMMARY` 展示 Markdown 摘要。
+- 同一路径的新运行覆盖上次摘要与 JSON；本次没有附件时会删除该路径对应的旧附件，避免串读。需保留失败基线时使用独立文件名，不依赖 `latest`。
+- 其他历史文件不自动删除。历史链接用于溯源，文件缺失时应标记证据不可取得，不能用旧文字补作通过。
+- CI 的流程与浏览器 artifact 保留 14 天；这是项目配置，不代表本机清理策略。Job Summary 中本机相对链接不是在线附件地址，应从该次 Actions artifact 下载。
+- 摘要只描述本次流程评测。后端、前端、固件、迁移等结果分别附实际命令、环境、源码状态与退出码；不得借用历史数量拼成“全量通过”。失败后未执行的后续步骤应写未执行。
+- 详细附件可能包含合成请求、快照和页面内容。保留测试边界，分享前核对凭据和个人信息；历史只读清单只保留记录 ID、固定原因与数量，不导出私密正文。
 
-源码和输入指纹仍保留。语义审阅、硬件验证未执行时必须如实标记，不因为软件流程通过而变成通过。当前摘要只汇报这次流程评测，不自动借用历史前端或全量测试数量。
+## 已有专项证据入口
 
-本轮第二轮修复取证使用固定命名：`output/audits/remediation-r2-latest.md`（修复和验收摘要）、`output/audits/r2-history-inventory.json`（只读历史清单）、`output/audits/remediation-r2-evidence.zip`（测试日志与源码指纹）。历史清单只含ID和固定原因，不保存私密正文；同一记录可对应多个待核查项。
+这些是对应历史任务的本机取证位置，不是当前门禁结果，也不是所有检出副本都必然拥有的文件：
+
+- 第二轮修复：`output/audits/remediation-r2-latest.md`、`r2-history-inventory.json`、`remediation-r2-evidence.zip`。
+- 新旧入口一致性修复：`output/audits/legacy-boundary-remediation-latest/`；报告区分原始全链路失败日志、修正后联调/离线审核结果和最终定向复测，不合并重复测试数量。
+- 七项软件修复：`output/audits/software-remediation-latest/`，保存修复前失败、最终门禁、JUnit 与源码指纹；系统 Chrome 退出失败与配套 Chromium 成功分别保留。
+
+## 格式实现与参考
+
+实际写入规则见 [reporting.py](../backend/app/evaluation/reporting.py)；上传范围见 [CI](../.github/workflows/ci.yml)；浏览器格式见 [Mock 配置](../frontend/playwright.config.ts) 与 [真实联调配置](../frontend/playwright.integration.config.ts)。
+
+外部设计参考：[Playwright Reporters](https://playwright.dev/docs/test-reporters)、[GitHub artifacts](https://docs.github.com/en/actions/tutorials/store-and-share-data)、[Job Summary](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#adding-a-job-summary)。实际项目行为以上述仓库配置为准。

@@ -1,6 +1,6 @@
 # 芯鉴知微开发准则
 
-- 状态基线：2026-09-05
+- 文档核对：2026-09-27（规则沿用下述确认记录；实现和验证状态另见当前状态文档）
 - 模型规范内核纳入日期：2026-09-17（第 19 节；不表示实现状态已重新验收）
 - 业务方案确认日期：2026-09-19（第 20 节；用户授权逐步实施并要求以后遵守，目标规则不等于已实现）
 - 适用范围：后端、前端、设备接入、实验包、诊断知识、数据库迁移、测试和部署
@@ -18,7 +18,7 @@
 - 工作流：LangGraph 负责节点编排、状态保存、条件分支和恢复，不负责自由规划。
 - 前端：Vue 3、TypeScript、Vite。
 - AI：统一 Provider 客户端、严格结构化输出、审计、预算和确定性降级；默认关闭。
-- 数据库迁移 Head：`20260920_0032`（代码版本，目标环境是否升级需单独验证）。历史初始迁移创建了 `vector` 扩展，因此标准 Compose 使用带 pgvector 扩展的 PostgreSQL 镜像；这不表示当前诊断链路使用向量检索。
+- 数据库迁移 Head：`20260927_0034`（代码版本，目标环境是否升级需单独验证）。历史初始迁移创建了 `vector` 扩展，因此标准 Compose 使用带 pgvector 扩展的 PostgreSQL 镜像；这不表示当前诊断链路使用向量检索。
 - 当前仓库版本：`1.0.0`。版本号只是交付标识，不代表真实硬件或生产环境已经验收。
 
 ## 3. 架构总原则
@@ -149,7 +149,7 @@ AI 输出中的证据必须是允许证据集合的子集；原因必须是允�
 
 资料收集、内容制作、分层验证与修订统一遵守[第 20.26 节](#2026-资料包内容建设与变更管理br-package-content2026-09-21)；该节是用户确认的持续规则，不另建相互独立的制作口径。
 
-每个包包含固定的十类版本化工件：清单、硬件定义、证据映射、规则、故障树、案例、概念、教学步骤、评测样本和预期结果。具体目录和字段见 [Experiment Package 设计](experiment-package-design.md)。
+每个包包含十个必需 YAML 工件：metadata、hardware、rules、fault_tree、concepts、cases、steps、hints、normal_cases、fault_cases。内容清单和哈希由装载器生成；证据映射、运行预期及测试预期存于对应工件中。具体目录和字段见 [Experiment Package 设计](experiment-package-design.md)。
 
 包开发必须遵守：
 
@@ -158,7 +158,7 @@ AI 输出中的证据必须是允许证据集合的子集；原因必须是允�
 - 阈值有单位、来源和适用硬件版本；
 - 规则、故障树、案例和测试样本必须交叉验证；
 - 内容哈希可复现；
-- 发布经过 `draft -> pending_review -> approved -> published`；
+- 实验包发布经过 `draft -> pending -> approved -> published`（`pending_review` 属于案例草稿，不能混用枚举）；
 - 运行时锁定已发布的 PostgreSQL 快照和版本，不依赖可变工作区文件；
 - 已发布版本通过服务/API 不可修改，只能创建新版本。
 
@@ -203,7 +203,7 @@ AI 不得创建未经验证的事实、篡改锁定事实或自行发布案例�
 
 LangGraph 不得引入多智能体、自主工具选择或自由规划。节点输入输出必须有明确 Schema，条件边必须能被测试覆盖。
 
-当前 `unresolved` 反馈会从已保存状态回到知识供给、推理和解释路径，不会重新采集设备数据。若未来要支持持续实时重诊断，应新增明确的上下文刷新节点，并处理时间窗、幂等和旧证据失效，不能默认为现有流程已经做到。
+当前 `unresolved` 反馈沿已保存状态继续指导，不会重新采集设备数据。另有第20.22节定义的显式重新检查命令，它固定新输入、请求身份和时间范围；该能力不能被描述成反馈自动刷新或硬件主动采样。实际条件边见 [AI诊断设计](ai-diagnosis-design.md)。
 
 ## 9. 兼容性边界
 
@@ -257,6 +257,14 @@ LangGraph 不得引入多智能体、自主工具选择或自由规划。节点�
 7. 更新对应核心文档和实现状态；不新增一次性“阶段总结”文档。
 8. 运行与风险相称的验证；准备提交前运行完整门禁。
 
+### 文档维护与事实核对
+
+- 先区分持续规则、当前实现、待评审方案、操作说明、历史证据与原始来源；文档类别、用途和入口统一见 [文档索引](README.md)。原始来源不因实现更新而重写，历史结果不提升为当前验收。
+- 第19、20、21节是已确认的持续约束。代码和测试说明现在做了什么，不授予偏离规则的许可；发现不一致时分别记录要求与实现缺口，不能通过降低文档要求掩盖问题。
+- 可由源码确定的环境名、枚举、接口、版本、路径、容量和命令须核对唯一来源。修改契约或检查脚本时保留“错误输入会被拒绝”的反例，不以脚本输出通过或文档写已完成作为验证。
+- 每条规则保留唯一维护位置，其他文档引用它；当前状态只汇总能力/缺口及最近执行证据，不持续堆叠旧轮次。无独立价值的占位或重复文档可删除；仍有依据的旧材料归档，修正所有当前入口链接。
+- 本轮只调整文档时检查链接/锚点、命令来源、版本门禁、差异及代码未变，不借用旧全量通过数宣称本轮又执行了全套测试。
+
 ### 新增实验的顺序
 
 1. 获取已确认的硬件资料、实验目标、单位、接线和安全限制。
@@ -284,6 +292,8 @@ pytest -q
 python -m app.cli.verify_experiment_packages
 python -m app.cli.verify_structured_knowledge
 python -m app.cli.verify_v2_evidence_workflow
+python ../scripts/check_firmware_protocol.py
+python ../scripts/check_version.py
 
 cd ../simulator
 pytest -q
@@ -295,15 +305,19 @@ npm run test
 npm run build
 ```
 
-数据库或部署变化还需验证：
+固件门禁同时校验批次 Schema、默认容量和服务端共用的逐条记录校验，再核对编译版本、
+头文件默认版本和样例版本。完整 `verify.sh` 及固件 CI 必须执行 ESP32 编译和
+`scripts/test_firmware_host.py`；本机通过 `FIRMWARE_PIO` 指定 PlatformIO 可执行文件。
+主机测试编译实际 `main.cpp` / `pending_store.cpp`，仅替换 I/O，不等于真实闪存断电验收。
 
-```bash
-docker compose build
-docker compose up -d
-docker compose exec -T backend alembic current
-docker compose exec -T backend alembic heads
-docker compose exec -T backend alembic check
-```
+实验包版本以 `metadata.yaml` 为源，`scripts/package_versions.json` 记录经核对的版本与
+运行装载器计算的内容哈希。内容改变必须升级版本并显式更新清单；只刷新哈希不得绕过检查。
+`check_version.py --base-ref <commit>` 比较指定 Git 基线；本地默认 HEAD，审查一组已提交变更时
+须指定变更前提交。CI 获取完整历史，PR 比较 base SHA，push 比较 before SHA；基线缺失明确失败。
+当前 README、真实性看板与实现状态的指定版本位置随包更新；历史报告和固定旧版本反例不改写。
+浏览器集成测试不得把当前实验包版本写成固定旧值。
+
+数据库变化须先在隔离库执行空库升级、历史升级和模型一致性检查；完整门禁使用专用测试DSN。部署与目标库迁移是另一个执行范围，具体步骤见 [部署说明](deployment.md)，不能把启动运行服务作为普通文档/软件检查。
 
 一项功能只有在以下条件同时满足时才算完成：
 
@@ -333,7 +347,7 @@ docker compose exec -T backend alembic check
 - 未解决反馈不会自动刷新设备上下文。
 - `state_revision` 不是并发锁。
 - 推理后知识校验不是完整的电气规则证明系统。
-- AI 默认关闭且没有真实 Key；Mock/降级测试通过不等于真实 Provider 已验收。
+- AI 默认关闭；目标环境是否配置真实 Key 须独立核验。Mock/降级测试通过不等于真实 Provider 已验收。
 - 历史向量表和兼容字段仍存在，但不属于当前运行主链。
 
 ## 16. 明确禁止的捷径
@@ -424,6 +438,10 @@ docker compose exec -T backend alembic check
 | 外发字段由入口白名单限定，所有文本统一清洗；合法引用需路径+来源+允许值验证 | `ai/context_sanitizer.py::sanitize_provider_payload` | 推理、解释、案例润色的实际Provider请求 | `test_r2_provider_data_boundary.py`、`test_knowledge_case_concurrency.py`：短姓名、单位、嵌套ID、跨字段秘密、引用与秘密碰撞时取消增强 |
 | 每次模型尝试先原子预留配额；配置金额只能为空或有限非负数 | `ai/governance.py`、`core/config.py` | 三个Provider入口、失败重试、并发请求 | `test_ai_quota_concurrency.py`、`test_r2_provider_data_boundary.py`：并发超限、NaN/Inf/零/正常预算 |
 | 历史记录只清点，不猜测回填、重计数或删除重复案例 | `cli/audit_historical_integrity.py`、迁移`0029` | 升级、管理员历史检查、兼容读取 | `test_migration_r2.py`：空库、0028升级、旧字段保持、NULL保留、唯一约束、模型一致性 |
+| 所有遥测写入共用设备锁、重验身份和每分钟额度；批次回执重放免费 | `device_ingest.py::lock_ingestion_device/check_ingestion_quota`；`BoundedTelemetryRoute` | ingest、logs、readings、heartbeat | `test_ingestion_concurrency.py`、`test_ingestion_shared_admission.py`：混合入口抢最后额度、撤权、流式大包；旧逐条请求不伪造幂等身份 |
+| 设备记录使用同一纯校验函数 | `services/device_protocol.py` | ingest、`check_firmware_protocol.py` | `test_development_gates.py`：缺值、类型、NaN/Inf、容量、无NTP |
+| 冻结批次先落盘，尝试次数先保存；确认回执持久化后只重试清理 | `firmware/esp32_dht11/src/main.cpp`、`pending_store.cpp` | emitBatch、postPending、PendingStore | `test_firmware_host.py`：断网、重启、部分写入、存储失败、重试上限、清理失败、串口模式 |
+| 资料内容变化要求版本递增；当前说明与清单一致，历史不改写 | `scripts/check_version.py` | 本机/CI | `test_development_gates.py`：改内容、只改hash、过期文档、合法升级、缺Git基线 |
 
 新增入口必须复用对应规则，不能复制一个近似实现。改变明确业务口径时须先更新契约和反例；不能只修改断言来接受不合规输出。`scripts/verify.sh` 与 CI 运行上述后端测试；完整验收必须配置隔离 `XINJIAN_EVAL_POSTGRES_DSN`，否则不能声明并发/迁移已通过。失败反馈保留原请求身份；409不得自动改成新请求重发。
 
@@ -564,7 +582,7 @@ AI仅候选排序、解释、表达整理，不定异常/计数/状态/介入/�
 
 ### 20.19 实施对应与迁移（2026-09-19）
 
-本规则为持续开发依据；实现和验收记录见 [业务规则实施报告](business-rules-implementation-2026-09-19.md)。后续变更先定位规则编号和业务所有者，再列出受影响入口、反例和验证结果；不能仅以本次测试数量作为后续变更证明。
+本规则为持续开发依据；实现和验收记录见 [业务规则实施报告](archive/business-rules-implementation-2026-09-19.md)。后续变更先定位规则编号和业务所有者，再列出受影响入口、反例和验证结果；不能仅以本次测试数量作为后续变更证明。
 
 | 规则 | 本轮执行位置 | 入口及反例测试 |
 | --- | --- | --- |
@@ -631,7 +649,7 @@ cases沿用正式审核门槛。前提是固定可用包、明确树/原因/组�
 | 学生参考呈现 | TeachingReferencePanel.vue，在DiagnosisPanel目标指导内展示 | 历史空值、未关联、不可用、测试标识、预期不冒充实测、HTML转义；组件单测与真实PG浏览器测试 |
 
 未来修改绑定、选择或展示，须同时检查这些入口；调整实验包语义须更新引擎兼容范围。
-本次引擎2.1.0、工作区包2.0.3；无新增数据库列，迁移Head仍0032。
+该次2026-09-20教学参考改动使用引擎2.1.0、工作区包2.0.3，没有新增数据库列；当时Head为0032。当前版本见 [实现状态](implementation-status.md)，不能把该历史版本当作以后修改的固定值。
 
 ### 20.22 重新检查、固定输入与原请求恢复（BR-RECHECK，2026-09-20）
 
@@ -825,3 +843,24 @@ cases沿用正式审核门槛。前提是固定可用包、明确树/原因/组�
 - 按既有流程补充有依据的内容、修正错字和失效链接，不视为重新制定规则；不能借此改变事实口径。规则修改记录日期、原因、确认依据及受影响位置，保留历史结论的日期与适用范围。
 - 本文维护持续规则，实验包设计维护结构与运行契约，实现状态和真实性看板维护当前完成范围，执行报告保存对应证据。其他文档引用本节，不复制一份独立可变的制作规范；修改时同步核对相关契约、内容、测试及文档，不能只改一处造成冲突。
 - 已发布资料包不覆盖修改；内容修订提高版本并重新校验审核，保留旧快照及原始记录。学生反馈解决只是案例线索，不能自动提升为确认根因或正式知识。
+
+### 20.27 新旧入口一致性与验收边界（2026-09-27）
+
+用户确认本轮十项修复；AI提示、CoT和独立AI解释调整不属于此轮范围。旧接口继续兼容，但不能绕开已明确的证据、权限和容量规则。
+
+| 规则 | 唯一执行位置 | 全部入口与反例 |
+| --- | --- | --- |
+| 教师请求绑定登录代次及加载序号；迟到成功、失败、操作刷新均不能回写 | teacherSession、teacherDashboard | 登录/登出、自动刷新、工单、审核；teacherDashboard.test.ts |
+| 恢复必须有相同范围的新相关记录及服务器时间来源；历史未知保持未知 | recovery_evidence、diagnosis_episode；diagnosis_checks.freeze | 新工作流、旧确定性诊断、案例确认、教师恢复；test_shared_recovery_boundary.py、test_diagnosis_checks.py |
+| 提示进度属于具体问题；未解决请求幂等计次，不跨问题累加 | diagnosis_episode.episode_attempt_count、guidance、确定性升级节点 | 旧诊断、新检查、反馈恢复；test_episode_lifecycle_r2.py、test_diagnosis_workflow.py |
+| 单设备所有遥测写入共享120次/分钟默认额度；限制实际流式字节数 | device_ingest、BoundedTelemetryRoute | 批次成功重放不重复计费；旧入口无请求身份、不承诺幂等；真实PG混合竞争与撤权测试 |
+| 文档、案例和资料包分别记录；没有当前验收依据就显示待核实 | readiness、health.ops_status | 就绪页、运维状态；过期/撤权/停用账号不计活动授权，unconfirmed计待办、resolved另列 |
+| 子区域加载失败不是空列表；403清空该区域并提供恢复提示 | teacherDashboard.workflowSections | 队列、历史、统计；故障彼此独立，旧记录失败时不得审核 |
+| 离线演示不访问业务接口；支持的动作实际改变合成状态 | review/state、API请求守卫、演示Store | 静态构建真实浏览器测试；登录、工单、审核及刷新；未支持检查禁用并说明 |
+| 运行和采样时间使用ESP-IDF的64位单调时钟 | monotonic_clock.h、Dht11Frame | 2^31/2^32前后、前次转换、固件编译；不能把主机模拟当作实物长跑 |
+| 备份与内容清单使用同一导出快照；恢复不对比变化中的源库 | scripts/database_backup.py | 全部非系统表内容摘要、列及关系约束；删行、改字段、断关联、完整流程库恢复 |
+| 非有限/非正时限在构造客户端前拒绝；首发前持久化运行清单 | simulator/config、runner、reports、cli | 环境与直接构造、首批后中断、清理设备核对；不保存令牌 |
+
+新增0034只创建旧逐条上传的近期准入表；批次沿用已有回执计数，二者共同计算限额。过期逐条准入记录在本设备下一次成功写入时清理，不删除遥测或诊断。历史记录不补时间质量；运行库只在独立部署步骤升级。
+
+备份清单只证明本数据库：如果Checkpoint与业务库分开，须暂停相关写入并协调两个库的备份/恢复，单库通过不能宣称跨库一致。生产、真实模型、实物长跑和课堂验收继续单独记录。

@@ -1,199 +1,117 @@
-# 测试与评测准则
+# 测试与评测操作指南
 
-最后更新：2026-09-12
+核对日期：2026-09-27。本文维护怎样运行和解释检查；持续开发约束见 [开发准则](development-guidelines.md)，要求到测试的映射见 [评测要求对应表](evaluation-requirements.md)。历史执行数量不作为当前通过证明。
 
-## 1. 评测边界
+## 1. 每层检查能证明什么
 
-仓库内自动评测全部使用合成、Mock 或明确测试标记的数据，只证明代码符合已提交的 Schema、规则、状态流转和安全约束。它不能证明真实硬件诊断准确率、传感器参数正确性、教师知识有效性或生产环境可用性。
+| 层次 | 实际入口 | 证明范围与限制 |
+| --- | --- | --- |
+| 静态与构建 | Ruff、前端 lint/type-check/build、安全扫描 | 代码与构建约束；安全扫描不等于完整依赖漏洞审计 |
+| 后端与模拟器 | `backend/tests/`、`simulator/tests/` | 合成输入、Mock Provider、SQLite/隔离 PostgreSQL 上的软件行为；缺测试 DSN 时部分 PostgreSQL 测试会跳过 |
+| 合成诊断 | `app.cli.run_synthetic_evaluation` | 规则、候选、引用、动作和渲染输出的确定性检查；不调用真实 Provider，不作自动语义判定 |
+| 实验包与知识 | `verify_experiment_packages`、`verify_structured_knowledge`、`verify_v2_evidence_workflow` | Schema、引用、版本、测试边界和固定流程；包内正常样例不代替完整运行状态验证 |
+| PostgreSQL 流程 | `app.cli.run_workflow_evaluation --postgres` | 真实路由、诊断图、业务表和 Checkpoint 的合成流程；连接重建不等于断电或任意进程崩溃验证 |
+| 浏览器 Mock API | `npm run test:e2e` | 页面行为；不能证明真实后端联通 |
+| 浏览器真实后端 | `npm run test:e2e:integration
+npx playwright test --config playwright.review.config.ts` | 浏览器 → FastAPI → LangGraph → PostgreSQL；身份与设备数据为合成，Provider 为 Mock |
+| 固件 | `check_firmware_protocol.py`、PlatformIO、`test_firmware_host.py` | 协议样例、实际编译、主机 I/O 故障模拟；不代替 ESP32 闪存、断电、接线和无线网络实测 |
+| 版本 | `check_version.py` | 应用版本、资料包内容与版本、指定当前文档版本；不代表软件或资料已发布 |
 
-第一阶段不评测向量召回，不保留 Recall@K、MRR、RRF 或 Embedding 基线。当前知识验收关注结构化字段匹配、版本隔离、审核状态和推理前/推理后约束。
+本项目当前不执行向量召回评测。真实模型语义、硬件因果与教学效果分别需要独立材料和验收，不能从软件通过率推导。
 
-## 2. 自动化测试层次
+## 2. 完整本机门禁
 
-### 静态和构建门禁
+从仓库根目录运行 [scripts/verify.sh](../scripts/verify.sh)。需要：
 
-- Ruff：后端、迁移、CLI 和模拟器静态检查。
-- Python 3.10+ 运行时检查。
-- ESLint、TypeScript 类型检查、Vitest 和前端生产构建。
-- 安全扫描与项目版本一致性检查。
-
-### 后端行为测试
-
-- 设备认证、批量幂等、序列冲突、时间质量、限流和定向测试数据清理。
-- `DiagnosisContext` 归一化、规则命中、故障树排序、Episode 聚合和重复调用不升级。
-- Experiment Package 严格 Schema、跨文件引用、内容哈希、状态流转、运行时版本锁定和证据落库。
-- LangGraph 节点顺序、Checkpoint、暂停恢复、反馈分支、教师审核和确定性降级。
-- AI 原因只能来自候选集合，证据只能来自本次诊断实际落库的证据 UUID，错误类型不可覆盖。
-- 原因引用还须属于该候选实际匹配的证据集合，不得借用当前诊断中的无关 UUID。
-- 推理前知识供给和推理后知识校验；错误实验、错误类型、未审核、未锁定事实和测试数据不得越界。
-- 案例草稿的事实锁定、AI 表达字段限制和教师确认发布。
-- 学生/教师认证、班级范围、处置乐观锁和私人备注隔离。
-
-### 合成诊断评测
-
-`backend/evaluation/golden_cases.json` 当前包含 30 个确定性用例，覆盖正常、读取失败、离线、数值越界、边界值、未知事件和多规则冲突。门禁包括：
-
-- 错误类型精确匹配；
-- 原因 Top-1 / Top-3 与必需排查步骤；
-- 无证据时不得产生高置信结论；
-- 对实际渲染的解释记录短语出现情况，仅供审阅，不以命中或未命中判定语义；
-- Episode 重复故障按预期聚合；
-- 默认评测不调用真实 AI Provider。
-
-阈值针对提交的确定性合成规则设为严格通过，不应解释为真实世界准确率。
-
-自 2026-09-15 起，合成报告版本为 `7-code-and-semantic-separated`，原顶层 passed 改为 code_checks_passed，原 forbidden_claims 改为无判定的 pattern_scan。semantic_review 逐条记录 Rubric 的 not_run/null；代码通过但语义未审阅时总体 status=incomplete，代码失败时为 failed。CLI 退出码 0 只表示确定性代码检查通过；verify 脚本同样仅承诺代码门禁，不代表语义、硬件或课程通过。消费旧 JSON 字段的调用方须同步更新，历史报告不改写。
-
-### 前端与端到端测试
-
-- 学生和教师关键页面、状态投影和错误降级。
-- 反馈必需会话头与请求 UUID；同一提交的重试保持载荷，刷新恢复未决记录，真实新尝试使用新键，晚响应不跨会话回填。
-- 浏览器记录丢失后，按有效实验会话纯读找回服务端未决记录；只有明确点击才恢复原请求，较早诊断与原备注同样保留。
-- 合成身份登录、诊断反馈、请求教师帮助、教师认领/解决/关闭和学生端回显。
-- 就绪状态不因演示数据被错误提升为生产 ready。
-
-## 3. 标准运行方式
-
-完整本地门禁需要专用测试 PostgreSQL、后端虚拟环境、模拟器虚拟环境、已安装的前端依赖和 Playwright 浏览器。在仓库根目录执行：
+- Python 3.10+ 环境，安装 `backend/requirements.lock`、后端和模拟器包以及 pytest、Ruff；Python 3.10 还需要 tomli。脚本统一使用 `BACKEND_PYTHON` 所在目录的 pytest/Ruff，并不使用另一套模拟器虚拟环境。
+- Node 满足 `frontend/package.json` 的 engines（当前 `>=22.12.0`），通过 `npm ci` 安装锁定依赖及 Playwright Chromium。
+- 专用测试 PostgreSQL，能创建临时 schema，并具备历史迁移所需的 vector 扩展。不能指向正在运行的业务数据库。
+- PlatformIO（CI 固定为 6.1.19）、对应固件工具链与 C++ 编译器。
 
 ```bash
-export BACKEND_PYTHON=/absolute/path/to/backend/venv/bin/python
+export BACKEND_PYTHON=/absolute/path/to/venv/bin/python
+export FIRMWARE_PIO=/absolute/path/to/pio
+export XINJIAN_BACKUP_TEST_CONTAINER=explicit-isolated-postgres-container
 export XINJIAN_EVAL_POSTGRES_DSN='postgresql://test_user:test_password@127.0.0.1:5432/test_database'
 scripts/verify.sh
 ```
 
-以上连接串是占位示例，须换成隔离测试库。脚本不会回退到应用的 `DATABASE_URL`；缺少评测 DSN 时写出 `blocked` JSON 并退出 2，不跳过后宣称全量通过。`TEST_DIAGNOSIS_CHECKPOINT_DSN` 未配置时只继承这个明确指定的测试 DSN。
+容器名与连接串是占位示例，必须选择隔离环境。恢复测试将在指定容器内创建并删除一次性数据库；缺少容器配置时完整验证退出2，不把恢复测试跳过当通过。脚本不回退到 `DATABASE_URL`；缺少评测 DSN 时生成 `blocked` 流程报告并退出 2。`TEST_DIAGNOSIS_CHECKPOINT_DSN`、`TEST_AI_QUOTA_POSTGRES_DSN` 未配置时继承这个明确指定的测试 DSN；若分别指定，也必须使用隔离测试库。
 
-脚本依次运行数据库准备、Python 静态检查、后端测试、模拟器测试、合成诊断、实验包、结构化知识、V2 工作流、25 场景 PostgreSQL 评测、安全扫描，以及前端 lint、类型、单元、构建、Mock API E2E 和浏览器真实联调。报告默认写入 `output/workflow-evaluation/local-postgres.json`，可用 `WORKFLOW_EVALUATION_REPORT` 改路径；历史失败报告不覆盖。
+脚本先准备测试数据库，再依次执行后端/模拟器、合成及结构化知识、协议、PostgreSQL 流程、版本、安全、固件和前端检查。任何步骤失败即停止；要结合日志判断哪些后续项目未执行。不要把最后一份历史报告误作本次未运行步骤的结果。
 
-`scripts/prepare_evaluation_postgres.py` 在指定测试库的 `public` 中准备历史迁移所需的 vector 扩展；已有扩展在其他 schema 时明确失败，不自动迁移扩展。此步骤不是启用向量检索。
+数据库准备脚本会在测试库 `public` 中创建 vector 扩展；若扩展已位于其他 schema，则明确失败，不自动迁移。它不是向量检索功能。
 
-分层执行：
+流程报告默认是 `output/workflow-evaluation/local-latest.json` 及同名 Markdown，可用 `WORKFLOW_EVALUATION_REPORT` 改名。固定文件名会被新运行覆盖；需保留失败取证时先采用独立输出名。详见 [测试报告约定](test-reporting.md)。
+
+`verify.sh --docker` 在测试后执行 Compose 构建和启动，**会触发后端启动迁移并操作所选 Compose 环境**；它不是纯测试模式。只做软件验收时不要添加该参数。
+
+## 3. 分层定位失败
+
+以下命令在仓库根目录、已激活所需 Python 环境后执行。单独运行一层不能称为完整验收。
 
 ```bash
-cd backend
-ruff check app tests
-pytest -q
-python -m app.cli.run_synthetic_evaluation
-python -m app.cli.verify_experiment_packages
-python -m app.cli.verify_structured_knowledge
-python -m app.cli.verify_v2_evidence_workflow
+ruff check backend simulator scripts/prepare_evaluation_postgres.py
+PYTHONPATH=backend python -m pytest backend/tests
+PYTHONPATH=simulator python -m pytest simulator/tests
+PYTHONPATH=backend python -m app.cli.run_synthetic_evaluation
+PYTHONPATH=backend python -m app.cli.verify_experiment_packages
+PYTHONPATH=backend python -m app.cli.verify_structured_knowledge
+PYTHONPATH=backend python -m app.cli.verify_v2_evidence_workflow
+PYTHONPATH=backend python scripts/check_firmware_protocol.py
+PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
+  --postgres --output output/workflow-evaluation/local-latest.json
+python scripts/check_version.py --base-ref HEAD
+pio run -d firmware/esp32_dht11
+python scripts/test_firmware_host.py
+```
 
-cd ../simulator
-pytest -q
-
-cd ../frontend
+```bash
+cd frontend
+npm ci
+npx playwright install chromium
 npm run lint
 npm run type-check
 npm run test -- --run
 npm run build
 npm run test:e2e
-npm run test:e2e:integration  # 需上述测试 DSN 与 BACKEND_PYTHON
+npm run test:e2e:integration
+npx playwright test --config playwright.review.config.ts
 ```
 
-## 4. 数据库和部署验收
+浏览器默认使用锁定 Playwright 对应的 Chromium；专门测试系统 Chrome 时分别设置 `E2E_CHROME_CHANNEL=chrome` / `INTEGRATION_CHROME_CHANNEL=chrome`。页面断言通过但 worker 退出超时，仍属失败。
 
-迁移变更必须同时验证空库升级、现有库升级、单一 Head 和模型差异：
+真实联调必须提供 `BACKEND_PYTHON` 和测试 DSN，创建随机 schema、执行 Alembic、启动回环地址后端；退出时清理并验证 schema 删除。默认前端端口 15173、后端 18101，可用 `INTEGRATION_FRONTEND_PORT` / `INTEGRATION_BACKEND_PORT` 修改；不复用现有服务。Mock API E2E 默认可复用本地 Vite，必要时核对服务确属本次源码。
 
-```bash
-docker compose build
-docker compose up -d
-docker compose exec -T backend alembic current
-docker compose exec -T backend alembic heads
-docker compose exec -T backend alembic check
-```
+版本脚本本机默认比较 `HEAD`；检查已提交的一系列改动时应通过 `--base-ref` 或 `VERSION_BASE_REF` 指定其之前的基线，不能用待验收提交自身来证明版本递增。它比较资料包规范化内容哈希和 `scripts/package_versions.json`，并检查 README、真实性看板、实现状态中的指定当前版本表述；不扫描任意历史文字。基线缺失会失败，不应通过刷新哈希绕过版本升级。
 
-历史初始迁移会创建 `vector` 扩展，因此测试和 Compose 数据库镜像必须提供该扩展；这只是迁移兼容条件，不是 RAG 功能验收。
+## 4. CI 与环境差异
 
-生产前还必须演练：
+[CI 配置](../.github/workflows/ci.yml) 使用 Linux、Python 3.12、Node 22、pgvector PostgreSQL 16；`APP_ENV=test`。健康测试独立注入 development/test 设置，不依赖本地 `.env`。
 
-- PostgreSQL 备份和隔离恢复；
-- 无公网、无 AI Key 时的确定性诊断；
-- Provider 超时、限流、非法 JSON 和越界证据的降级；
-- 服务重启后的 LangGraph Checkpoint 恢复；
-- 凭据撤销、班级隔离和审计查询；
-- 磁盘、数据库、队列/请求积压和错误率告警。
+- `verify` 作业运行软件检查、真实 PostgreSQL 流程、迁移与 Checkpoint 设置、前端及真实联调。
+- `firmware` 作业独立运行协议检查、PlatformIO 编译和主机故障回归。
+- CI 版本基线来自 PR base SHA 或 push 前 SHA，checkout 获取完整历史。新仓库或异常基线不能视为已验证。
+- 流程报告、浏览器报告按现有配置上传 artifact，保留 14 天；报告存在不等于对应步骤成功。
 
-## 5. 真实硬件验收要求
+本机通过、CI 已配置、远端 CI 实际通过是三种不同结论；必须给出对应运行记录。人工语义、真实硬件和课堂验证不在这些 CI 作业中。
 
-正式准确性结论至少需要：
+## 5. 报告语义
 
-1. 明确板卡、传感器、固件、接线、GPIO、供电和环境版本；
-2. 带时间戳的原始设备数据和不可变真值标签；
-3. 正常、典型故障、复合故障、证据不足和恢复样本；
-4. 由教师或硬件负责人确认的根因和最终修复动作；
-5. 预先约定的误报率、漏报率、Top-K、诊断时延和教师介入目标；
-6. 测试集与知识整理、阈值设定数据隔离；
-7. 按实验包版本、硬件版本和规则版本分层报告结果。
+合成评测当前使用 `7-code-and-semantic-separated`：`code_checks_passed` 表示代码检查；`pattern_scan` 仅记录出现的片段；`semantic_review` 未审阅时为 `not_run` / `judgement=null`。代码通过而语义未审阅时总体 `status=incomplete`。此 CLI 的退出码 0 只表示代码检查通过。
 
-未满足以上条件时，只能报告“合成门禁通过”，不得报告“诊断准确率已达到生产要求”。
+完整流程 CLI 另有自己的 `status`：全部场景软件检查通过退出 0，失败/执行错误退出 1，受阻/未完成退出 2；不能混用这两个报告的总体状态。旧版 `passed`、`forbidden_claims` 或 v6 字段属于历史格式，不作为当前消费契约。
 
-## 6. 失败处理
+## 6. 迁移、部署与真实验收
 
-任一强制门禁失败时不得通过删除测试、放宽白名单、降低真实性标记或恢复旧 RAG 逻辑绕过。应先判断是代码回归、测试预期过期、缺少外部资料还是环境故障，再修复根因并记录验证命令和结果。
+迁移变更在隔离库验证空库升级、涉及的历史版本升级、历史记录保留、单一 Head 和 `alembic check`。同版本的模型检查不能代替历史升级测试。默认 `verify.sh` 不等于目标环境迁移验收，部署操作见 [部署说明](deployment.md)。
 
-## 7. 第一阶段评测可信化（2026-09-12）
+真实上线还需结合目标环境验证备份恢复、持久化 Checkpoint、凭据撤销、班级隔离、无 Key 降级和监控；并按 [硬件验证计划](hardware-validation-plan.md) 记录板卡、固件、接线、原始采样、独立真值和恢复证据。规则调整数据与验收样本应隔离。
 
-要求、测试和依据见 [评测要求对应表](evaluation-requirements.md)。本轮采用 ClawEval 的精确校验与证据选择原则，不引入其固定任务目录或模型裁判。
+## 7. 失败定位与历史依据
 
-- 合成评测版本为 `6-rendered-output-contract`，每条结果记录实际渲染解释；`forbidden_claims.scope` 指明扫描范围，`semantic_review=not_run`。
-- high 无有效引用、隐藏输入冲突、白名单外步骤会被校验拒绝；无关联证据的降级结论为 unknown。
-- 最终解释摘要/限制由后端生成；缓存和历史重放不绕过当前输出边界。具体兼容行为和未覆盖的推理自由文本见对应表。
-- 包内故障样例检查异常类型集合精确一致；包内正常样例不证明完整运行状态，候选成员校验不证明排序正确。
-- 原 100 次重复结构样例改为明确的合法/非法样例；不报告真实模型输出合格率。
+失败先区分实现缺陷、预期过期、环境受阻和材料缺失。修复须保留失败反例，不能通过删除测试、弱化判据或取消测试标记绕过。规则和反例的对应关系维护在开发准则第 19.4 节及评测要求表，不在本文再复制业务规则。
 
-专项回归：`cd backend && python -m pytest tests/test_evaluation_contract.py tests/test_ai_diagnosis.py tests/test_diagnosis_workflow_security.py`。
-
-## 8. 完整流程评测（第二阶段）
-
-独立 CLI 通过真实路由和诊断图运行合成场景并输出可追溯 JSON；参考答案独立于被测输入。第二阶段最初 16 场景的 13 passed / 3 failed 保留在 [历史失败基线](workflow-evaluation-phase2.md)，不改写原记录。
-
-前轮修复三项缺口并扩展为 **25 个 PostgreSQL 场景，25 passed**，该次报告为 `output/workflow-evaluation/remediation-postgres.json`。原三项 strict xfail 已移除，反馈副作用、重放响应与关联证据篡改必须使门禁失败。负责人摘要、兼容变化及本轮新结果见 [整改报告](workflow-remediation.md)。
-
-## 9. 反馈可靠性与前轮迁移验收
-
-- 42 项可靠性测试通过：同请求并发、成功回执丢失、已消费反馈补确认、未消费反馈恢复，以及关闭会话边界。
-- Checkpoint `put` 的 6 个失败点与 `put_writes` 的 8 个失败点分别在 SQLite/PostgreSQL 验证，共 28 项故障注入；成功后不重复反馈或调用。
-- PostgreSQL 已验证空库升级、0026 带历史反馈升级至 0027、单 Head、模型差异检查和重复键拒绝；旧反馈关联保持 NULL。
-- 前端 43 项单元测试和 4 项学生页面 Chrome E2E 通过，类型、lint、生产构建通过。E2E 使用 Mock API，不能冒充浏览器与真实后端联合验收。
-- 后端全量：330 passed，无 skipped/xfail；40.34 秒，1 项 Starlette/anyio 依赖弃用警告。完整流程 CLI、迁移、前端与后端回归分别计数，不相互替代。
-
-同步 Checkpoint 与补确认解决具体恢复窗口，不代表数据库和 Saver 已有跨存储原子事务；连接/图重建、注入保存错误也不等于进程 kill、断电或生产负载验收。当前尚未部署或推送 GitHub。
-
-## 10. 反馈找回、CI 与真实浏览器联调
-
-GitHub CI 已配置 25 场景 PostgreSQL 评测，并使用 `always()` 上传该步 JSON 报告（保留 14 天）。缺环境记录 blocked、未运行记录 not_run/incomplete、断言失败记录 failed，均不能作为通过。上传范围只包含流程 JSON，不包含浏览器 trace、凭据或数据库连接串。配置已更新不等于 GitHub 托管 runner 已执行，本轮只报告本机结果。
-
-新增真实联调使用浏览器 → 实际 FastAPI 路由 → 实际 LangGraph → PostgreSQL 业务表和 Checkpoint。设备数据与身份为合成，AI Provider 使用 Mock；不是硬件或真实模型验收，也不是生产部署。
-
-| 场景 | 独立验证点 |
-| --- | --- |
-| 登录、上报、首次诊断、反馈及刷新 | 实际数据库有 Evidence；反馈只保存一条；原 UUID 重放后状态、调用记录和 Evidence 不变 |
-| 未决反馈、关页、重新登录、找回与确认 | 浏览器 sessionStorage 为空；GET 后数据库不变；点击后沿用原 UUID，反馈/恢复次数仅增加一次 |
-
-入口为 `npm run test:e2e:integration`。测试脚本通过独立 CLI 创建随机 schema，执行真实 Alembic 到 Head，再启动仅监听回环地址的 Uvicorn；没有向生产 API 加故障注入端点。每个 schema 先创建独立版本表并校验业务表归属，避免误用已迁移的 public 表。故障窗口使用测试进程的临时控制文件；退出时清理并断言 schema 已删除。
-
-前端默认端口 15173、后端 18101，可用 `INTEGRATION_FRONTEND_PORT` / `INTEGRATION_BACKEND_PORT` 修改；不复用现有服务。CI 安装并使用 Chromium，本机可设置 `INTEGRATION_CHROME_CHANNEL=chrome` 使用已安装 Chrome。本地浏览器报告为 `frontend/playwright-report/integration/results.json`。后端找回专项另外覆盖旧诊断、原备注、越界、关闭会话、旧 NULL 记录及超过 20 条的分页边界。
-
-2026-09-12该轮未新增数据库迁移，当时Head为 `20260912_0027`；当前代码Head见[实现状态](implementation-status.md)。该轮执行数量与结果记录在 [整改报告](workflow-remediation.md) 的“反馈找回与持续验收”。
-
-## 自动报告的存放与详略
-
-流程 CLI 默认输出简明 JSON 和同名 Markdown；失败细节单独 gzip 保存。报告不再混入源码变更，详见 [测试报告约定](test-reporting.md)。原始内存检查及退出码不变；需要全部快照时使用 `--details all`。旧报告原地保留。
-
-
-## 教学参考接入回归（2026-09-20）
-
-`test_teaching_materials.py` 覆盖显式关联、组件/等级隔离、缺引用/重复/循环拒绝、
-新旧包与hash兼容、历史不回填、撤回、AI关闭/超时/次数预算拒绝、反馈重试，以及三个真实
-Provider调用入口的教学参考排除。前端组件测试覆盖预期与实测区分、测试标记、HTML转义及问题切换。
-真实浏览器测试连接隔离PostgreSQL与实际后端，校验教学参考展示和刷新不新增反馈/AI调用。
-以上文件由既有verify.sh与CI自动收集；本轮执行证据见[报告](../output/audits/teaching-materials-latest.md)。
-
-## 重新检查回归
-
-新增 `test_diagnosis_checks.py`、`test_diagnosis_checks_postgres.py`，纳入既有pytest自动发现。
-覆盖无新数据、重传、新值相同、迟到、过期基准、会话隔离、冻结后上报、回执保存失败与重启。
-前端 `diagnosisChecks.test.ts`、`DiagnosisCheckPanel.test.ts` 与真实浏览器检查用例共同验证
-断网沿用身份、刷新无执行、页面检查依据可见。0033在空库/历史升级和降级保留场景验证。
-使用显式临时PostgreSQL与模拟Provider；本地通过不代表硬件/真实模型语义/远程CI通过。
+- [第二阶段失败基线](archive/workflow-evaluation-phase2.md) 与 [反馈/流程整改记录](archive/workflow-remediation.md)：保留当时失败、兼容性和已执行结果，不作为当前全部通过证明。
+- 教学参考、重新检查、归属/并发/恢复和开发门禁回归由 `backend/tests/` 与 `frontend/tests/` 自动收集；具体测试数量取本次日志，不在操作指南维护重复计数。
+- 当前软件范围和未完成事项见 [实现状态](implementation-status.md) 与 [真实性看板](project-truth-status.md)。

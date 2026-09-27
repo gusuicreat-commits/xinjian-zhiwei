@@ -5,7 +5,7 @@
   "bootId": "boot-example",
   "sequenceNo": 2,
   "uptimeMs": 6000,
-  "firmwareVersion": "0.2.0",
+  "firmwareVersion": "0.2.2",
   "isTestData": true,
   "records": [
     {

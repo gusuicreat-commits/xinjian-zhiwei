@@ -166,6 +166,10 @@ def build_diagnosis_context(
         logs=context_logs,
         heartbeats=context_heartbeats,
         readings=context_readings,
+        recheck_source_time_quality={
+            **{f"device_log:{item.id}": item.time_quality for item in logs},
+            **{f"sensor_reading:{item.id}": item.time_quality for item in readings},
+        },
         experiment_template=experiment_template,
         experiment_id=definition.experiment.id if definition else None,
         experiment_version=definition.experiment.version if definition else None,

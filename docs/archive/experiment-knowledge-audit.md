@@ -1,17 +1,21 @@
 # DHT11 / LED 实验知识审计与事实清单
 
+> 分类：历史证据。保留当时版本、失败/通过结果和限制；不作为当前开发指令或当前验收状态。当前入口见 [文档索引](../README.md) 与 [实现状态](../implementation-status.md)。
+
 审计日期：2026-09-08。对象：芯鉴知微 V2，仓库 HEAD `7efbaf47c375cc6c64df0f844bc5878ba641a960`。
 范围：仓库源文件、设计文档、实现静态核查、内存合成探查及厂商一手资料；未连接真实硬件、未查询运行数据库中的发布/审核记录、未访问真实课堂记录。本报告不是硬件验收、教师签字或正式 KnowledgeCase。
 
-> 2026-09-09 更新：本文记录 2.0.0 审计时点。已确认的软件/内容问题现已按 [实验包设计的可信化整改](experiment-package-design.md) 修正，并在真实性治理轮更新为工作区 2.0.2 草稿；下文原审计发现与旧 hash 保留为历史依据，不代表整改后的当前状态。硬件与教师待确认项未升级为已验证。
+> 2026-09-09 更新：本文记录 2.0.0 审计时点。已确认的软件/内容问题现已按 [实验包设计的可信化整改](../experiment-package-design.md) 修正，并在真实性治理轮更新为工作区 2.0.2 草稿；下文原审计发现与旧 hash 保留为历史依据，不代表整改后的当前状态。硬件与教师待确认项未升级为已验证。
 
-> 2026-09-22 当前设计补充：DHT11 工作区已升为 `2.0.5` 草稿，工程候选固定为 ESP32-DevKitC V4/WROOM-32E、四针裸 DHT11、3.3V、4.7kΩ 外部上拉、DATA→GPIO4、3 秒采样；详见 [实现状态](implementation-status.md) 和 [固件来源登记](../firmware/esp32_dht11/docs/sources.json)。下文 2026-09-08 的发现和旧配置行仍作为历史审计证据保留；它们不能覆盖当前候选，也不能升级 pending_hardware。
+> 2026-09-22 当前设计补充：DHT11 工作区已升为 `2.0.5` 草稿，工程候选固定为 ESP32-DevKitC V4/WROOM-32E、四针裸 DHT11、3.3V、4.7kΩ 外部上拉、DATA→GPIO4、3 秒采样；详见 [实现状态](../implementation-status.md) 和 [固件来源登记](../../firmware/esp32_dht11/docs/sources.json)。下文 2026-09-08 的发现和旧配置行仍作为历史审计证据保留；它们不能覆盖当前候选，也不能升级 pending_hardware。
+
+> 2026-09-27归档注记：下文R4提到的rules/templates两份README是当时的目录占位文件，本轮已因无独立内容删除；该历史观察保持原样，不代表现有实现入口。
 
 ## 项目负责人可读摘要（原始审计）
 
 - **发现了什么：** 示例资料混入确认性表述，累计失败被写成连续失败，GPIO 上报值被用于描述灯亮。
 - **现实影响：** 可能错误判断故障、误导学生排查，并高估当前实验验证程度。
-- **能否解决：** 软件表达与证据边界可以整改；当前进展见 [真实性看板](project-truth-status.md)，下文保留审计时点原貌。
+- **能否解决：** 软件表达与证据边界可以整改；当前进展见 [真实性看板](../project-truth-status.md)，下文保留审计时点原貌。
 - **需要谁确认：** 硬件负责人提供实物与测量记录，教师确认课程标准和案例。
 - **下一步：** 先核对器件和指导书，再实施可追溯的对照试验，不凭经验填满未知项。
 
@@ -29,13 +33,13 @@
 
 | 来源 ID | 实际检查对象 | 能证明什么 |
 | --- | --- | --- |
-| R1 | [architecture.md](architecture.md)、[implementation-status.md](implementation-status.md)、[experiment-package-design.md](experiment-package-design.md)、[ai-diagnosis-design.md](ai-diagnosis-design.md)、[development-guidelines.md](development-guidelines.md) | 项目设计、已声明限制；文档中旧测试结果不是本次实测 |
+| R1 | [architecture.md](../architecture.md)、[implementation-status.md](../implementation-status.md)、[experiment-package-design.md](../experiment-package-design.md)、[ai-diagnosis-design.md](../ai-diagnosis-design.md)、[development-guidelines.md](../development-guidelines.md) | 项目设计、已声明限制；文档中旧测试结果不是本次实测 |
 | R2 | D 包全部十个 YAML | DHT11 当前工程配置、样例规则、案例、提示及测试 |
 | R3 | L 包全部十个 YAML | LED 当前工程配置、样例规则、案例、提示及测试 |
 | R4 | `backend/knowledge/cases/{dht11,led,button,photosensor,ultrasonic}.yaml`；`knowledge/templates/README.md`、`knowledge/rules/README.md` | 五个旧兼容案例均 pending；模板/规则目录仅有说明，无教师原始附件 |
 | R5 | `backend/app/diagnosis/{normalization,expected_behavior,matcher}.py`；`backend/app/services/diagnosis.py` | 输入归一化、统计口径、规则选取及实际 Evidence 持久化类型 |
 | R6 | `backend/app/experiment_packages/{schemas,loader}.py`；`backend/app/services/experiment_packages.py`；`backend/app/knowledge/matcher.py`；`backend/app/schemas/knowledge_case.py` | 严格 Schema、包校验、测试门槛、案例准入条件 |
-| R7 | [device-protocol.md](device-protocol.md)；`backend/app/schemas/device.py`、`backend/app/services/device_ingest.py`、`backend/app/core/config.py` | 通用设备协议、有限数值校验、在线状态与接入限制 |
+| R7 | [device-protocol.md](../device-protocol.md)；`backend/app/schemas/device.py`、`backend/app/services/device_ingest.py`、`backend/app/core/config.py` | 通用设备协议、有限数值校验、在线状态与接入限制 |
 | R8 | `backend/app/diagnosis/rules/core_rules.yaml`；`backend/app/diagnosis/rules/experiments/gpio_led.yaml`；旧 `backend/app/experiments/definitions/gpio_led_output.yaml`；`backend/app/diagnosis/fault_trees/` | 旧兼容规则/故障树存在，不能默认算作已绑定包的生效配置 |
 | R9 | `backend/app/ai/diagnosis_graph.py`；`backend/app/services/diagnosis_episode.py` | failure_count / historical_failures 属于诊断指导历史，不等于固件连续采样失败数 |
 
@@ -230,4 +234,4 @@ S1 的量程、精度存在指定温度/电压等条件。本次不把这些数�
 - 探查没有落库、没有生成可供 AI 引用的真实 Evidence UUID、没有调用 AI。数据库完整链路待下一阶段。
 - 当前 backend/.venv 是 Python 3.9；直接导入完整 diagnosis 服务遇到 `TypeError`（不支持该模块的联合类型表达式）。改用独立纯函数完成上述有限探查；没有修环境，也没有声称端到端测试通过。项目要求 Python 3.10+，下一阶段先选受支持环境。
 
-下一阶段详见 [hardware-validation-plan.md](hardware-validation-plan.md)。本轮在调查和设计完成后停止，等待用户确认才修改实验包。
+下一阶段详见 [hardware-validation-plan.md](../hardware-validation-plan.md)。本轮在调查和设计完成后停止，等待用户确认才修改实验包。

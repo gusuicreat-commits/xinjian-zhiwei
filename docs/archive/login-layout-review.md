@@ -1,14 +1,16 @@
 # Login layout restoration design QA
 
-- Structural reference: `/var/folders/sq/lrmkk9hn4wvc78jdxswv9q4w0000gn/T/codex-clipboard-b4054d40-400c-48b4-a3ef-52710471aebb.png`
+> 分类：历史证据。保留当时版本、失败/通过结果和限制；不作为当前开发指令或当前验收状态。当前入口见 [文档索引](../README.md) 与 [实现状态](../implementation-status.md)。
+
+- Structural reference: 当时的临时剪贴板截图未随仓库保存；仅凭本页不能重验该对照，已跟踪的原始与结果截图如下。
 - Original product-style references:
-  - `/Users/mac/Desktop/大创.2026/design-qa-assets/original-student-login.png`
-  - `/Users/mac/Desktop/大创.2026/design-qa-assets/original-teacher-login.png`
+  - [original-student-login.png](../../design-qa-assets/original-student-login.png)
+  - [original-teacher-login.png](../../design-qa-assets/original-teacher-login.png)
 - Final implementation screenshots:
-  - `/Users/mac/Desktop/大创.2026/design-qa-assets/student-login-restored-style.png`
-  - `/Users/mac/Desktop/大创.2026/design-qa-assets/teacher-login-restored-style.png`
-  - `/Users/mac/Desktop/大创.2026/design-qa-assets/student-login-restored-mobile.png`
-  - `/Users/mac/Desktop/大创.2026/design-qa-assets/teacher-login-restored-mobile.png`
+  - [student-login-restored-style.png](../../design-qa-assets/student-login-restored-style.png)
+  - [teacher-login-restored-style.png](../../design-qa-assets/teacher-login-restored-style.png)
+  - [student-login-restored-mobile.png](../../design-qa-assets/student-login-restored-mobile.png)
+  - [teacher-login-restored-mobile.png](../../design-qa-assets/teacher-login-restored-mobile.png)
 - Desktop viewport: 1117 x 837 CSS px
 - Mobile viewport: 390 x 844 CSS px
 - Density: browser screenshots captured at the active app density; implementation evidence was compared at matching CSS viewport sizes without resampling.

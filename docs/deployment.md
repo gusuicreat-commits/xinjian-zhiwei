@@ -1,97 +1,106 @@
-# 芯鉴知微部署说明（1.0.0）
+# 部署与运行操作指南
 
-## 开发模式
+核对日期：2026-09-27。适用于仓库 [compose.yaml](../compose.yaml)；当前实现与待验收项见 [实现状态](implementation-status.md)。本文提供操作方法，不证明目标环境已部署、已迁移或具备正式课堂条件。
 
-开发者电脑安装 Docker Desktop，在项目根目录维护不提交 Git 的 `.env`，然后运行：
+## 1. 首次本地运行
+
+准备 Docker/Compose。只在没有 `.env` 时复制示例，按 `.env.example` 替换数据库密码并保持 `DATABASE_URL` 与数据库服务配置一致；已有环境不要覆盖配置。
 
 ```bash
+cp .env.example .env
+# 在本机编辑 .env，保持 AI_ENABLED=false
+# 确认所选数据库是本次要启动的环境后再执行：
 docker compose up -d --build
 docker compose ps
 ```
 
-默认入口：
+**后端默认启动命令会先执行 `alembic upgrade head`，然后启动服务。**因此 Compose 启动/重建不是只读检查，连接已有数据库前要确认目标与备份。单纯测试应使用 [隔离验收入口](evaluation.md)，不要直接启动现有业务环境。
 
-- 前端：`http://localhost:8080`
-- 后端健康检查：`http://localhost:8000/api/v1/health`
-- OpenAPI：`http://localhost:8000/docs`
-- PostgreSQL：仅 Compose 内部可见
+| 默认入口 | 用途 |
+| --- | --- |
+| `http://localhost:8080` | 前端，由 Nginx 代理 `/api` 到后端 |
+| `http://localhost:8000/api/v1/health` | 应用存活、版本与运行环境；不检查数据库 |
+| `http://localhost:8000/health/ready` | 数据库连通性检查 |
+| `http://localhost:8000/docs` | OpenAPI |
+| PostgreSQL | 仅 Compose 内部网络，没有默认宿主机端口映射 |
 
-没有 DeepSeek Key 时保持 `AI_ENABLED=false`。本地开发、测试、模拟器、规则、故障树和前端不依赖公网。
+依赖安装、镜像构建可能需要网络；依赖就绪后的基础运行不要求公网或 AI Key。无 Key 时保持 `AI_ENABLED=false`，使用确定性诊断。
 
-## 实验室局域网试运行
+## 2. 数据库与工作流恢复
 
-推荐在实验室固定电脑、小型主机或学院服务器运行同一套 Docker Compose。为该机器配置固定局域网 IP，并保证 ESP32、学生电脑、教师电脑和服务器之间可达。
+Compose 将业务数据库保存在 `postgres_data` 命名卷，重建容器不等于删除数据。不要用删除卷来处理升级失败。pgvector 镜像满足不可修改的历史迁移，不表示当前诊断使用向量检索。
 
-设备固件中的 API 地址应指向服务器局域网地址，不得使用学生电脑自己的 `localhost`。浏览器同样访问服务器局域网地址。第一版不要求购买域名、公网 IP 或云服务器。
+默认 `DIAGNOSIS_CHECKPOINT_BACKEND=memory` 只适合开发，服务重启会丢失内存中的工作流 Checkpoint。业务表持久化不等于图恢复能力已经持久化。
 
-试运行前至少确认：
+需要跨重启恢复时，在目标部署配置明确指定：
 
-1. 实验室 Wi-Fi 允许设备与服务器互访；
-2. 服务器防火墙开放统一 Web/API 入口；
-3. PostgreSQL 不直接暴露给设备或浏览器；
-4. `.env` 中数据库密码和设备凭据已经替换；
-5. 正式知识、审核责任和测试数据边界明确；
-6. 已演练断网后确定性诊断；
-7. 数据卷有可恢复备份。
+```text
+DIAGNOSIS_CHECKPOINT_BACKEND=postgres
+DIAGNOSIS_CHECKPOINT_DSN=postgresql://USER:PASSWORD@postgres:5432/DATABASE
+DIAGNOSIS_CHECKPOINT_SETUP=false
+```
 
-如需 AI Provider，只有服务器需要访问公网。公网中断时设备上传、数据库、规则、故障树、结构化知识匹配和前端继续运行；AI 增强安全降级。
+上面是占位连接串。Checkpoint 表由独立设置命令管理，不属于业务 Alembic 版本链。数据库启动后、启动业务后端前执行显式部署步骤：
 
-## 正式部署
+```bash
+docker compose up -d postgres
+docker compose run --rm backend python -m app.cli.setup_diagnosis_checkpoints
+```
 
-正式部署可选校园网服务器、学校私有云、学院服务器或合规国内云服务器。进入该阶段前必须补齐：
+确认数据库就绪后再执行设置命令；同一命令可重复运行。多 worker 场景不要让每个服务启动时自动执行 setup。完成后仍须实际验证重启恢复、反馈幂等及失败窗口；配置存在不构成恢复验收。
 
-- HTTPS、域名和证书轮换；
-- 防火墙、反向代理和访问限流；
-- 正式学生/教师账号、角色授权和多班级隔离；
-- 设备注册、令牌轮换、撤销与审计；
-- 数据库自动备份、恢复演练和灾难恢复；
-- 应用日志、指标、告警和故障值班流程；
-- 数据保留周期、隐私政策和数据外发审批；
-- DeepSeek 预算、限流、密钥托管和调用审计。
+业务迁移核查命令（对已明确选定的环境）：
 
-当前仓库没有替部署方完成正式生产部署和现场验收。
+```bash
+docker compose exec -T backend alembic current
+docker compose exec -T backend alembic heads
+docker compose exec -T backend alembic check
+```
 
-## 数据持久化、备份和恢复边界
+Head 从代码和目标库分别读取，不在本说明维护易过期的重复版本号。升级兼容必须先在隔离库验证，不能只看当前模型无差异。
 
-Compose 使用 `postgres_data` 命名卷。容器重建不应删除该卷。备份必须包含 PostgreSQL 业务表、历史兼容表、Alembic 版本和恢复校验；仅复制容器文件系统不是备份。Compose 的 PostgreSQL 镜像提供 pgvector 扩展，是为了让不可修改的历史迁移可以在空库执行，不表示当前诊断使用向量检索。
+## 3. 局域网试运行
 
-开发阶段可以使用 `pg_dump`/`pg_restore` 演练，但正式备份位置、加密、保留周期、恢复时间目标和负责人尚待项目方确认。未经确认不得自动上传数据库备份到第三方服务。
+设备、学生电脑和教师电脑访问运行 Compose 的服务器局域网地址；设备 API URL 不能填写学生电脑自己的 `localhost`。当前 Compose 暴露 8080 和 8000 端口，应按实际入口配置防火墙。需要浏览器跨域直连后端时，`API_CORS_ORIGINS` 必须包含实际来源；同源前端 API 优先走 Nginx。
 
-仓库提供：
+试运行核对 Wi-Fi 互访、账号和班级授权、设备令牌、实验会话/资料包状态与备份。演示身份操作见 [合成演示手册](demo-runbook.md)。公网中断与实验室局域网中断是两种情况：无公网仍可运行本地规则；设备到服务器断开后不能继续实时上传。
+
+## 4. 备份、恢复与保留
+
+在仓库根目录、明确当前 Compose 项目后运行：
 
 ```bash
 scripts/backup_database.sh /explicit/existing-directory/backup.dump
 scripts/restore_drill.sh /explicit/path/backup.dump
-PYTHONPATH=backend backend/.venv/bin/python -m app.cli.retention_dry_run --days 30
+docker compose exec -T backend python -m app.cli.retention_dry_run --days 30
 ```
 
-备份拒绝覆盖；恢复使用临时隔离数据库并在退出时删除该临时库，不删除 Compose 数据卷。
-保留命令只报告候选数量，实际删除策略仍待项目方确认。
+- 备份使用 `pg_dump -Fc --snapshot`，要求Python 3.10+、Docker与当前Compose postgres服务。父目录须存在，拒绝覆盖dump或同名`.manifest.json`；普通失败清理本次不完整dump，强制终止留下无清单文件不能作为完成备份。
+- 恢复演练在同一个 PostgreSQL 实例创建临时数据库，退出时删除该临时库，不替换业务库、不删除数据卷。
+- 内容清单与dump使用同一REPEATABLE READ导出快照，覆盖全部非系统表（包含会话、问题、指导、反馈、工单、案例、包及检查回执）的全行SHA-256摘要、条数、列类型和关系约束。恢复先验dump摘要，再比清单，源库后续写入不会造成误报。清单不含记录原文；仍需与dump一起受控保存。备份窗口避免DDL，副本恢复还须人工核验业务可用性及所需角色权限。
+- `retention_dry_run` 只报告候选数量，`deleted=0`；不实施删除策略。
 
-## DeepSeek 配置边界
+正式备份存储位置、加密、保留周期、恢复目标和负责人仍需部署方确定。业务库与独立 Checkpoint 库若分开，当前脚本仅证明指定数据库；须暂停相关业务写入并分别备份两个库，再按同一停写窗口联合恢复，单库通过不能称跨库一致；仅复制容器文件不是数据库备份。
 
-仓库只提供非敏感配置：
+## 5. AI 配置边界
 
-```text
-AI_ENABLED=false
-AI_PROVIDER=deepseek
-AI_BASE_URL=https://api.deepseek.com
-AI_MODEL=deepseek-v4-flash
-AI_THINKING_ENABLED=false
-AI_API_KEY=
-```
+非敏感默认配置在 [.env.example](../.env.example) 与 Compose。保持 AI 关闭即可运行基础流程；真实 Key 只从服务器密钥管理或不提交 Git 的环境配置注入。启用模型、更换 Provider 或采用示例模型名称前，按开发准则完成实际可用性、外发字段、预算与降级验证；本文不保证外部模型当前可用。
 
-真实 Key 只能通过服务器密钥管理或不提交 Git 的 `.env` 注入。即使 Key 存在，`AI_ENABLED=false` 也不会调用；启用后仍受策略、缓存、次数、Token、预算、隐私和结构校验门禁。
+`/health/dependencies` 的 AI 状态仅检查启用和密钥配置，不实际调用 Provider；结构化知识状态也不等于正式资料审核通过。`/api/v1/readiness/status` 是业务就绪提示，不能代替运行探针、硬件验收或生产验收。
 
-## 验收
+## 6. 运行检查与正式部署边界
+
+以下命令检查已启动环境，不执行迁移：
 
 ```bash
-docker compose up -d --build
 docker compose ps
 docker compose logs --tail=200 backend
 docker compose logs --tail=200 frontend
-curl http://127.0.0.1:8000/api/v1/health
-curl -I http://127.0.0.1:8080/student
+curl --fail http://127.0.0.1:8000/health/live
+curl --fail http://127.0.0.1:8000/health/ready
+curl --fail -I http://127.0.0.1:8080/student
 ```
 
-验收必须同时验证无公网和无 Key 场景能返回确定性诊断，不能只验证容器启动。
+页面能打开和存活探针成功不足以验收。还应按 [测试与评测](evaluation.md) 核对目标范围的登录、上传、诊断、反馈、教师处置、无 Key 降级及恢复。
+
+正式部署还需落实 HTTPS、网络访问、账号/设备凭据生命周期、持久化 Checkpoint、备份恢复、监控告警、隐私和数据保留责任，以及真实硬件与课程验收。仓库已有部分软件入口不表示部署方已完成这些运营事项；本次文档整理没有启动服务或迁移任何现有运行数据库。

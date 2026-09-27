@@ -1,8 +1,8 @@
-import json
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.routing import APIRoute
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_authenticated_device
@@ -25,9 +25,7 @@ from app.services.device_ingest import (
     calculate_device_status,
     cleanup_test_run,
     ingest_device_batch,
-    save_heartbeat,
-    save_log,
-    save_reading,
+    ingest_legacy_record,
 )
 
 
@@ -49,7 +47,41 @@ def validated_ingestion_session(
 IngestionSession = Annotated[str | None, Depends(validated_ingestion_session)]
 
 
-router = APIRouter(prefix="/device", tags=["device"])
+class BoundedTelemetryRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def bounded(request: Request):
+            if request.method == "POST" and self.path.rsplit("/", 1)[-1] in {
+                "ingest",
+                "logs",
+                "readings",
+                "heartbeat",
+            }:
+                limit = get_settings().device_ingest_max_body_bytes
+                chunks, size = [], 0
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > limit:
+                        raise HTTPException(
+                            status_code=413,
+                            detail={
+                                "error_code": "INGESTION_BODY_TOO_LARGE",
+                                "message": "request body exceeds the configured byte limit",
+                                "request_id": None,
+                                "details": {"max_bytes": limit},
+                                "retryable": False,
+                            },
+                        )
+                    chunks.append(chunk)
+                # Cache only bounded bytes before FastAPI parses JSON/Pydantic models.
+                request._body = b"".join(chunks)
+            return await handler(request)
+
+        return bounded
+
+
+router = APIRouter(prefix="/device", tags=["device"], route_class=BoundedTelemetryRoute)
 AuthenticatedDevice = Annotated[Device, Depends(get_authenticated_device)]
 DatabaseSession = Annotated[Session, Depends(get_db)]
 
@@ -68,28 +100,6 @@ def create_device_batch(
     session_id: IngestionSession,
 ) -> DeviceBatchIngestResponse:
     settings = get_settings()
-    content_length = request.headers.get("content-length")
-    declared_size = int(content_length) if content_length and content_length.isdigit() else None
-    estimated_size = len(
-        json.dumps(
-            payload.model_dump(mode="json", by_alias=True),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    )
-    if (
-        declared_size is not None and declared_size > settings.device_ingest_max_body_bytes
-    ) or estimated_size > settings.device_ingest_max_body_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail={
-                "error_code": "INGESTION_BODY_TOO_LARGE",
-                "message": "request body exceeds the configured byte limit",
-                "request_id": payload.request_id,
-                "details": {"max_bytes": settings.device_ingest_max_body_bytes},
-                "retryable": False,
-            },
-        )
     try:
         return ingest_device_batch(
             db=db,
@@ -139,6 +149,28 @@ def delete_test_run(
     )
 
 
+def legacy_write(db, device, payload, session_id):
+    try:
+        return ingest_legacy_record(
+            db,
+            device,
+            payload,
+            experiment_session_id=session_id,
+            requests_per_minute=get_settings().device_ingest_requests_per_minute,
+        )
+    except ProtocolIngestError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail={
+                "error_code": error.error_code,
+                "message": error.message,
+                "request_id": None,
+                "details": error.details,
+                "retryable": error.retryable,
+            },
+        ) from error
+
+
 @router.post("/logs", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
 def create_device_log(
     payload: DeviceLogCreate,
@@ -146,7 +178,7 @@ def create_device_log(
     db: DatabaseSession,
     session_id: IngestionSession,
 ) -> IngestResponse:
-    record = save_log(db, device, payload, experiment_session_id=session_id)
+    record = legacy_write(db, device, payload, session_id)
     return IngestResponse(id=record.id, device_id=device.device_key, accepted_at=record.received_at)
 
 
@@ -157,7 +189,7 @@ def create_sensor_reading(
     db: DatabaseSession,
     session_id: IngestionSession,
 ) -> IngestResponse:
-    record = save_reading(db, device, payload, experiment_session_id=session_id)
+    record = legacy_write(db, device, payload, session_id)
     return IngestResponse(id=record.id, device_id=device.device_key, accepted_at=record.received_at)
 
 
@@ -168,7 +200,7 @@ def create_device_heartbeat(
     db: DatabaseSession,
     session_id: IngestionSession,
 ) -> IngestResponse:
-    record = save_heartbeat(db, device, payload, experiment_session_id=session_id)
+    record = legacy_write(db, device, payload, session_id)
     return IngestResponse(id=record.id, device_id=device.device_key, accepted_at=record.received_at)
 
 

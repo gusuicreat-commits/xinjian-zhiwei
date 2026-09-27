@@ -1,7 +1,7 @@
 import { CheckRequestError, pendingCheck } from '@/api/diagnosisChecks'
 import axios from 'axios'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import {
   completeFeedbackRequest,
@@ -32,6 +32,7 @@ import {
   reviewStudentDashboard,
   reviewStudentWorkflow,
 } from '@/review/fixtures'
+import { readReviewState, saveReviewState } from '@/review/state'
 import type {
   DeviceCredentials,
   DiagnosisWorkflow,
@@ -126,6 +127,15 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     }
   }
 
+  if (REVIEW_MODE)
+    watch(
+      dashboard,
+      (value) => {
+        if (value) saveReviewState('student-dashboard', value)
+      },
+      { deep: true, flush: 'sync' },
+    )
+
   async function refreshFeedbackRecovery(credentials: DeviceCredentials): Promise<boolean> {
     const scope = feedbackSessionScope(credentials)
     if (activeSessionScope !== scope) return false
@@ -182,8 +192,8 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     errorMessage.value = ''
     const recoveryLoaded = refreshFeedbackRecovery(credentials)
     if (REVIEW_MODE) {
-      dashboard.value = structuredClone(reviewStudentDashboard)
-      workflow.value = structuredClone(reviewStudentWorkflow)
+      dashboard.value ??= readReviewState('student-dashboard', reviewStudentDashboard)
+      workflow.value ??= structuredClone(reviewStudentWorkflow)
       state.value = 'ready'
       failureKind.value = null
       await recoveryLoaded
@@ -387,7 +397,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     if (activeSessionScope !== scope || !scopedCredentials.experimentSessionId) return
     const sequence = ++workflowSequence
     if (REVIEW_MODE) {
-      workflow.value = structuredClone(reviewStudentWorkflow)
+      workflow.value ??= structuredClone(reviewStudentWorkflow)
       return
     }
     workflowLoading.value = true

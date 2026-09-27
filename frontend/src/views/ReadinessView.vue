@@ -16,6 +16,7 @@ onMounted(async () => {
 })
 
 const labels = {
+  unverified: '待核实',
   ready: '已就绪',
   blocked: '受阻',
   not_required: '当前非必需',
@@ -51,7 +52,7 @@ const readinessDimensions = [
             <dt>{{ label }}</dt>
             <dd>
               <el-tag :type="data[key] ? 'success' : 'danger'">
-                {{ data[key] ? '已满足' : '尚未满足' }}
+                {{ data[key] ? '已满足' : '未获就绪证据' }}
               </el-tag>
             </dd>
           </div>

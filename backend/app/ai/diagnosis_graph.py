@@ -9,7 +9,7 @@ from typing import Any, Literal
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient
@@ -27,7 +27,6 @@ from app.models.base import utc_now
 from app.models.classroom import ExperimentSession
 from app.models.device import Device
 from app.models.diagnosis_evidence import DiagnosisEvidence
-from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.diagnosis_workflow import DiagnosisWorkflowReview, DiagnosisWorkflowRun
 from app.models.guidance_history import GuidanceHistory
@@ -890,17 +889,20 @@ def escalation_handler(
     target = (state.get("student_feedback") or {}).get("episode_id")
     if target:
         guidance = [item for item in guidance if item.episode_id == target]
-    attempt_count = (
-        runtime.context.db.scalar(
-            select(func.count(DiagnosisFeedback.id)).where(
-                DiagnosisFeedback.episode_id == target,
-                DiagnosisFeedback.action == "unresolved",
-                DiagnosisFeedback.diagnosis_result_id == state["diagnosis_result_id"]
-                if target is None
-                else True,
-            )
-        )
-        or 0
+    from app.services.diagnosis_episode import episode_attempt_count
+
+    # Initial checks have no feedback target; retain each linked problem's progress.
+    # The aggregate displays the maximum, never a sum across unrelated problems.
+    targets = (
+        {target}
+        if target
+        else {
+            item["id"] for item in diagnosis_issues(runtime.context.db, _diagnosis(runtime, state))
+        }
+    )
+    attempt_count = max(
+        (episode_attempt_count(runtime.context.db, identifier) for identifier in targets),
+        default=0,
     )
     failure_count = max(
         max((item.failure_count for item in guidance), default=0),

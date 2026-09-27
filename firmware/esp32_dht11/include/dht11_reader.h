@@ -9,8 +9,8 @@ struct Dht11Frame {
     float temperature_c = 0.0f;
     float humidity_rh = 0.0f;
     uint8_t raw[5] = {0, 0, 0, 0, 0};
-    uint32_t trigger_started_ms = 0;
-    uint32_t read_finished_ms = 0;
+    uint64_t trigger_started_ms = 0;
+    uint64_t read_finished_ms = 0;
 };
 
 Dht11Frame decodeDht11Frame(const uint8_t raw[5]);

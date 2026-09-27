@@ -19,6 +19,7 @@ from app.services.diagnosis_episode import (
     _issue_groups,
     confirmed_recovery,
     diagnosis_scope,
+    episode_attempt_count,
     evidence_source_key,
     failure_evidence_keys,
     issue_links,
@@ -268,6 +269,11 @@ def _generate_guidance(
                 scoped_diagnosis,
                 failure_count=failure_count,
                 anomaly_duration_seconds=wait_duration,
+                minimum_hint_level=max(
+                    target.current_hint_level, min(4, 1 + episode_attempt_count(db, target.id))
+                )
+                if target
+                else 1,
             )
             if evaluation is None:
                 continue

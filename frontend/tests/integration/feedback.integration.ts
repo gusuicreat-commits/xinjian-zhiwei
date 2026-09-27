@@ -14,6 +14,10 @@ const backendPort = Number(process.env.INTEGRATION_BACKEND_PORT ?? '18101')
 const backendURL = `http://127.0.0.1:${backendPort}`
 const origin = `http://127.0.0.1:${process.env.INTEGRATION_FRONTEND_PORT ?? '15173'}`
 const fixtureModule = 'app.cli.browser_integration_fixture'
+const dht11MetadataPath = join(
+  backendDir,
+  'experiment_packages/dht11_temperature_humidity/metadata.yaml',
+)
 
 type Manifest = {
   schema: string
@@ -51,6 +55,13 @@ type Backend = {
   manifest: Manifest
   controlDir: string
   snapshot: () => Promise<Snapshot>
+}
+
+async function currentDht11PackageVersion() {
+  const metadata = await readFile(dht11MetadataPath, 'utf8')
+  const match = metadata.match(/^  version:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/m)
+  if (!match) throw new Error(`DHT11 package version is missing: ${dht11MetadataPath}`)
+  return match[1]
 }
 
 async function stop(child: ChildProcess) {
@@ -206,7 +217,7 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
   expect(workflow.status).toBe('waiting_feedback')
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20260920_0033')
+  expect(persisted.migration).toBe('20260927_0034')
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,
@@ -477,7 +488,7 @@ test('teaching references are visible from persisted package guidance and surviv
   await expect(reference).toBeVisible()
   await reference.locator('summary').click()
   await expect(reference).toContainText('测试资料，待硬件与教师确认')
-  await expect(reference).toContainText('版本 2.0.3')
+  await expect(reference).toContainText(`版本 ${await currentDht11PackageVersion()}`)
   await expect(reference).toContainText('不是实测结果')
   await expect(reference).toContainText('不代表已经执行')
   const before = await reference.innerText()

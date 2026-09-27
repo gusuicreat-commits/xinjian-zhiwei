@@ -1,6 +1,8 @@
 # 业务规则实施与本地验收记录
 
-日期：2026-09-19。工作基线：`7c24c2f1ac00b93bbe44b5258cb98a6c3bd418f2`，验证针对本轮工作区改动，代码指纹见验证清单；最终提交以 Git 记录为准。持续开发依据是 [开发准则第20节](development-guidelines.md#20-业务逻辑与开发规则用户确认的持续开发依据)，模型规范内核仍以第19节为准；`AGENTS.md` 已明确指向两节。
+> 分类：历史证据。保留当时版本、失败/通过结果和限制；不作为当前开发指令或当前验收状态。当前入口见 [文档索引](../README.md) 与 [实现状态](../implementation-status.md)。
+
+日期：2026-09-19。工作基线：`7c24c2f1ac00b93bbe44b5258cb98a6c3bd418f2`，验证针对本轮工作区改动，代码指纹见验证清单；最终提交以 Git 记录为准。持续开发依据是 [开发准则第20节](../development-guidelines.md#20-业务逻辑与开发规则用户确认的持续开发依据)，模型规范内核仍以第19节为准；`AGENTS.md` 已明确指向两节。
 
 本轮完成下面列出的软件实现与本地验证。未推送、部署或迁移运行数据库，未改写历史诊断、计数、来源不明记录和重复案例。本报告不将六阶段方案全部标成已完成：硬件、教师、真实Provider语义和课堂试运行没有执行，发布环境演练另列待验收。
 
@@ -34,7 +36,7 @@ INTEGRATION_CHROME_CHANNEL=chrome \
 scripts/verify.sh
 ```
 
-最终结果由 [验证清单](reports/business-rules-verification-2026-09-19.json) 记录；完整合成流程证据见 [PostgreSQL流程报告](reports/business-rules-workflow-2026-09-19.json)。
+最终结果由 [验证清单](../reports/business-rules-verification-2026-09-19.json) 记录；完整合成流程证据见 [PostgreSQL流程报告](../reports/business-rules-workflow-2026-09-19.json)。
 
 - 后端：551项通过。包括空库迁移、0028旧数据升级、Alembic模型一致性、真实PostgreSQL独立连接竞争、checkpoint恢复、历史只读检查及既有R2反例。
 - 模拟设备：16项通过。

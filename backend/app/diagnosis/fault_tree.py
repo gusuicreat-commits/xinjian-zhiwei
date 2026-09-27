@@ -138,6 +138,7 @@ def evaluate_fault_tree(
     *,
     failure_count: int,
     anomaly_duration_seconds: int,
+    minimum_hint_level: int = 1,
 ) -> Optional[FaultTreeEvaluation]:
     if not tree.enabled:
         return None
@@ -166,7 +167,10 @@ def evaluate_fault_tree(
             )
         )
     causes.sort(key=lambda item: (-item.score, item.cause_id))
-    level = _hint_level(tree, failure_count, anomaly_duration_seconds)
+    level = max(
+        _hint_level(tree, failure_count, anomaly_duration_seconds),
+        min(4, max(1, minimum_hint_level)),
+    )
     cause_by_id = {cause.id: cause for cause in tree.causes}
     return FaultTreeEvaluation(
         tree_id=tree.id,

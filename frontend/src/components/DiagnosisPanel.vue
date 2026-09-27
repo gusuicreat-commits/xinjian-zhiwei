@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { REVIEW_MODE } from '@/review/fixtures'
 import { issueLabel, readableText, evidenceText } from '@/presentation/userLanguage'
 import TeachingReferencePanel from './TeachingReferencePanel.vue'
 import DiagnosisCheckPanel from './DiagnosisCheckPanel.vue'
@@ -363,7 +364,8 @@ function formatReviewTime(value?: string | null): string {
           <el-button
             :type="checkPending || !diagnosis ? 'primary' : 'default'"
             :loading="workflowLoading"
-            :disabled="!hasExperimentSession || workflowLoading || readOnly"
+            :disabled="REVIEW_MODE || !hasExperimentSession || workflowLoading || readOnly"
+            :title="REVIEW_MODE ? '离线演示仅展示固定记录，不支持重新检查' : undefined"
             @click="!readOnly && hasExperimentSession && emit('requestWorkflow')"
             >{{ workflowActionLabel }}</el-button
           >

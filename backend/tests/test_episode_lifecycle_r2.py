@@ -209,3 +209,17 @@ def test_new_diagnosis_without_anomaly_keeps_feedback_compatible(api_context):
     assert result["matches"] == []
     assert result["episode"] is None
     assert feedback(api_context, result, "resolved").status_code == 201
+
+
+def test_unresolved_progress_survives_new_diagnosis_and_replay(api_context):
+    log(api_context)
+    first = run(api_context)
+    identity = str(uuid4())
+    assert feedback(api_context, first, "unresolved", identity).status_code == 201
+    assert feedback(api_context, first, "unresolved", identity).status_code == 201
+    assert feedback(api_context, first, "unresolved").status_code == 201
+    second = run(api_context)
+    with api_context["session_factory"]() as db:
+        hints = db.query(GuidanceHistory).filter_by(diagnosis_result_id=second["id"]).all()
+        assert hints and all(h.hint_level >= 3 for h in hints)
+        assert all(all(item["level"] == h.hint_level for item in h.hints) for h in hints)

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 class ReadinessItem(BaseModel):
     key: str
     label: str
-    status: Literal["ready", "blocked", "not_required", "test_only"]
+    status: Literal["ready", "blocked", "not_required", "test_only", "unverified"]
     evidence: str
     required_input: Optional[str] = None
 

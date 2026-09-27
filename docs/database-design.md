@@ -1,194 +1,136 @@
-# 芯鉴知微数据库设计（V2）
+# 芯鉴知微数据库设计
 
-## 迁移基线
+代码核对日期：2026-09-27。本文解释当前数据边界与关键约束；精确列定义见
+[`backend/app/models/`](../backend/app/models/)，迁移历史见
+[`backend/migrations/versions/`](../backend/migrations/versions/)。持续规则见
+[开发准则](development-guidelines.md)，目标环境状态见 [实现状态](implementation-status.md)。
 
-- 数据库：PostgreSQL 16。历史 pgvector 结构仅为兼容保留，MVP 运行链不使用向量检索。
-- 迁移工具：Alembic。
-- 目标版本：`20260912_0027`（本地代码；本轮尚未部署）。
-- 后端启动时先执行 `alembic upgrade head`，成功后才启动 API。
+## 1. 迁移与存储基线
 
-## 表结构
+- 标准环境使用 PostgreSQL 16；历史初始迁移要求 `vector` 扩展，当前诊断不使用向量检索。
+- Alembic 代码 Head 为 `20260927_0034`。这是仓库结构版本，不代表运行数据库已升级。
+- 容器入口 `app.startup` 先执行迁移再启动 API；手工迁移、备份与回滚按 [部署说明](deployment.md) 执行。
+- LangGraph checkpoint 表由 PostgreSQL saver 的 `setup()` 管理，不在 Alembic 中重复定义。
+- 结构修改追加迁移，历史关联允许为空；不能通过猜测回填归属、来源或处理状态。
 
-### `devices`
+## 2. 按业务分类的表
 
-保存稳定外部标识 `device_key`、展示名称、通用设备类别、可选硬件描述、令牌哈希、启用状态、最后服务端接收心跳时间、固件版本和可扩展元数据。硬件型号允许为空，不作为核心逻辑分支条件。
+| 分类 | 表及用途 |
+| --- | --- |
+| 账号与授权 | `users`、`roles`、`permissions`、`user_roles`、`role_permissions`、`auth_sessions`；账号、角色权限与可撤销会话 |
+| 课堂 | `courses`、`classes`、`enrollments`、`teaching_assignments`、`experiment_assignments`、`device_bindings`；资格、授课范围、任务及当前设备绑定 |
+| 实验会话 | `experiment_sessions`、`experiment_session_commands`；固定学生—任务—设备—包版本，保存状态版本和操作回执 |
+| 设备采集 | `devices`、`ingestion_requests`、`device_logs`、`sensor_readings`、`device_heartbeats`；设备身份、幂等批次、原始遥测和时间质量 |
+| 诊断事实 | `diagnosis_results`、`diagnosis_evidence`；固定输入、规则结果、标准证据与解释快照 |
+| 问题及指导 | `diagnosis_episodes`、`diagnosis_issues`、`guidance_history`、`diagnosis_feedback`；持久化故障、诊断到问题的关联、针对性指导和反馈 |
+| 检查与流程 | `diagnosis_checks`、`diagnosis_workflow_runs`、`diagnosis_workflow_reviews`；显式检查身份、冻结输入、图业务流水与审核 |
+| 实验内容 | `experiments`、`experiment_versions`、`experiment_package_artifacts`；固定包快照和工件索引 |
+| 旧模板兼容 | `experiment_templates`、`experiment_template_versions`、`diagnostic_artifacts`；既有模板及诊断工件版本 |
+| 知识内容 | `knowledge_sources`、`knowledge_documents`、`knowledge_chunks`、`knowledge_reviews`、`knowledge_cases`、`knowledge_case_drafts`；来源、资料整理审核、正式案例及事实草稿 |
+| 模型调用 | `ai_usage_reservations`、`ai_call_records`、`ai_explanation_cache`；外发尝试的预算预留、调用审计和可重验缓存 |
+| 教师处置 | `intervention_cases`、`intervention_events`、`classroom_messages`；工单、公开/私密事件与课堂消息 |
+| 通用审计 | `audit_events`；身份、版本发布、会话管理、导出等事件 |
+| 历史向量兼容 | `knowledge_embeddings`；保留旧结构，不是当前诊断真相源或检索依赖 |
 
-### `device_logs`
+## 3. 原始归属与采集约束
 
-保存级别、消息、可选事件码、设备发生时间、传感器快照、原始请求、测试数据标记和服务端接收时间。
+`device_bindings` 代表当前资源分配，不能证明历史数据属于谁。`experiment_sessions` 固定任务、
+学生、设备及可空包版本；三类遥测各有可空 `experiment_session_id`。诊断的创建归属保存在
+快照，工作流另以外键保存学生及会话；访问入口通过 `services/data_scope.py` 解析并核验。
+无法证明归属的历史记录不自动成为学生可见记录。
 
-### `sensor_readings`
+`ingestion_requests` 保存请求 UUID、载荷哈希、boot/sequence、原成功回执、测试运行 ID 和接收时间：
 
-使用 `sensor_type + metric_key + value + unit` 表达通用指标，并保存设备观察时间、扩展元数据、原始请求、测试数据标记和服务端接收时间。
+- `(device_id, request_id)` 唯一：同身份同内容重放；同身份不同内容冲突。
+- `(device_id, boot_id, sequence_no)` 唯一：同启动序列不能由另一请求占用。
+- 同设备全部遥测写入在设备行锁内重新鉴权及检查合计额度；批次记录和回执、旧逐条记录和legacy_ingestion_admissions分别同事务提交。批次唯一约束独立兜底，旧接口无幂等身份。
+- 批次及三张遥测表的 `sequence_no`、`uptime_ms` 为 `BIGINT`；HTTP 限定严格整数 `0..2^53-1`。
+- 遥测通过可空 `ingestion_request_id` 回指批次；设备时间、服务端接收时间、`time_quality` 分开保留。
 
-### `device_heartbeats`
+`raw_payload` 是经过接口校验保留的请求数据，不包含认证头；不等同于字节级网络抓包。
+设备令牌与用户密码保存哈希，Bearer 会话也只保存令牌哈希。
 
-保存每次心跳的设备观察时间、固件版本、扩展元数据、原始请求、测试数据标记和服务端接收时间。心跳同时更新 `devices.last_seen_at`。
+## 4. 诊断、问题与反馈
 
-### `ingestion_requests`
+`diagnosis_results` 保存固定上下文、规则版本/哈希、输入指纹、实验版本、测试标记、确定性结果
+及解释。`diagnosis_evidence` 保存 UUID、来源类型/记录、规范化值和原始载荷；引用真实存在还不够，
+候选引用必须与该候选和问题范围相关。
 
-保存设备协议 V1 的 UUID 请求 ID、协议/Schema 版本、启动 ID、序列号、设备发送时间、
-运行时、固件版本、规范化载荷 SHA-256、记录数、原始成功响应、测试标记和服务端接收
-时间。`device_id + request_id` 和 `device_id + boot_id + sequence_no` 分别唯一，用于
-持久化幂等与序列冲突检测。三个采集表通过可空 `ingestion_request_id` 回指批次，并保存
-协议版本、启动 ID、序列号、运行时和 `time_quality`；旧单条接口产生的历史记录保持为空。
-可空 `test_run_id` 只标记合成场景运行并建立索引，用于设备范围的精确定向清理。
+`diagnosis_episodes` 表示持续问题；新问题使用 `scope_key`，由会话、规则/包及组件范围等确定。
+部分唯一索引 `uq_active_problem_scope` 限制同一非空范围只有一个 open/escalated 问题。
+`diagnosis_issues` 用 `(diagnosis_result_id, issue_key)` 唯一键保存每次诊断中的问题归属、
+证据键和证据修订；同一次诊断可关联多个问题。历史空范围不猜测迁移为新问题。
 
-### `diagnosis_results`
+`guidance_history` 新记录唯一键为 `(diagnosis_result_id, fault_tree_id, episode_id)`；
+`episode_id IS NULL` 的旧记录仍使用诊断＋树的部分唯一索引。指导保存树版本、计数、
+异常持续时间、帮助等待时间、提示和可选教学参考全文快照。参考放在现有 hints JSON，旧行不回填。
 
-保存评估时间、规则集版本与哈希、规范化输入指纹、命中规则、证据、完整上下文快照、
-`DiagnosisCore`、确定性解释、AI 增强状态和测试数据标记。新诊断可同时保存实验稳定 ID、
-实验版本、定义 SHA-256 与 Knowledge Scope；旧诊断这些字段保持为空。
+`diagnosis_feedback` 保存原请求 UUID、会话、目标问题、action/note 和 pending/applied 状态。
+`(diagnosis_result_id, request_id)` 唯一；同身份内容冲突返回 409，同身份重试不得重复推进。
+问题证据修订用于阻止过时“已解决”反馈覆盖新相关异常。解决报告与硬件恢复来源分别记录。
 
-### `experiments`、`experiment_versions` 与 `experiment_package_artifacts`
+短生命周期锁保护问题读取与变更；图恢复另有串行控制。不能把某个唯一索引或单个状态修订号
+当成全部跨模块事务保证，实际锁边界见 `services/diagnosis_episode.py`、`student_feedback.py`。
 
-`experiments` 保存稳定实验身份。`experiment_versions` 保存通过校验的完整实验包快照、
-Manifest、包哈希、兼容范围、审核状态和当前版本标记；`experiment + version` 以及包哈希
-均不可重复。`experiment_package_artifacts` 为包内硬件、规则、故障树、知识、教学和测试
-文件建立可查询索引，但运行时真相仍是对应版本的不可变完整快照。
+## 5. 请求恢复与工作流
 
-已发布版本不允许修改；发布新版本只把旧版本标记为 `superseded`，历史诊断仍绑定并可
-读取旧版本。`experiment_assignments`、`diagnosis_results` 和
-`diagnosis_workflow_runs` 可通过 `experiment_version_id` 锁定同一版本。
+`diagnosis_checks` 唯一键为 `(session_id, request_id)`，保存原参数、载荷哈希、基准诊断、
+输入签名、私有输入快照、工作流关联及回执。回执投影不返回私有输入；读取回执不运行检查。
 
-### `diagnosis_evidence`
+`diagnosis_workflow_runs.id` 是流程身份，`graph_thread_id = 'diagnosis:' || id` 受数据库检查约束；
+`diagnosis_result_id` 是另一个可空、唯一关联的诊断结果 ID，不能将两个 ID 混为一谈。
+工作流保存学生、会话、图/规则/包版本、节点轨迹、指标、恢复次数和最终投影。
+`state_revision` 只作业务修订；`diagnosis_workflow_reviews.workflow_run_id` 唯一，防止重复终结审核。
 
-保存每次诊断的标准化事件、观测和规则事实。`raw_payload` 保留来源数据，
-`normalized_value` 保存通用引擎读取的标准结构，两者不混写。每条证据有稳定 UUID、来源
-类型、来源记录 ID 和时间，并绑定诊断与实验版本；AI 只能引用本次诊断实际存在的证据 ID。
+业务表与 checkpoint 不是分布式原子事务。检查和反馈依靠原请求身份、已消费状态和原流程恢复，
+不能因丢响应就生成新身份。PostgreSQL 的独立连接测试是并发验收依据；SQLite 仅覆盖开发测试路径。
 
-候选原因按实际匹配异常、事实和来源关联这些持久化 ID；AI 对一个候选的引用还须属于该候选
-`evidence_refs`，不能从同诊断的无关证据中补位。引用身份与关联合法不证明真实根因。
+## 6. 内容版本与案例发布
 
-### `diagnosis_episodes`
+`experiment_versions` 保存不可覆盖包快照、Manifest、hash、兼容范围、审核状态及当前标记；
+`(experiment_id, version)` 与包 hash 分别唯一。工件表是索引，完整快照仍是真相源。
+会话、任务、诊断和工作流可关联精确版本。发布新版本会替换当前标记，但不改写旧快照；
+固定历史版本使用与撤回边界见 [实验包设计](experiment-package-design.md)。
 
-按设备、可选实验标识、主要错误码和时间窗口聚合重复异常，保存开始/最近出现时间、失败次数、当前提示等级、最新诊断、AI 调用次数和解决来源。
+资料文档以 `(source_id, content_hash)` 唯一，知识块保存来源定位、内容 hash、审核状态及适用注记。
+已批准知识块是资料治理结果，不能直接等同于可用于诊断的正式案例。
+诊断案例还须同时满足 approved、confirmed、facts_locked、quality_check_passed 及适用范围。
 
-### `guidance_history`
+`knowledge_case_drafts.version_no` 用于条件更新；审批和插入正式案例在同一事务。
+`knowledge_cases.source_draft_id` 可空且唯一，防止一份新草稿重复发布。旧来源关联留空；
+润色等待模型时不持锁，返回后重验状态、版本与权限。
 
-每次故障树提示保存设备、来源诊断、树 ID/标题/状态/版本/哈希、配置来源与 Scope、首次
-发现时间、历史失败次数（不是采样连续失败次数）、持续时间、提示等级、教师介入标记、排序原因、提示文本和测试数据
-标记。`diagnosis_result_id + fault_tree_id` 唯一，避免重复调用制造虚假升级。
+## 7. AI 与教师处置
 
-### `diagnosis_feedback`
+`ai_usage_reservations` 每条对应一次外发尝试，含阶段、状态、预留/计入金额、Token、错误分类
+和问题费用归因。`ai_call_records` 记录业务调用输出及路由；`(workflow_run_id, call_stage)`
+限制工作流阶段重复审计。阶段包含反馈身份，不能把不同轮次误合并。成本不确定的失败不得当成零成本。
+金额预留是估算门禁，不保证服务商账单硬上限。
 
-保存指定诊断的反馈 action、可选 note、测试标记和创建时间。迁移 0027 新增可空的
-`request_id`、`experiment_session_id`、`processing_status`：新请求必须带 UUID 请求键和实际实验会话，
-处理状态区分 pending 与 applied；历史行保持 NULL，不猜测请求身份、归属或处理完成状态。
+`ai_explanation_cache` 用稳定指纹保存已校验解释；缓存仍须经过当前权限、版本、审核和输出契约检查。
+原始秘密和完整 Prompt 不作为审计数据保存；字段范围以外发及审计投影代码为准。
 
-`(diagnosis_result_id, request_id)` 唯一约束保证同一诊断的一次逻辑反馈只能建一行；会话外键
-使用 `ON DELETE RESTRICT`。同键同载荷重放原行，改变 action/note 返回 409；新键才表示新尝试。
-服务端在任何写入前核对会话、学生、设备与诊断/工作流归属，旧诊断没有可信创建归属则拒绝反馈。
+`intervention_cases` 有目标问题、班级和 `version_no`；同活动问题只允许一个 open/claimed/unconfirmed
+工单，旧无目标工单维持每诊断唯一。操作及回执保存在追加事件中；学生解决说明只读取明确公开的
+解决事件，不能从历史冗余摘要绕过隐私。工单 resolve/close 不自动关闭问题；明确问题解决报告另走
+版本/证据修订核验。
 
-PostgreSQL 按诊断使用会话级 advisory lock，在现有图节点业务提交之间仍串行化反馈；SQLite
-仅使用进程内锁，属于单进程开发/测试范围。数据库唯一约束独立兜底，不能将 SQLite 结果当作多进程并发验证。
+## 8. 关键后续迁移与维护
 
-同步 Checkpoint、原反馈 ID 和处理状态用于失败恢复：图尚未消费时恢复，已消费但业务确认丢失时补确认，
-applied 则直接重放。业务表与 Saver 并未合并为分布式原子事务；限定验证范围见 [整改报告](workflow-remediation.md)。
+| 迁移 | 结构目的 |
+| --- | --- |
+| `0026` | 实验包版本、工件、标准证据与诊断/工作流绑定 |
+| `0027` | 反馈请求身份、会话及处理状态 |
+| `0028` | 持久化 AI 外发预算预留 |
+| `0029` | 遥测会话归属、草稿版本、正式案例来源唯一性、证据修订 |
+| `0030` | 会话固定包版本、状态版本与操作回执 |
+| `0031` | 多问题关联、指导/反馈/工单目标、等待时间与 AI 归因 |
+| `0032` | 四张采集相关表的协议计数扩大为 BIGINT |
+| `0033` | 显式检查命令、冻结输入与回执 |
+| `0034` | 旧逐条遥测近期准入记录，与批次回执共用限额；不回填历史数据 |
 
-### `knowledge_sources`
-
-保存稳定来源标识、治理来源类型、标题、URI、版本、许可证、授权范围、可扩展元数据和测试标记。正式来源类型分为 `official_hardware`、`course_material`、`confirmed_parameter`、`verified_case` 和 `supplementary`；正式来源必须记录 URI 与版本。
-
-### `knowledge_documents`
-
-保存来源关联、文档标题、媒体类型、语言、外部存储 URI、内容哈希、解析器名称/版本、审核状态和测试标记。新导入文档从 `draft` 开始，状态可为 `draft`、`pending`、`approved`、`rejected`、`withdrawn` 或 `superseded`。`source_id + content_hash` 唯一，保证重复导入幂等。
-
-### `knowledge_chunks`
-
-保存文档内顺序、文本、内容哈希、字符数、页码/章节/字符范围等通用定位 JSON、结构化过滤元数据和审核状态。元数据用于记录资料整理人、内容来源方式、适用硬件；真实案例还记录最终修复动作与 `confirmed/high/medium/low/unknown` 根因确认等级。官方资料必须有页码、章节或段落定位。只有 `approved` 知识块可参与正式检索。
-
-### `knowledge_embeddings`（历史兼容）
-
-该表和 pgvector 列来自历史迁移，为旧数据可读和迁移可升级而保留。当前 MVP 不写入、不查询、不评测该表，诊断主链没有 Embedding 或向量检索。未来启用 RAG 时必须通过独立架构决策、数据迁移和召回评测重新定义，而不是直接复活旧逻辑。
-
-### `knowledge_reviews`
-
-追加保存文档审核决定、`reviewer_role`、审核人引用、备注和时间。当前有效角色为资料整理人和正式批准人；审核状态流转必须使用 Bearer 账号，服务层强制角色校验并禁止整理人正式批准自己提交的资料。历史记录为追加式审计，不因角色目录收敛而删除。
-
-### `ai_call_records`
-
-追加保存诊断、Episode 与可选工作流关联、触发原因、缓存状态、最后路由、完整
-`route_path`、Provider/模型、Prompt 版本与哈希、状态、耗时、结构化输出、知识引用、
-Token、成本占位、校验和降级原因。输入快照只保存匿名标识、哈希、计数与隐私控制
-摘要；失败和跳过记录同样保留。`workflow_run_id + call_stage` 唯一，推理与解释按反馈轮次分别记录，
-同一阶段的图工作流重放复用原审计，不重复累计预算或成本。
-
-### `ai_explanation_cache`
-
-以规则、故障树、知识、Prompt、Schema 和规范化核心输入生成的稳定指纹保存已校验解释，记录来源 Provider/模型、过期时间和命中次数。
-
-### `diagnosis_workflow_runs` 与 `diagnosis_workflow_reviews`
-
-前者保存 LangGraph 业务流水、设备/诊断关联、`diagnosis:<workflow_id>`、图/规则/
-故障树/模型版本、节点路径/耗时、结构化案例匹配审计、恢复次数、证据分、Level、
-审核请求和最终投影；后者追加保存唯一一次审核人与 `approve/edit/reject` 决定。
-LangGraph checkpoint 表由官方
-PostgreSQL saver 的 `.setup()` 独立管理，不在 Alembic 中重复定义。
-
-### 课堂与治理表
-
-- `users`、`roles`、`permissions`、`user_roles`、`role_permissions`、`auth_sessions`：
-  正式身份与不透明会话骨架。
-- `courses`、`classes`、`enrollments`、`teaching_assignments`、
-  `experiment_assignments`、`device_bindings`：课堂资源范围。
-- `audit_events`：认证、模板、导出等不可覆盖审计事件。
-- `experiment_templates`、`experiment_template_versions`、`diagnostic_artifacts`：
-  模板及规则/故障树不可变版本。
-- `intervention_cases`、`intervention_events`、`classroom_messages`：教师处置、私人备注、
-  状态历史和课堂消息撤回。
-
-## 关系与索引
-
-- 三类采集记录都通过 `device_id` 外键关联 `devices`，V1 批次记录还关联
-  `ingestion_requests`。
-- 设备删除时级联其采集记录；生产环境执行删除前必须另行设计审计和保留策略。
-- 日志按设备和发生时间建立联合索引。
-- 读数按设备/观察时间及指标/观察时间建立联合索引。
-- 心跳按设备和观察时间建立联合索引。
-- 诊断结果按设备/创建时间建立联合索引，并为输入指纹建立索引。
-- 提示历史按设备/创建时间及介入状态/创建时间建立索引。
-- 诊断反馈按设备/创建时间建立索引，以外键关联设备、诊断及可空实验会话，并以诊断/请求键建立唯一约束。
-- 知识文档按审核状态/创建时间索引；知识块按审核状态/文档索引。
-- 历史向量索引仅为兼容保留，不属于当前性能门禁。
-- 知识来源删除时级联文档、知识块、向量和审核记录。
-- AI 调用按诊断/创建时间和状态/创建时间建立索引，诊断删除时级联调用记录。
-- `diagnosis_episodes` 按设备、状态和最近出现时间索引，聚合同一设备、实验和错误窗口内的重复故障。
-- `ai_explanation_cache` 以稳定指纹唯一约束并按过期时间索引。
-- PostgreSQL 中历史全文/向量索引随迁移保留；当前诊断知识匹配不依赖这些索引。
-
-## 安全与可追溯性
-
-- `token_hash` 使用带随机盐的 PBKDF2-SHA256，不保存原始令牌。
-- `raw_payload` 只保存经过 Pydantic 校验的请求体，不包含认证头。
-- 测试和模拟记录必须设置 `is_test_data=true`。
-- 所有结构变化必须新增 Alembic revision，不允许手工修改生产表结构。
-- `20260727_0009` 增加协议请求表和三类采集记录的通用协议追踪列，不导入或修改任何
-  现有业务数据。
-- `20260727_0010` 只增加合成场景 `test_run_id` 与索引，不创建场景记录或测试数据。
-- `20260727_0011` 增加课堂身份、RBAC、课程班级、任务绑定、会话和审计表。
-- `20260727_0012` 增加版本化实验模板与诊断工件，并让任务绑定精确版本。
-- `20260727_0013` 增加教师处置事件和课堂消息。
-- `20260727_0014` 移除字段唯一索引之外的重复唯一约束，使升级库和全新库的
-  SQLAlchemy 元数据一致；不修改业务数据。
-- `20260730_0015` 删除 `teaching_assistant` 与 `technical_reviewer` 角色；已有助教
-  账号迁移为教师，技术审核角色不自动获得正式批准权限。历史
-  `technical_reviewed` 文档/块回退为 `pending`，审核历史继续保留。
-- `20260813_0016` 增加诊断工作流与教师审核业务表；checkpoint 表继续由 LangGraph saver 自管。
-- `20260813_0017` 增加有界节点指标、RAG 审计和恢复次数，不保存 Prompt、密钥或完整日志。
-- `20260813_0018` 为每个工作流的正式审核增加唯一约束，使终结节点重放不产生重复审核。
-- `20260813_0019` 为 AI 调用增加可空的工作流唯一外键，使图节点重放复用既有审计记录。
-- `20260818_0021` 为诊断结果增加可空的实验 ID、版本、定义哈希与 Knowledge Scope，并为
-  Guidance 增加故障树来源和 Scope；不回填或删除旧数据。
-- `20260901_0022` 增加结构化 `knowledge_cases`，第一阶段不创建向量表。
-- `20260901_0023` 将 AI 调用幂等键扩展为 `workflow_run_id + call_stage`，支持原因推理与解释分别审计。
-- `20260901_0024` 增加事实绑定的 `knowledge_case_drafts`，只有教师审核后才能发布为正式案例。
-- `20260902_0025` 增加根因状态、事实锁定、真实解决记录、AI 表达审计和反馈轮次调用阶段；正式案例必须教师确认根因。
-- `20260904_0026` 增加版本化 Experiment Package、任务/诊断/工作流版本绑定、工作流状态修订号和标准证据表；所有旧关联均为可空，不删除或猜测回填历史数据。
-- `20260912_0027` 增加反馈请求键、实验会话、处理状态及外键/唯一约束；历史字段留 NULL。已在隔离库验证空库升级、带两条历史反馈的 0026 升级、单 Head、模型差异与重复键拒绝；部署新后端前必须完成升级，不能靠 ORM 自动建表替代。
-
-用户、班级和实验模板通用框架已经建立，但正式用户、班级、任务与模板内容仍待人工
-录入和审核。知识库与 AI 审计表已经建立；仅有测试记录和禁用真实 Provider 只代表
-框架通过验收，不能冒充正式知识或真实 AI 诊断。
-
-测试、模拟和 Mock 记录必须可由来源键、测试设备、实验包版本和 `is_test_data` 追溯；正式查询默认排除测试知识。迁移只建立结构，不得自动生成正式资料、真实学生信息或真实设备数据。
+更早迁移的精确语句以版本文件为准，不在此复制第二份迁移历史。0031 在存在无法无损合并的
+多问题记录时拒绝降级，0033 在有检查回执时拒绝直接删表；其他降级也不能据此推断无损。
+删除或级联行为不是历史清理授权，历史异常只读检查使用 `app.cli.audit_historical_integrity`。
+新增结构的验收须覆盖空库、已有数据升级、元数据一致性、唯一约束及历史 NULL 保留；
+当次实际结果另列报告，不在设计文档中累积通过数量。
