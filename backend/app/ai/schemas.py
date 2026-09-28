@@ -1,6 +1,6 @@
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 
 class StrictAIModel(BaseModel):
@@ -30,6 +30,9 @@ class AIKnowledgeReference(StrictAIModel):
 
 
 class AIDiagnosisInput(StrictAIModel):
+    _context_manifest: dict[str, Any] = PrivateAttr(default_factory=dict)
+    _context_omissions: dict[str, int] = PrivateAttr(default_factory=dict)
+
     diagnosis_result_id: str
     episode_id: Optional[str] = None
     anonymous_device_id: str

@@ -8,6 +8,7 @@ from app.api.v1.routes.experiments import router as experiments_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.interventions import router as interventions_router
 from app.api.v1.routes.knowledge import router as knowledge_router
+from app.api.v1.routes.memory import router as memory_router
 from app.api.v1.routes.readiness import router as readiness_router
 from app.api.v1.routes.student import router as student_router
 from app.api.v1.routes.teacher import router as teacher_router
@@ -24,3 +25,5 @@ api_router.include_router(diagnosis_workflows_router)
 api_router.include_router(experiments_router)
 api_router.include_router(student_router)
 api_router.include_router(teacher_router)
+
+api_router.include_router(memory_router)

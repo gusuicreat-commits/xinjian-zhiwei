@@ -134,7 +134,9 @@ def read_feedback_recovery(db, device, session_id):
     }
 
 
-def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, settings):
+def submit_student_feedback(
+    db, device, diagnosis, payload, session_id, graph, settings, *, authorize
+):
     diagnosis_id = diagnosis.id
     # The route has only authenticated/read so far. Release its read connection
     # while waiting; all ownership is revalidated under the serialization lock.
@@ -142,6 +144,7 @@ def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, s
     with feedback_lock(db, diagnosis_id):
         # Re-read after serialization: a previous worker may have committed.
         db.expire_all()
+        authorize()
         session = resolve_experiment_session(db, device, session_id, require_active=False)
         workflow = _workflow_for_feedback_scope(db, device, diagnosis, session)
         record = db.scalar(
@@ -195,6 +198,11 @@ def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, s
             )
             try:
                 with lifecycle_lock(db, diagnosis):
+                    # The lifecycle mutex is another independent wait. Recheck
+                    # credentials and scope immediately before the first write.
+                    authorize()
+                    session = resolve_experiment_session(db, device, session_id)
+                    _workflow_for_feedback_scope(db, device, diagnosis, session)
                     record = save_student_feedback(
                         db,
                         device,
@@ -211,6 +219,7 @@ def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, s
             # A pending interrupted submission must first reconcile its checkpoint.
             if graph is None:
                 raise RuntimeError("workflow unavailable; retry the same request_id")
+            authorize()
             resume_workflow_with_feedback(
                 db,
                 graph,
@@ -219,9 +228,13 @@ def submit_student_feedback(db, device, diagnosis, payload, session_id, graph, s
                 device,
                 settings,
                 reconcile_only=session.status != "active",
+                authorize=authorize,
             )
         else:
             record.processing_status = "applied"
             db.commit()
         db.refresh(record)
+        # A provider/checkpoint operation can outlive the caller's authorization.
+        # Durable work remains retryable, but revoked callers receive no receipt.
+        authorize()
         return record

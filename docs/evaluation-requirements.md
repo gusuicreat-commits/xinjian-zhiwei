@@ -1,38 +1,54 @@
 # 评测要求、测试与依据对应表
 
-更新：2026-09-15。范围：ClawEval 适配、完整流程评测及 PDF 反例整改；不包含真实模型、硬件或课堂效果验收。
-
-## 项目负责人可读摘要
-
-| 问题 | 结论 |
-| --- | --- |
-| 这次发现了什么问题？ | PDF 复查发现关键词会误判否定句、漏掉改写；固定模板丢掉具体限制；Rubric 的二元要求记录不完整。 |
-| 会造成什么现实影响？ | 正确提醒被拦、错误声明漏检，学生只能看到泛泛的限制；代码通过容易被误解为语言质量通过。 |
-| 现在能不能解决？ | 已把关键词扫描改为无判定的线索，代码结果与未执行语义审阅分开；摘要增加本次异常，保留具体待核验项并标明未确认；补齐二元 Rubric 清单。完整语义审阅没有假装完成。 |
-| 如果不能，需要谁确认？ | UUID 存在不等于因果成立；真实故障、测量来源和阈值仍待硬件确认，教学动作和效果仍待教师确认。 |
-| 下一步最应该做什么？ | 审阅反例回归结果，再用独立输入/输出材料逐条人工核对语义 Rubric；模型裁判仍需另行批准，真实硬件与课程事实另行验证。 |
+本文维护要求编号、来源与测试入口，不记录本次是否通过。持续规则见 [开发准则](development-guidelines.md#ai-quality)，运行方式见 [测试与评测](evaluation.md)，执行结果按 [报告约定](test-reporting.md) 保存。
 
 ## 来源与适配原则
 
 参考用户提供的《ClawEval质检标准.pdf》4 页，导出标记为 2026-09-02 10:54，SHA-256：
 `2802cc63c54110d2fbd1b079a4dcd7864377d6c8294fafdc7486431b26929520`。
-PDF 是评测设计参考，不是器件参数或正式 KnowledgeCase 来源。原 PDF 未复制入仓库。
+PDF 是评测设计参考，不是器件参数或正式 KnowledgeCase 来源，原文件未复制入仓库。2026-09-27 核对过 4 页原文及渲染；第 4 页安全场景右侧裁切、外链规范未核验，不补造内容或声称全部采纳。
 
 采用：精确事项用代码；检查实际输出；要求逐项可追溯；正确样例与错误反例并存；区分结果和过程材料。
 不照搬：外部固定路径、默认 ±15% 容差、禁止评测器读取参考答案、为凑数量重复测试。
 文档中数值 rubric 与精确校验、混合测试示例存在不一致，项目统一以代码检查可确定事项。
-第 4 页部分安全场景裁切，外链安全规范未包含在文件中，不宣称已实施该规范的全部内容。
 
-### Rubric 的必守约束（补齐原文第 1 页）
+### Rubric 的必守约束
 
-- 每条实际判断仅允许“符合”或“不符合”；禁止打分、评级和分数阈值。
-- 文本只描述“符合”的条件，不写 PASS/FAIL 两侧对照。
-- 每条只检查一件事；独立要求必须拆开。
-- 每条不超过 400 字符、3 句话。
-- Rubric 不列关键词清单；精确字段/ID/枚举等用独立代码检查，语义不能用关键词替代。
-- 未审阅时 judgement=null、status=not_run，不是第三种判定，也不能算“符合”。不合并成总分，不让一项符合抵消另一项不符合。
+二元、原子、长度、符合侧写法与关键词边界统一维护在 [AI 质检规则](development-guidelines.md#ai-quality)。
 
-第一版可审阅条目在 `backend/evaluation/semantic_rubrics.json`：根因是否仍为候选、硬件验证陈述是否有依据、缺失证据限制、下一步检查对象。每条指定所需输入与实际输出材料；本轮没有执行真实模型语义评测或引入模型裁判。条目格式校验不证明条目的语义质量，人工审阅仍需独立依据。
+条目唯一维护在 [semantic_rubrics.json](../backend/evaluation/semantic_rubrics.json)，每条声明所需输入与实际输出材料。格式校验不证明语义质量，人工审阅仍需独立依据；真实模型语义评测与模型裁判尚未完成。
+
+### ClawEval 逐页适配映射
+
+下表全部对应 [AI 质检规则](development-guidelines.md#ai-quality)；“纳入”不表示测试已经实现或执行，具体覆盖见后续编号表。
+
+| PDF 位置 | 强调内容 | 本项目归属与适配 |
+| --- | --- | --- |
+| 第 1 页“核心宪法”1；第 4 页六.6 | 继承历史题目的适用检查角度 | 保留适用边界和反例，未采用项说明原因；不机械增加数量或访问外部任务路径 |
+| 第 1 页“核心宪法”2–3 | 检查实际产物、必须发生的调用及参数 | 分别检查结果和过程，不以模型自述或预期文本替代 |
+| 第 1 页一.1–2 | 判定二元，只写符合侧 | 严重错误采用门禁，不引入综合分数 |
+| 第 1 页一.3–4 | 一条一事，≤400 字符且≤3 句 | 跨轮一致性项保留当场纠正与后续沿用两个时点材料 |
+| 第 1 页一.5；第 2 页二.6 | Rubric 不列关键词，精确常量独立维护 | 精确实体/枚举由代码判断，自由语义不用关键词裁决 |
+| 第 1–2 页二.1–3 | 精确检查与语义判断分工，同方法不混用 | 项目使用独立代码检查与人工语义审阅，未引入 LLM judge |
+| 第 2 页二.4–5、三.2；第 4 页六.7 | 参数来源、公式、理论值、容差、中间数和逐格数字检查 | 用独立依据编码检查，不照搬 ±15%/±5% 或数值 Rubric |
+| 第 2 页三.1；第 4 页六.5 | 隐性与条件要求逐项覆盖 | 限已声明业务和测试场景，不猜测真实用户心理 |
+| 第 2 页三.3；第 4 页六.8 | 调用发生与每个参数约束独立测试 | 检查后端固定流程及真实请求，不给模型新增工具权限 |
+| 第 2 页三.4 | 文件存在、解析、字段、计数和关键值分别检查 | 有文件产物时适用，不为无文件任务虚构产物 |
+| 第 2–3 页五.1–2 | 按问题选择全程、最终、首轮、完整对话材料 | 使用项目现有材料与日志结构，不复制外部固定模板 |
+| 第 3 页五.3–4 | 条件触发保护须看到用户输入 | 未触发标不适用并说明原因，不计为已验证；缺材料不自动通过 |
+| 第 3 页五.5–6；第 4 页五.8–9、六.4 | 条目定义/引用对应、集中维护、避免重复 | 沿用项目 ID 与测试结构，不强改成 `RUBRIC_*` 文件布局 |
+| 第 4 页五.7 | 禁止读取外部参考答案 | 参考答案仅给评测器，被测系统不可接触；保留独立、可复现预期 |
+| 第 4 页六.1 | 纯对话安全，严重违规不可抵消 | 可见 A–H 纳入适用规则，裁切场景与外链不补造 |
+| 第 4 页六.2–3 | 导入、测试收集无错误 | 运行实际受影响入口，收集成功不冒充测试通过 |
+
+原文存在几处内部口径差异，本项目按确定性、可复核和已有授权边界处理：
+
+1. 第 1 页要求确定数字用代码，第 2 页又允许/要求逐格数值 Rubric；统一采用独立代码校验，格式不固定不改变精确事项的性质。
+2. 第 2 页禁止同测试混用精确断言与模型裁判，第 3 页五.4 示例却同时调用；拆成独立检查，可共享夹具和完整触发材料。
+3. 第 4 页以安全“清零分数”描述严重错误；项目使用不可抵消的验收门禁，遵循原文二元原则，不新增评分体系。
+4. 原文条件未发生可自动通过；项目区分不适用、未覆盖该场景和缺材料，避免把没有发生的行为当已验收。
+
+CoT 实现边界见 [AI 设计](ai-diagnosis-design.md)，软件与语义检查分别登记在下方 COT 表。
 
 ## 要求映射
 
@@ -61,55 +77,93 @@ PDF 是评测设计参考，不是器件参数或正式 KnowledgeCase 来源。�
 以上测试文件位于 [backend/tests](../backend/tests/)。运行方法见 [测试与评测](evaluation.md)。
 此表是人工维护的要求映射，不宣称已建立自动覆盖率计算器。
 
-## 第一阶段运行行为与兼容
+解释的 `explanation-boundary-v2` 契约、历史审计和缓存兼容规则统一见 [AI 设计](ai-diagnosis-design.md)，由 EVAL-02/04/05/06/07/09/10 检查。
 
-- LangGraph 节点和边不变；仅证据投影附带观测 status，供现有校验使用。
-- 解释的 `summary`、`limitations` 仍由后端组织，但根据本次规则、unknown/冲突状态及具体待核验项生成；推理提出的缺失证据需求用引号和“未确认”标注，不能当硬件事实。解释模型自由新增的文字不直接升级为事实。
-- `steps` 只接受现有工作流允许动作；未包化调用只能使用已传入的持久化 guidance hints。不从任意知识正文扩充白名单。
-- 推理无可关联证据时降级为 unknown，并保留已允许的下一验证动作；模型和推理后校验都拒绝无有效引用的 high。
-- 当前输出契约 `explanation-boundary-v2` 保存在现有 AI 审计 JSON 中，无数据库迁移。v1 历史记录不改写；缺当前契约时保持既有 rules_only 降级行为，配套发布时应了解这项兼容边界。
-- 缓存指纹纳入实际 Prompt 哈希，缓存读取重新校验。不同输入不再仅因摘要指纹相似就共享建议；可能减少缓存命中。
-- 缺当前契约的历史解释只保留审计，不作为当前有效建议展示；返回 rules_only 提示，不再次计费调用模型。历史诊断和已发布包不被重写。
+## 覆盖边界
 
-## 明确未完成的范围
-
-1. 字符串扫描只记录实际出现的片段，不给语义判定，也不决定整体通过。新报告以 code_checks_passed 描述代码结果；语义未审阅时总体 status=incomplete，即使关键词没有命中。
-2. AI 推理的自由 reason/summary 等字段仍未接受完整语义评价。模板保护针对最终解释摘要和限制，不宣称覆盖所有自然语言字段或教师编辑文本。
-3. 有效 UUID、status 和故障树关联不等于“该证据能区分这个根因”。候选关联质量、占位故障树和真实故障可区分性仍须验证。
-4. 包内 normal 样例仍只验证包内规则未命中；候选样例只检查树内成员资格。完整正常运行和候选排序由独立测试覆盖，包校验不能代替它们。
-5. 未引入 LLM judge、真实模型基准或自动教学评分；完整流程评测已能导出合成多轮材料，但不证明真实模型语义质量。未改实验包 Schema、版本或事实状态。
-6. 原有提示注入、权限、草稿和只读测试仍保留；不能把 Prompt 中写了“不执行”当作完整的对抗验收。
+- 自由 `reason/summary` 与教师编辑文本须独立语义审阅；模板保护、关键词扫描、Rubric 格式通过都不能替代。报告状态见 [测试报告约定](test-reporting.md)。
+- UUID、status 和候选关联合法不证明真实故障可区分。包内 normal 样例只验证包内规则未命中，候选样例只检查树内成员资格；完整正常运行、排序和硬件因果分别验证。
+- 尚未引入 LLM judge、真实模型基准或自动教学评分。合成多轮材料不证明模型质量；Prompt 禁令不替代提示注入、权限、草稿和只读反例。
 
 ## 维护要求
 
-每次修改应更新受影响的编号、反例和依据。不适用项写明原因；未执行、环境错误、缺少实测/课程资料不能记为通过。
-测试预期应来自独立需求或经审核参考材料，不能调用同一被测算法生成答案。语义问题另列人工评价，未来引入模型辅助须单独审核。
+修改规则时同步受影响的编号、入口、反例和依据；预期独立性、未执行/不适用状态及语义审阅按 [开发准则](development-guidelines.md#ai-quality) 执行。
 
-## 完整流程与整改要求（2026-09-12）
+## 完整流程要求
 
-原失败依据见 [第二阶段历史报告](workflow-evaluation-phase2.md)，最新实现与结果见 [整改报告](workflow-remediation.md)。流程要求直接对应 `workflow_expectations.json` 和 `assess_case` 返回的单项 checks；可靠性边界另由专项测试验证。
+原失败依据见 [第二阶段历史报告](archive/workflow-evaluation-phase2.md)，该阶段修复证据见 [整改报告](archive/workflow-remediation.md)。下表保留要求编号及既有覆盖范围；是否当前通过必须重新执行，不能从历史 passed 或测试数量推导。流程要求对应 `backend/evaluation/workflow_expectations.json` 和 `assess_case` 返回的单项 checks；可靠性边界另由专项测试验证。
 
-| 编号 | 要求与入口 | 当前结果 |
+| 编号 | 要求与入口 | 既有覆盖及边界 |
 | --- | --- | --- |
 | FLOW-01 | 设备 HTTP 上报至实际落库 UUID、归属、包 hash 和节点轨迹；每个场景快照检查 | 已覆盖；不证明证据支持具体根因 |
-| FLOW-02 | 缺数据及 LED 缺光学观测保留 unknown；dht-missing、led-legacy、led-command | passed |
-| FLOW-03 | 合法/未知/非法 UUID/非法 JSON/超时 Mock 经真实推理与解释路径；dht-* | 对应软件约束 passed；无真实模型质量结论 |
-| FLOW-04 | 未解决继续、解决结束、教师处理及重复审核无副作用 | passed |
-| FLOW-05 | 跨学生读取、跨包版本请求拒绝；拒绝不改变原流程 | passed |
-| FLOW-06 | 跨学生提交及重放反馈在所有写入前拒绝；foreign-session-feedback、foreign-session-feedback-replay | passed；WF-ISSUE-03 已整改，缺失会话另按 422 拒绝 |
-| FLOW-07 | 同键同载荷重放无重复副作用；duplicate-feedback | passed；WF-ISSUE-02 已整改，不按文本永久去重 |
-| FLOW-08 | 候选关联到触发异常的证据，不能借用心跳；dht-candidate-linkage | passed；WF-ISSUE-01 已整改，仍不证明真实根因 |
-| FLOW-09 | 真实诊断图在 PostgreSQL 连接/图重建后继续反馈及教师处理 | passed；无进程 kill/断电验收 |
-| FLOW-10 | 不因学生 resolved 或测试教师审核自动批准正式知识；快照检查 | passed；真实案例仍 pending_teacher |
-| FLOW-11 | 相同键不同 action/note 冲突，新尝试新键正常推进；feedback-conflict-*、feedback-new-attempt | passed；冲突 409，无新增副作用 |
-| FLOW-12 | 反馈缺会话/缺键/非法 UUID 拒绝；feedback-missing-*、feedback-invalid-request-id | passed；422，未写入 |
-| FLOW-13 | AI 不得引用同诊断中与该候选无关的证据；dht-unrelated-evidence 及 `test_candidate_evidence_mapping.py` | passed；Provider 与独立 guard 双重检查 |
-| FLOW-14 | PostgreSQL 重建后同键重放不再推进；postgres-restart-replay | passed；仅连接与图重建范围 |
-| FLOW-15 | 并发、丢回执、Checkpoint 保存故障后原请求恢复/补确认；`test_feedback_reliability.py` | 42/42 passed；28 项双库保存故障注入，不宣称任意崩溃原子性 |
+| FLOW-02 | 缺数据及 LED 缺光学观测保留 unknown；dht-missing、led-legacy、led-command | 已有场景覆盖 |
+| FLOW-03 | 合法/未知/非法 UUID/非法 JSON/超时 Mock 经真实推理与解释路径；dht-* | 已有对应软件约束检查；无真实模型质量结论 |
+| FLOW-04 | 未解决继续、解决结束、教师处理及重复审核无副作用 | 已有场景覆盖 |
+| FLOW-05 | 跨学生读取、跨包版本请求拒绝；拒绝不改变原流程 | 已有场景覆盖 |
+| FLOW-06 | 跨学生提交及重放反馈在所有写入前拒绝；foreign-session-feedback、foreign-session-feedback-replay | 已有场景覆盖；WF-ISSUE-03 已整改，缺失会话另按 422 拒绝 |
+| FLOW-07 | 同键同载荷重放无重复副作用；duplicate-feedback | 已有场景覆盖；WF-ISSUE-02 已整改，不按文本永久去重 |
+| FLOW-08 | 候选关联到触发异常的证据，不能借用心跳；dht-candidate-linkage | 已有场景覆盖；WF-ISSUE-01 已整改，仍不证明真实根因 |
+| FLOW-09 | 真实诊断图在 PostgreSQL 连接/图重建后继续反馈及教师处理 | 已有场景覆盖；无进程 kill/断电验收 |
+| FLOW-10 | 不因学生 resolved 或测试教师审核自动批准正式知识；快照检查 | 已有场景覆盖；真实案例仍 pending_teacher |
+| FLOW-11 | 相同键不同 action/note 冲突，新尝试新键正常推进；feedback-conflict-*、feedback-new-attempt | 已有场景覆盖；冲突 409，无新增副作用 |
+| FLOW-12 | 反馈缺会话/缺键/非法 UUID 拒绝；feedback-missing-*、feedback-invalid-request-id | 已有场景覆盖；422，未写入 |
+| FLOW-13 | AI 不得引用同诊断中与该候选无关的证据；dht-unrelated-evidence 及 `test_candidate_evidence_mapping.py` | 已有场景覆盖；Provider 与独立 guard 双重检查 |
+| FLOW-14 | PostgreSQL 重建后同键重放不再推进；postgres-restart-replay | 已有场景覆盖；仅连接与图重建范围 |
+| FLOW-15 | 并发、丢回执、Checkpoint 保存故障后原请求恢复/补确认；`test_feedback_reliability.py` | SQLite/PostgreSQL 保存故障注入；历史执行数量见整改报告，不宣称任意崩溃原子性 |
 | FLOW-16 | 关闭会话只允许已消费反馈补确认，未消费不能继续执行；同可靠性文件 | 已覆盖已消费与未消费边界；不是解除会话限制 |
-| FLOW-17 | 前端未决键不跨会话/诊断；重试同载荷，成功后真实新尝试新键 | 前端 43 项 unit / 4 项学生 E2E 通过；关闭标签页不承诺保留 |
-| FLOW-18 | 迁移不伪造历史反馈归属且新键受唯一约束保护 | 空库/带两条历史反馈的 0026 升级、单 Head、模型差异及重复键拒绝通过 |
+| FLOW-17 | 前端未决键不跨会话/诊断；重试同载荷，成功后真实新尝试新键 | 前端单元及学生 Mock E2E；本地未决记录与服务端找回分别验证，不承诺关页保存所有本地状态 |
+| FLOW-18 | 迁移不伪造历史反馈归属且新键受唯一约束保护 | 0026 → 0027 历史升级、空库、单 Head、模型差异及重复键拒绝；当前其他迁移另验 |
 
-原三个 strict xfail 已移除；25 个 PostgreSQL 场景全部通过，后端全量 330 passed、无 skipped/xfail。反馈 Schema 与迁移 0027 是兼容变化，见整改报告；LangGraph 节点、边与实验包版本机制保持不变。证据引用合法和关联匹配异常都不能代替硬件因果验证。
+补充边界：明确 unknown（包括残留候选）和空推理结果不能由解释层恢复候选；测试资料和未确认根因不得投影成教师确认案例。入口为 `test_evaluation_contract.py`、`test_ai_reasoning_v2.py`；历史依据见 [整改报告](archive/workflow-remediation.md)。
 
-2026-09-15 追加反例覆盖：明确 unknown（包括残留候选）和空推理结果不能由解释层恢复候选；测试资料和未确认根因不得投影成教师确认案例。对应测试：`test_evaluation_contract.py` 和 `test_ai_reasoning_v2.py`；完整回归结果见 `workflow-remediation.md` 追加复查部分。
+
+## 开发门禁对应表
+
+这三项来自实际失败反例，不能只验证检查脚本能够成功退出。下表登记现行实现和正反例；本次文档核对不重新宣称远端 CI 或全部代码通过。
+
+| 编号 | 要求 | 唯一入口与反例 | 检查边界 |
+| --- | --- | --- | --- |
+| GATE-ENV-01 | 健康接口如实返回配置环境，测试不依赖开发环境默认值 | `backend/tests/test_health.py::test_health_check_returns_structured_status` 独立构造 development/test Settings；CI 明确 `APP_ENV=test` | 测试不读本机 `.env` 决定预期，不把接口改成固定 development 来消除失败 |
+| GATE-PROTOCOL-01 | 固件协议检查同时检查信封和实际记录内容 | `scripts/check_firmware_protocol.py` 复用 `services/device_protocol.py`；`test_development_gates.py::test_firmware_gate_validates_actual_records` 包含缺值、错误类型、NaN/Inf、空批次、版本/容量及无 NTP 合法例 | 验证提交的协议样例，不等于已捕获真实 ESP32 的全部报文 |
+| GATE-VERSION-01 | 包内容修改须提高版本；当前说明与实际版本一致，历史记录保留 | `scripts/check_version.py`、`scripts/package_versions.json`；`test_development_gates.py` 包含未升版本、只刷新哈希、过期当前文档和合法升级/历史保留 | 比较显式 Git 基线；仅检查脚本列明的当前文档表述，不承诺自动理解所有文档 |
+
+版本基线的本机/CI 设置、完整门禁的实际步骤及缺环境处理见 [测试与评测](evaluation.md)。修改协议字段或检查规则时必须核对运行时消费入口和这些反例；修改当前版本文档时应运行版本门禁，而不是改写历史报告来凑一致。
+
+## CoT 检查对应表
+
+提示策略与当前版本见 [AI 设计](ai-diagnosis-design.md)；历史软件证据见 [实施报告](../output/audits/cot-implementation-latest/report.md)（本机产物，可能不随检出提供）。
+
+| 编号 | 确切检查与入口 | 范围 |
+| --- | --- | --- |
+| COT-CODE-01 | `test_r2_provider_data_boundary.py::test_evidence_review_uses_one_governed_call` | 实际服务使用一次 Mock 调用，unknown 空候选落库；不证明模型自然会返回 unknown |
+| COT-CODE-02 | 同文件 `test_evidence_review_request_and_audit_keep_versioned_contract` | 实际请求的版本、外发字段、Schema 和审计哈希 |
+| COT-CODE-03 | 同文件 `test_evidence_review_cannot_bypass_action_assertions` | 白名单外动作经代码拒绝并降级 |
+| COT-CODE-04 | 同文件 `test_old_reasoning_replay_is_not_relabelled_or_called_again` | 旧记录重验，不重发请求、不改历史版本 |
+| COT-SEM-01 至 06 | `semantic_rubrics.json`；`runner.run_evaluation` 的 semantic_review | 理由依据、未知、冲突、建议状态、一致性、表达；全部保留 not_run/null |
+
+COT-SEM-02 检查证据不足时是否保留未知，SEM-01 检查是否把候选冒充已确认根因，二者不重复计数。缺实际推理/对话/学生输出材料时不得通过；真实模型比较仍需单独执行。
+
+<a id="context-checks"></a>
+## CTX：受控上下文实施对应表
+
+共同依据：[方案B1–B9与CTX验收矩阵](context-construction-plan.md)。下列代码检查不能判定自由文字语义；执行结果见当次报告。`test_context_construction.py` 简称packing，`test_context_evaluation.py` 简称evaluation。
+
+| 编号 | 实际入口与断言 | 边界 |
+| --- | --- | --- |
+| CTX-01 | packing `test_safe_case_keeps_units_negation_and_identity`、`test_explanation_actual_requests_manifest_cache_and_retry`；F01/F11 | 比较实际请求、版本和指纹 |
+| CTX-02 | F02–F05逐项资格反例；evaluation `test_invalid_source_gate_mutation_is_detected`；`test_memory_lifecycle.py::test_each_experience_gate_is_enforced` | 四项资格分别阻断 |
+| CTX-03 | F06/F07/F10；`test_experiment_packages.py::test_package_versions_are_immutable_and_runtime_is_database_backed`；`test_memory_lifecycle.py::test_teacher_cannot_review_or_discover_another_class` | 实验、固定版本、测试/正式与班级范围；不存在通用型号字段，因此未实现或宣称通用型号匹配 |
+| CTX-04 | packing `test_long_case_is_whole_or_omitted_never_cut_json`、`test_safe_case_keeps_units_negation_and_identity`；F08 | JSON、否定、单位及条件整体保留/省略 |
+| CTX-05 | packing `test_required_51st_evidence_cannot_silently_disappear`、`test_graph_reads_full_temporary_registry_without_growing_checkpoint` | 上游临时读取全量；外发超限拒绝，Checkpoint不扩张 |
+| CTX-06 | packing `test_required_oversize_explanation_has_zero_attempts`、`test_pure_packing_does_not_mutate_input_or_include_private_schema` | 可选材料先退出；必需超限0次调用 |
+| CTX-07 | packing `test_dedupe_is_request_local_and_versions_stay_distinct`、`test_distinct_observations_are_not_text_deduplicated` | 单次同源去重，不永久排除已读依据 |
+| CTX-08 | packing实际请求/缓存测试；`test_memory_lifecycle.py::test_recorded_call_sources_remain_the_pre_call_snapshot` | matched/provided/derived及提前快照；有效引用沿原cited逻辑 |
+| CTX-09 | `test_memory_lifecycle.py` 的withdraw、late_version、cache_invalidation；`test_memory_postgres.py::test_source_delivery_waits_for_withdrawal_then_rechecks`；原工作流恢复测试 | 停用、撤权、在途变化、缓存与恢复不跳过重验 |
+| CTX-10 | packing实际请求/缓存测试的策略变更分支；`test_r2_provider_data_boundary.py::test_old_reasoning_replay_is_not_relabelled_or_called_again`；原解释幂等测试 | 新策略改变缓存；旧阶段无额外调用/计费、无补写 |
+| CTX-11 | packing秘密来源、脱敏增长、四种身份冲突；`test_r2_provider_data_boundary.py` 两阶段真实请求边界 | 不新增外发字段与允许动作；提示注入仍为数据 |
+| CTX-12 | 原规则/工作流/业务只读测试；`test_memory_lifecycle.py::test_three_memories_do_not_promote_observations_or_write_on_read` | 规则、动作、计数、升级与读写职责不变 |
+| CTX-13 | evaluation 的期望隔离、归因与缺材料测试；F01–F11 | 独立期望只给评测器；不存在全库推测 |
+| CTX-14 | packing实际请求指纹、重试同Prompt、私有Schema、旧JSON损坏；旧推理无manifest重放 | 指纹可重算；旧未知不回填 |
+| CTX-15 | F01/F11；原 `test_r2_provider_data_boundary.py::test_full_workflow_remains_usable_without_ai`；既有DHT/LED证据语义测试 | 代码不将案例升级本次实测；自由表达按SEM/COT人工审阅，当前not_run |
+
+当前11份上下文评测材料均为合成回归集。没有独立真实保留集或人工审核产物，不能把这组软件检查写成真实诊断效果通过。

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MemorySummary from './MemorySummary.vue'
 import { readableText, evidenceText } from '@/presentation/userLanguage'
 import { computed } from 'vue'
 
@@ -57,6 +58,7 @@ function formatDate(value: string): string {
 
 <template>
   <div class="workflow-evidence-summary">
+    <MemorySummary v-if="workflow.memory_context" :memory="workflow.memory_context" />
     <div class="workflow-summary-line">
       <div>
         <small>待确认的诊断结果</small>

@@ -215,9 +215,16 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
   expect(response.status()).toBe(201)
   const workflow = await response.json()
   expect(workflow.status).toBe('waiting_feedback')
+  expect(workflow.memory_context.contract_version).toBe('memory-v1')
+  expect(workflow.memory_context.working.session_id).toBe(backend.manifest.session_id)
+  expect(
+    workflow.memory_context.facts.every(
+      (fact: { physical_verification: string }) => fact.physical_verification === 'not_asserted',
+    ),
+  ).toBe(true)
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20260927_0034')
+  expect(persisted.migration).toBe('20260927_0035')
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,
@@ -579,5 +586,160 @@ test('new-data checks preserve identity after response loss and do not rerun on 
   await testInfo.attach('recheck-comparison', {
     body: await page.getByRole('region', { name: '本次检查依据' }).screenshot(),
     contentType: 'image/png',
+  })
+})
+
+test('a stale student tab reuses evidence but shows the newly resolved handling state', async ({
+  page,
+  backend,
+}, testInfo) => {
+  await login(page, backend)
+  const first = await ingestAndDiagnose(page, backend)
+  // This page keeps its original baseline while another client checks and resolves.
+  const endpoint = `/api/v1/diagnosis-workflows/devices/${backend.manifest.device_key}`
+  const now = new Date().toISOString()
+  const upload = await page.request.post(`${backendURL}/api/v1/device/ingest`, {
+    headers: headers(backend),
+    data: {
+      protocolVersion: '1.0',
+      schemaVersion: '1',
+      requestId: crypto.randomUUID(),
+      bootId: 'handling-snapshot-browser',
+      sequenceNo: 1,
+      sentAt: now,
+      isTestData: true,
+      records: backend.manifest.records.map((record) => ({ ...record, occurredAt: now })),
+    },
+  })
+  expect(upload.status()).toBe(201)
+  const checked = await page.request.post(`${backendURL}${endpoint}`, {
+    headers: headers(backend),
+    data: { request_id: crypto.randomUUID(), baseline_id: first.diagnosis_result_id },
+  })
+  expect(checked.status()).toBe(201)
+  const latest = await checked.json()
+  const resolved = await page.request.post(
+    `${backendURL}/api/v1/student/diagnoses/${latest.diagnosis_result_id}/feedback`,
+    { headers: headers(backend), data: { request_id: crypto.randomUUID(), action: 'resolved' } },
+  )
+  expect(resolved.status()).toBe(201)
+  const before = await backend.snapshot()
+  const received = page.waitForResponse(
+    (response) => response.url().endsWith(endpoint) && response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: '用最新数据重新检查', exact: true }).click()
+  const response = await received
+  expect(response.status()).toBe(201)
+  expect(response.request().postDataJSON().baseline_id).toBe(first.diagnosis_result_id)
+  const receipt = (await response.json()).check
+  expect(receipt.status).toBe('completed')
+  expect(receipt.issues.length).toBeGreaterThan(0)
+  for (const issue of receipt.issues) expect(issue.handling_status).toBe('resolved')
+  await page.getByText('本次诊断依据与记录', { exact: true }).click()
+  const panel = page.getByRole('region', { name: '本次检查依据' })
+  await expect(panel).toContainText('已结束（不等于硬件恢复）')
+  await expect(panel).not.toContainText('检查时处理状态：处理中')
+  expect(await backend.snapshot()).toEqual(before)
+  await testInfo.attach('resolved-handling-snapshot', {
+    body: await panel.screenshot(),
+    contentType: 'image/png',
+  })
+})
+
+test('package withdrawal blocks old memory and the teacher reviews its actual impact', async ({
+  page,
+  backend,
+}) => {
+  await login(page, backend)
+  const workflow = await ingestAndDiagnose(page, backend)
+  // This only grants the fixture's synthetic teacher an administrator role in its own random schema.
+  await exec(
+    python,
+    [
+      '-c',
+      `
+import json,os
+from pathlib import Path
+from sqlalchemy import create_engine,select
+from sqlalchemy.orm import Session
+from app.cli.browser_integration_fixture import scoped_url
+from app.models import User
+from app.services.rbac import ensure_rbac_catalog,assign_role
+m=json.loads(Path(os.environ['AUDIT_MANIFEST']).read_text())
+e=create_engine(scoped_url(os.environ['XINJIAN_EVAL_POSTGRES_DSN'],m['schema']))
+with Session(e) as db:
+ actor=db.scalar(select(User).where(User.username=='synthetic-teacher'))
+ assign_role(db,actor,ensure_rbac_catalog(db)['admin']);db.commit()
+e.dispose()
+`,
+    ],
+    {
+      cwd: backendDir,
+      env: { ...process.env, AUDIT_MANIFEST: join(backend.controlDir, 'manifest.json') },
+    },
+  )
+  const auth = await page.request.post(`${backendURL}/api/v1/auth/session`, {
+    data: {
+      username: 'synthetic-teacher',
+      password: 'synthetic-evaluation-login',
+    },
+  })
+  expect(auth.status()).toBe(200)
+  const adminHeaders = { Authorization: `Bearer ${(await auth.json()).access_token}` }
+  const latest = await page.request.get(
+    `${backendURL}/api/v1/diagnosis-workflows/devices/${backend.manifest.device_key}/latest`,
+    { headers: headers(backend) },
+  )
+  const version = (await latest.json()).experiment_version_id
+  const revoked = await page.request.post(
+    `${backendURL}/api/v1/experiments/package-versions/${version}/status`,
+    {
+      headers: adminHeaders,
+      data: { status: 'revoked' },
+    },
+  )
+  expect(revoked.status()).toBe(200)
+  const after = await page.request.get(
+    `${backendURL}/api/v1/diagnosis-workflows/devices/${backend.manifest.device_key}/latest`,
+    { headers: headers(backend) },
+  )
+  expect(after.status()).toBe(200)
+  expect(await after.json()).toMatchObject({
+    teaching_available: false,
+    final_result: null,
+    memory_context: { available: false, facts: [], experiences: [] },
+  })
+  await page.goto('/teacher/login')
+  await page.getByPlaceholder('教师用户名', { exact: true }).fill('synthetic-teacher')
+  await page.getByPlaceholder('密码', { exact: true }).fill('synthetic-evaluation-login')
+  await page.getByRole('button', { name: '进入教师端', exact: true }).click()
+  await expect(page).toHaveURL(/\/teacher$/)
+  await page.getByRole('tab', { name: /资料与审核/ }).click()
+  const panel = page.locator('.memory-governance')
+  await panel.getByRole('button', { name: '读取停用记录', exact: true }).click()
+  await panel.getByRole('button', { name: /查看实验包.*的影响/ }).click()
+  await expect(panel.getByText('实验包已撤销', { exact: true })).toBeVisible()
+  await expect(panel.locator('.impact-item')).toHaveCount(1)
+  await panel.getByRole('button', { name: '查看当时依据', exact: true }).click()
+  await expect(panel.getByText('以下仅供历史复核，不能作为当前操作建议。')).toBeVisible()
+  await panel.locator('textarea').fill('合成撤回场景：需要补充独立核验。')
+  await panel.getByRole('button', { name: '保存复核', exact: true }).click()
+  await expect(panel.getByText('测试诊断 · 已有复核结果')).toBeVisible()
+  const events = await page.request.get(`${backendURL}/api/v1/memory/events`, {
+    headers: adminHeaders,
+  })
+  const event = (await events.json()).items[0]
+  const impacts = await page.request.get(`${backendURL}/api/v1/memory/events/${event.id}/impacts`, {
+    headers: adminHeaders,
+  })
+  expect((await impacts.json()).items[0]).toMatchObject({
+    diagnosis_result_id: workflow.diagnosis_result_id,
+    review: { decision: 'verify_again', version: 1 },
+  })
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await page.screenshot({
+    path: '../output/audits/memory-implementation-latest/teacher-memory.png',
+    fullPage: true,
   })
 })

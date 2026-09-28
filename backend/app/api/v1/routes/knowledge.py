@@ -268,6 +268,17 @@ def approve_diagnosis_case_draft(
     )
 
 
+def _recheck_withdraw_access(db, actor, case):
+    db.refresh(actor)
+    if not actor.is_active:
+        raise HTTPException(status_code=403, detail="reviewer is inactive")
+    roles = _require_case_reviewer(db, actor)
+    if case.source_draft_id:
+        _require_case_scope(db, actor, roles, case.source_draft_id)
+    elif "formal_approver" not in roles:
+        raise HTTPException(status_code=403, detail="global case review authority was revoked")
+
+
 @router.post("/cases/{case_id}/withdraw")
 def withdraw_knowledge_case(
     case_id: str, payload: CaseWithdrawRequest, actor: CurrentUser, db: DatabaseSession
@@ -288,6 +299,7 @@ def withdraw_knowledge_case(
             request_id=str(payload.request_id),
             expected_version=payload.expected_version,
             reason=payload.reason,
+            recheck_access=lambda: _recheck_withdraw_access(db, actor, case),
         )
     except CaseDraftError as exc:
         db.rollback()

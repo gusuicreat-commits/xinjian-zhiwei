@@ -151,6 +151,8 @@ def match_knowledge_cases(
                 or_(KnowledgeCase.is_test_data.is_(False), diagnosis.is_test_data),
             )
             .order_by(KnowledgeCase.id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
         )
     )
     return _rank_knowledge_cases(rows, diagnosis, guidance, limit=limit)

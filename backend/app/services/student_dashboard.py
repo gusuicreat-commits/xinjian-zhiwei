@@ -162,7 +162,7 @@ def build_student_dashboard(
     if not teaching_ready:
         device_state_explanation = DeviceStateExplanation(
             status_title="实验教学建议已暂停",
-            status_summary="此实验包已撤回或与当前引擎不兼容。",
+            status_summary="参考资料已停用、发生变更或无法核验。",
             meaning="历史观察继续保留，旧教学建议不能继续使用。",
             next_step="请保留现场并联系教师，不自动切换到其他实验版本。",
             source="rule",

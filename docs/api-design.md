@@ -1,6 +1,6 @@
 # 芯鉴知微 API 设计
 
-代码核对日期：2026-09-27。本文按使用入口解释契约；精确字段与枚举见对应版本的 FastAPI OpenAPI（`/docs`）及 `backend/app/schemas/`、`backend/app/diagnosis/workflow_schemas.py`。服务层权限、幂等和跨字段约束不能仅从 OpenAPI 推断。持续规则见 [开发准则](development-guidelines.md)，部署与实际验收见 [实现状态](implementation-status.md)。
+代码核对日期：2026-09-27。本文按使用入口解释契约；精确字段与枚举见对应版本的 FastAPI OpenAPI（`/docs`）及 `backend/app/schemas/`、`backend/app/diagnosis/workflow_schemas.py`。服务层权限、幂等和跨字段约束不能仅从 OpenAPI 推断。权限与状态规则见[开发准则](development-guidelines.md#business-rules)，部署与实际验收见 [实现状态](implementation-status.md)。
 
 ## 通用约定
 
@@ -10,7 +10,9 @@
 - 测试数据显式标记；常规接口为 `is_test_data: true`，批量协议为 `isTestData: true`。
 - 原始请求：入库到对应记录的 `raw_payload`，用于追溯；认证头不会写入原始载荷。
 
-## 设备认证
+## 设备接入
+
+### 设备认证
 
 日志、读数和心跳接口要求：
 
@@ -21,18 +23,13 @@ X-Device-Token: <secret token>
 
 状态接口从路径取得 `device_id`，只要求 `X-Device-Token`。数据库只保存 PBKDF2-SHA256 哈希；未知设备、停用设备或令牌不匹配统一返回 401，避免泄漏设备是否存在。
 
-## 接口
+项目不提供公开设备注册。
 
 ### POST `/device/ingest`
 
-设备协议 V1 的幂等批量入口。请求携带 `protocolVersion`、`schemaVersion`、UUID
-`requestId`、`bootId`、`sequenceNo`、可选设备时间/运行时/固件信息，以及日志、读数
-和心跳记录数组。服务端采用全有或全无事务；同一请求重放不重复写入，相同序列冲突返回
-409，缺失或不可信设备时间使用服务端接收时间并标记时间质量。默认限制为每批 100 条、
-262144 字节、单设备每分钟 120 个新请求。完整契约、错误码和重试语义见
-[设备协议](device-protocol.md)。同设备的查重、限额检查、批次和回执保存由短数据库事务串行保护；原请求重放不再占用新额度。该额度为批次与三个旧逐条上传端点合计。四个入口都在解析JSON前限制实际流式字节数，等待设备锁后重新鉴权；旧端点每次成功写入计次，没有请求幂等身份。
-
-下列三个单条上传端点继续保留，以兼容旧客户端；新模拟器默认使用批量入口。
+设备协议 V1 的幂等批量入口，全有或全无写入。同请求同载荷重放原回执，载荷或序号冲突返回 409。
+设备认证、时间回退、共享限额、锁后鉴权、完整报文和错误结构统一见[设备协议](device-protocol.md)。
+下列三个单条上传端点兼容旧客户端；它们没有请求幂等身份，每次成功写入都占用设备共享额度。
 
 ### DELETE `/device/test-runs/{test_run_id}`
 
@@ -55,17 +52,7 @@ X-Device-Token: <secret token>
 
 返回 `online`、`offline` 或 `never_seen`。离线阈值由 `DEVICE_OFFLINE_AFTER_SECONDS` 配置，默认开发值为 90 秒。
 
-### 其他接口分组
-
-- `/auth/session`、`/auth/me`、`/auth/classes`：正式用户会话和资源范围。
-- `/experiments/templates`、`/experiments/template-versions/*`：旧模板草稿与发布门禁。
-- `/experiments/packages/*`、`/experiments/package-versions/*`：实验包校验、导入、版本查询和发布门禁。
-- `/knowledge/sources/{id}/documents/file`、`/knowledge/documents/{id}/workspace`、
-  `/knowledge/chunks/*`：文件导入与草稿分块工作区。
-- `/teacher-workflow/*`：处置动作、时间线、课堂消息和 CSV 报告。
-- `/health/live`、`/health/ready`、`/health/dependencies`、`/ops/status`：运维状态。
-- `/readiness/status`：已批准文档、合格兼容案例、可加载的正式发布包分别列示；新增检查项状态`unverified`，无验收依据的软件/演示/硬件/组织布尔值保持false并说明待核实。
-- `/ops/status`：`pending_interventions`计open/claimed/unconfirmed；新增`resolved_awaiting_close`单列待关闭。`active_sessions`排除过期、撤销及停用用户。
+## 诊断与检查
 
 ### POST `/diagnosis/devices/{device_id}/run`
 
@@ -80,27 +67,6 @@ X-Device-Token: <secret token>
 ### GET `/diagnosis/results/{diagnosis_result_id}/evidence`
 
 沿用正式学生身份及会话检查，必须匹配诊断原始归属；只有设备相同并不够。响应包含证据 UUID、类型、来源类型、来源记录 ID、标准化值和时间，不返回 `raw_payload`。AI 引用还须与具体候选相关，不能任取同诊断中的无关证据。
-
-## Experiment Package 接口
-
-### POST `/experiments/packages/validate`
-
-接收以包内路径为键的 10 份结构化文档，只执行严格 Schema、跨引用、包内样例和哈希
-检查，不写数据库。需要 `assignment.manage` 权限。
-
-### POST `/experiments/packages/import`
-
-通过校验后创建 `draft` 实验版本和工件索引。服务端重新生成 Manifest；相同
-`experiment + version` 不允许覆盖。需要 `assignment.manage` 权限。
-
-### GET `/experiments/package-versions`
-
-返回实验身份、版本、兼容范围、包哈希、校验报告、状态和当前版本标记。
-
-### POST `/experiments/package-versions/{version_id}/status`
-
-管理员按 `draft → pending → approved → published` 发布，或将已发布版本标记为
-`revoked/superseded`。发布新版本不会修改旧版本内容。
 
 ### GET `/diagnosis/devices/{device_id}/guidance`
 
@@ -119,9 +85,9 @@ X-Device-Token: <secret token>
 
 ### POST `/diagnosis/results/{diagnosis_result_id}/ai-explanation`
 
-使用学生身份和有效会话，只能解释属于当前会话的诊断结果；设备令牌仅限测试兼容。请求体可选 `user_question`。工作流先用显式字段匹配已审核结构化案例，将实验规范供给受约束原因排序；推理后再校验证据 ID、候选集、规则结果和允许动作。AI 不能修改确定性错误类型，也不能引用本次匹配之外的知识。
+使用学生身份和有效会话，只能解释属于当前会话的诊断结果；设备令牌仅限测试兼容。请求体可选 `user_question`。响应保留确定性错误类型，AI 仅解释当前允许的证据、原因和知识。
 
-送往 Provider 的上下文先经过 `phase9.5-allowlist-v1` 最小化：设备标识匿名化；日志只保留最多 3–10 条相关项；读数和心跳转换为统计摘要；令牌、密钥、Wi-Fi、学生身份、联系方式和自由文本中的敏感片段被删除或遮蔽。知识正文按字符上限截断，原始 Prompt 不写入审计表。
+Provider 输入通过 `phase9.5-allowlist-v1` 最小化和清洗，不返回或审计完整敏感 Prompt；字段白名单、输出校验与契约版本见[AI 工作流设计](ai-diagnosis-design.md)。
 
 未配置密钥、知识未就绪、预算受限、知识查询失败、AI 超时或输出校验失败时仍返回确定性结果；`enhancement_status` 和 `route_path` 记录缓存、Provider、降级或跳过原因。
 
@@ -146,6 +112,25 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 `retrieval_audit`、规则/日志引用、故障树候选、知识引用和 `reviews` 用于可观察、可追溯
 展示；不返回知识正文、Prompt、认证信息或密钥。
 
+### 重新检查命令
+
+`POST /api/v1/diagnosis-workflows/devices/{device_id}` 接受可选
+`request_id`（UUID）、`baseline_id`、`target_episode_id`。新前端总是传身份和所见基准。
+身份作用域为经验证的当前实验会话；目标问题必须属于基准。原参数校验通过后才接收命令。
+返回 201 的工作流对象包含 `check`：身份、基准、工作流、检查时间、状态、数据时间范围、
+新记录数、测试标记及逐问题对比。`no_new_data` 返回原工作流，不新增诊断或模型调用。
+不同身份但输入相同的并发检查可共用证据结论；每个新请求重新读取当前问题的
+`handling_status/resolution_source` 并保存到新回执，不复制旧回执的处理状态。旧请求重放
+仍返回原回执；问题关联无法核实或新输入遇过期基准时返回 409，不能自动换身份重试。
+
+`GET /api/v1/diagnosis-workflows/devices/{device_id}/checks/latest` 只读回执（没有则null），
+权限及会话验证与启动一致。`pending`回执包含原请求参数，供丢失浏览器记录时显式恢复，
+不包含私有输入快照。工作流latest也带最近check；前端必须核对诊断ID后组合展示。
+网络中断/503保留身份；同身份不同参数409。401/403/409/422不自动重新提交。
+历史诊断不补造对比记录，GET不会触发图执行。
+
+## 学生反馈与实验会话
+
 ### POST `/student/session`
 
 正式学生先通过 `/auth/session` 取得个人账号 Bearer，选择任务并创建实验会话；本接口用 Bearer、`X-Device-ID` 与会话头验证当前会话，返回 `auth_mode=student_account`。设备ID/令牌仅兼容明确标记的测试设备，不能作为正式学生身份；本接口本身不创建用户或签发令牌。
@@ -154,6 +139,14 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 
 按学生账号、设备与有效实验会话读取设备状态、该会话最近 100 条日志、最近 500 条读数、诊断、对应提示、
 最新反馈及该诊断对应的教师处置状态。处置状态只包含公开结果，不返回教师私人备注。
+
+### 教学参考可选响应字段
+
+学生dashboard的`guidance[].hints[].teaching`与指导API的同名字段保存`teaching-reference-v1`快照。
+字段包括status（available/missing/unavailable）、experiment_version_id、package_version、package_hash、
+is_test_data、concepts（concept_id/description/references）和steps（step_id/title/expected_state/prerequisite_step_ids）。
+旧记录缺字段或null时不补造内容。steps只作实验参考，不属于新的允许动作或设备证据；
+expected_state是预期，不是实测。读取不生成新指导、反馈或模型调用，权限沿用所属诊断与会话。
 
 ### GET `/student/feedback-recovery`
 
@@ -197,11 +190,10 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 | 新 request_id | 视为有意的新尝试，受会话和工作流状态约束；有其他未决反馈时 409 |
 | 网络结果不明或 503 | 保留原 request_id 和原载荷重试；503 detail.code 为 `DIAGNOSIS_FEEDBACK_RETRY_REQUIRED` |
 
-重放也必须先通过归属校验。关闭会话可重放已完成响应或补确认已经消费的反馈，不能因此继续执行未消费的新操作。
+反馈在等待串行锁、生命周期锁、工作流行锁后重新核验当前身份、会话和原归属，返回前也重新鉴权；
+等待期间被撤权的请求不能靠早先校验继续操作或取得回执。已提交的业务记录保留原身份用于恢复。
+关闭会话可重放已完成响应或补确认已经消费的反馈，不能继续执行未消费的新操作。
 反馈继承诊断的 `is_test_data`。求助仍通过已核实的课堂绑定幂等创建工单；无合法反馈归属时不先保存反馈兜底。
-
-调用方应同步更新；部署前按[实现状态](implementation-status.md)核对代码迁移Head并在目标环境验证。
-[完整流程问题整改](archive/workflow-remediation.md)保留0027阶段的历史记录；个人账号准入已在2026-09-19实施。
 
 ### 实验会话开始、结束与教师释放
 
@@ -212,6 +204,8 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 - `POST /teacher/experiment-sessions/{id}/release`：需 `assignment.manage`、`request_id`、`expected_version` 和非空原因；显式取消占用，不修改其他会话、不关闭故障或工单。
 
 同身份同载荷返回原回执，冲突 409；原回执重试仍核验当前权限。撤销学生资格不会自动把旧会话或历史数据交给下一名学生。
+
+## 教师处置
 
 ### GET `/teacher/dashboard`
 
@@ -228,6 +222,27 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 `resolve` 要求说明，只有明确公开的解决事件可以显示给学生；私密说明不能从冗余摘要泄漏。工单解决/关闭只改变工单状态，不自动关闭问题、更不证明硬件恢复。
 
 明确结束目标问题另用 `POST /teacher-workflow/interventions/{case_id}/problem-resolution`，必填 UUID `request_id` 和 `expected_revision`；可选 `recovery_diagnosis_id` 必须通过新相关恢复证据检查。无恢复依据时仅记录教师报告。旧工单没有可靠问题关联时拒绝猜测。
+
+## Experiment Package 接口
+
+### POST `/experiments/packages/validate`
+
+接收以包内路径为键的 10 份结构化文档，只执行严格 Schema、跨引用、包内样例和哈希
+检查，不写数据库。需要 `assignment.manage` 权限。
+
+### POST `/experiments/packages/import`
+
+通过校验后创建 `draft` 实验版本和工件索引。服务端重新生成 Manifest；相同
+`experiment + version` 不允许覆盖。需要 `assignment.manage` 权限。
+
+### GET `/experiments/package-versions`
+
+返回实验身份、版本、兼容范围、包哈希、校验报告、状态和当前版本标记。
+
+### POST `/experiments/package-versions/{version_id}/status`
+
+管理员按 `draft → pending → approved → published` 发布，或将已发布版本标记为
+`revoked/superseded`。发布新版本不会修改旧版本内容。
 
 ## 知识库接口
 
@@ -271,10 +286,38 @@ pending --formal_approver--> approved
 正式批准人也可将 `pending` 驳回为 `rejected`；批准后还支持 `withdrawn` 和
 `superseded`，相应资料可由整理员重新回到 `draft`。整理人不得正式批准自己提交的资料。
 来源未记录 `authorization_scope` 时不能批准。状态同步到文档的全部知识块，并追加不可
-覆盖的审核历史。
+覆盖的审核历史。当前不提供 Embedding 写入或向量搜索 API。
 
-第一阶段不提供 Embedding 写入或向量搜索 API。历史向量表如仍存在，只作为旧版本兼容
-数据，不进入当前诊断链路。未来启用 RAG 时必须新增独立版本化接口和验收门禁。
+## 记忆与影响复核
+
+工作流响应新增严格、可空的 `memory_context`（`memory-v1`），包含 `facts/experiences/working`；老客户端可忽略。事实只陈述已保存配置，不声称实物确认；工作上下文最多50条证据ID、20条反馈并报告截断，不输出私密原文。当前资料不可用时 `teaching_available=false`，当前建议屏蔽，历史由单独受权入口提供。
+
+以下路径均加 `/api/v1` 前缀并使用Bearer身份；读取不触发模型或诊断。列表用 `after_id` 游标、`limit` 上限100；影响列表按授权诊断扫描，空页也可能有下一游标，不能把空页当全量无影响。
+
+| 路径 | 行为与权限 |
+| --- | --- |
+| `GET /memory/events` | 教师只看明确关联本班诊断的事件；管理员查看治理清单。审核角色本身不授予课堂历史权限 |
+| `GET /memory/events/{id}/impacts` | 当前范围内的关联及复核结果，区分匹配、提供、引用、派生和旧版引用；缺关联不推断无影响 |
+| `GET /memory/events/{id}/impacts/{diagnosis_id}/history` | 受权历史依据，明确不可作为当前建议 |
+| `POST /memory/events/{id}/impacts/{diagnosis_id}/review` | 教师/管理员按原课堂复核，传预期版本；冲突409，相同操作者和原版本的相同内容可确认重试 |
+| `GET /memory/events/{id}/package-candidates` | 管理员查同案例ID/版本的包候选；不证明来源相同，不自动撤包，改名副本仍未知 |
+| `POST /memory/events/{id}/clear-caches` | 管理员清理账本精确关联的缓存；未追踪副本不声称已清除 |
+| `POST /memory/cleanup-plans` | 管理员预览最多500条已过期缓存，固定目标；同时列出禁止删除的其他存储 |
+| `GET /memory/cleanup-plans/{id}`、`POST .../{id}/execute` | 原管理员读取/按计划哈希执行；重验目标和到期时间，变化对象跳过，结果可重复确认 |
+
+案例撤回和包撤销沿用原端点，分别产生停用事件；不新增自动联动撤包。复核只记录处置判断，不改诊断、确认根因、通知学生或切换版本。治理读接口返回 `Cache-Control: no-store`。
+
+## 其他入口
+
+- `/auth/session`、`/auth/me`、`/auth/classes`：正式用户会话和资源范围。
+- `/experiments/templates`、`/experiments/template-versions/*`：旧模板草稿与发布门禁。
+- `/experiments/packages/*`、`/experiments/package-versions/*`：实验包校验、导入、版本查询和发布门禁。
+- `/knowledge/sources/{id}/documents/file`、`/knowledge/documents/{id}/workspace`、
+  `/knowledge/chunks/*`：文件导入与草稿分块工作区。
+- `/teacher-workflow/*`：处置动作、时间线、课堂消息和 CSV 报告。
+- `/health/live`、`/health/ready`、`/health/dependencies`、`/ops/status`：运维状态。
+- `/readiness/status`：已批准文档、合格兼容案例、可加载的正式发布包分别列示；新增检查项状态`unverified`，无验收依据的软件/演示/硬件/组织布尔值保持false并说明待核实。
+- `/ops/status`：`pending_interventions`计open/claimed/unconfirmed；新增`resolved_awaiting_close`单列待关闭。`active_sessions`排除过期、撤销及停用用户。
 
 ## 状态码
 
@@ -288,32 +331,9 @@ pending --formal_approver--> approved
 | 409 | 资源重复、非法状态流转、实验包版本已存在或审核条件不满足 |
 | 413 | 请求体、批次数量或提取文本超过配置上限 |
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
-| 429 | 新批次超过设备速率限制 |
+| 429 | 遥测写入超过设备共享速率限制 |
 | 503 | 工作区未配置或工作流基础设施暂不可用；常规模型失败由确定性降级处理 |
 
-正式学生总览使用个人账号及会话，设备凭据仅限测试兼容；部分知识整理工作区仍由审阅令牌保护。教师聚合使用正式 Bearer 账号、班级范围和 RBAC。项目不提供公开设备注册。默认
-`AI_ENABLED=false`，是否启用 Provider 由部署方明确配置和审批；统一 `AIClient` 是可替换边界。
+## 上下文审计兼容
 
-
-### 教学参考可选响应字段（2026-09-20）
-
-学生dashboard的`guidance[].hints[].teaching`与指导API的同名字段保存`teaching-reference-v1`快照。
-字段包括status（available/missing/unavailable）、experiment_version_id、package_version、package_hash、
-is_test_data、concepts（concept_id/description/references）和steps（step_id/title/expected_state/prerequisite_step_ids）。
-旧记录缺字段或null时不补造内容。steps只作实验参考，不属于新的允许动作或设备证据；
-expected_state是预期，不是实测。读取不生成新指导、反馈或模型调用，权限沿用所属诊断与会话。
-
-## 重新检查命令（2026-09-20）
-
-`POST /api/v1/diagnosis-workflows/devices/{device_id}` 保持原请求字段，新增可选
-`request_id`（UUID）、`baseline_id`、`target_episode_id`。新前端总是传身份和所见基准。
-身份作用域为经验证的当前实验会话；目标问题必须属于基准。原参数校验通过后才接收命令。
-返回201的原工作流对象增加 `check`：身份、基准、工作流、检查时间、状态、数据时间范围、
-新记录数、测试标记及逐问题对比。`no_new_data` 返回原工作流，不新增诊断或模型调用。
-不同身份但输入相同的并发检查可共用结果；新输入遇过期基准409，不能自动换身份重试。
-
-`GET /api/v1/diagnosis-workflows/devices/{device_id}/checks/latest` 只读回执（没有则null），
-权限及会话验证与启动一致。`pending`回执包含原请求参数，供丢失浏览器记录时显式恢复，
-不包含私有输入快照。工作流latest也带最近check；前端必须核对诊断ID后组合展示。
-网络中断/503保留身份；同身份不同参数409。401/403/409/422不自动重新提交。
-历史诊断不补造对比记录，GET不会触发图执行。
+本次上下文建设未新增HTTP端点或公开响应字段。内部 `AIDiagnosisInput` 的私有准备元数据不会出现在模型JSON或公开Schema中。`AICallRecord.input_snapshot.context_manifest` 仅为现有审计JSON附加键，含来源身份/版本/hash、准确输入及Prompt指纹、预算与省略原因。`provider_attempted` 表示客户端尝试，不证明服务商接收或模型利用；缓存命中submitted为空并记录cache_origin。旧记录无清单表示历史未知，不按新策略补写。

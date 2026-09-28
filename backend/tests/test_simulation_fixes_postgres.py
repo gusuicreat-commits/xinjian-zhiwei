@@ -71,7 +71,7 @@ def test_counter_upgrade_preserves_rows_and_ingests_full_large_batch(migration_d
     with pytest.raises(AssertionError, match="Cannot narrow protocol counters"):
         migrate("downgrade", "20260919_0031")
     with engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260927_0034"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260927_0035"
     migrate("check")
 
 

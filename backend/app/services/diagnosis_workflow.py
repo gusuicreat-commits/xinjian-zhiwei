@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from langgraph.types import Command
 from sqlalchemy import select
@@ -547,6 +547,12 @@ def review_workflow(
         raise WorkflowConflict("workflow is not waiting for teacher review")
     if workflow.diagnosis_result_id is None:
         raise WorkflowConflict("workflow has no diagnosis result")
+    from app.services.experiment_packages import teaching_available
+
+    if not teaching_available(db, workflow):
+        raise WorkflowConflict(
+            "teaching memory is unavailable; review its historical impact instead"
+        )
     device = db.get(Device, workflow.device_id)
     if device is None:
         raise WorkflowConflict("workflow device no longer exists")
@@ -646,6 +652,7 @@ def resume_workflow_with_feedback(
     settings: Settings,
     *,
     reconcile_only: bool = False,
+    authorize: Callable[[], Any] | None = None,
 ) -> DiagnosisWorkflowRun:
     """Resume the same diagnosis state with student feedback as new evidence."""
 
@@ -657,12 +664,24 @@ def resume_workflow_with_feedback(
     )
     if locked is None:
         raise WorkflowConflict("workflow no longer exists")
+    if authorize is not None:
+        # Feedback recovery can wait here even after its outer mutex was acquired.
+        authorize()
     workflow = locked
     assert_workflow_ownership(db, workflow, expected_device_id=device.id)
+    if authorize is not None:
+        session = resolve_experiment_session(
+            db, device, workflow.experiment_session_id, require_active=False
+        )
+        reconcile_only = reconcile_only or session.status != "active"
     if workflow.diagnosis_result_id != feedback.diagnosis_result_id:
         raise WorkflowScopeViolation("feedback belongs to another diagnosis")
     if feedback.request_id and feedback.processing_status == "applied":
         return workflow
+    from app.services.experiment_packages import teaching_available
+
+    if not teaching_available(db, workflow):
+        raise WorkflowConflict("teaching memory is unavailable; contact the teacher")
     checkpoint = graph.get_state(_config(workflow)) if feedback.request_id else None
     resumed_already = bool(
         checkpoint and (checkpoint.values.get("student_feedback") or {}).get("id") == feedback.id
@@ -781,9 +800,10 @@ def serialize_workflow(
     from app.services.experiment_packages import teaching_available
 
     bound_db = object_session(workflow)
-    teaching_ready = not is_student or (
-        bound_db is not None and teaching_available(bound_db, workflow)
-    )
+    teaching_ready = bound_db is not None and teaching_available(bound_db, workflow)
+    from app.services.memory import memory_context
+
+    memories = memory_context(bound_db, workflow) if bound_db is not None else None
     public_review_request = workflow.review_request
     if is_student:
         public_review_request = (
@@ -820,6 +840,7 @@ def serialize_workflow(
         error_messages=workflow.error_messages,
         review_request=public_review_request if teaching_ready else None,
         teaching_available=teaching_ready,
+        memory_context=memories,
         reviews=[
             DiagnosisWorkflowReviewResponse(
                 id=item.id,

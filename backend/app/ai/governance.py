@@ -52,6 +52,10 @@ def current_delivery_scope(db, diagnosis):
                 assert_student_session_access(db, student, owner)
         if diagnosis.experiment_version_id:
             load_experiment_package_runtime(db, diagnosis.experiment_version_id)
+        from app.services.memory import diagnosis_sources_available
+
+        if not diagnosis_sources_available(db, diagnosis):
+            raise AIQuotaDenied("AI_KNOWLEDGE_WITHDRAWN")
         result = []
         for link in issue_links(db, diagnosis):
             db.refresh(link.episode)
@@ -82,6 +86,7 @@ class GovernedAIInvocation:
         call_stage: str,
         episode: DiagnosisEpisode | None = None,
         knowledge_case_ids: tuple[str, ...] = (),
+        source_snapshot: list[dict] | None = None,
     ):
         self.db = db
         self.diagnosis = diagnosis
@@ -90,17 +95,33 @@ class GovernedAIInvocation:
         self.episode = episode
         self.knowledge_case_ids = knowledge_case_ids
         self.reservations: list[AIUsageReservation] = []
+        self._knowledge_snapshot = None
+        self.source_snapshot = source_snapshot
 
     def _check_knowledge(self):
         from app.models.knowledge import KnowledgeCase
+        from app.services.experiment_packages import load_experiment_package_runtime
+        from app.services.memory import approved_case, case_source, package_source
 
-        # Package cases are immutable snapshots authorized by the package gate.
+        if self.source_snapshot is not None:
+            from app.services.memory import current_source
+
+            if not all(current_source(self.db, source, is_test_data=self.diagnosis.is_test_data)
+                       for source in self.source_snapshot):
+                raise AIQuotaDenied("AI_KNOWLEDGE_CHANGED")
         if self.diagnosis.experiment_version_id:
-            return
-        for case_id in self.knowledge_case_ids:
-            case = self.db.get(KnowledgeCase, case_id, populate_existing=True)
-            if case is not None and case.review_status != "approved":
-                raise AIQuotaDenied("AI_KNOWLEDGE_WITHDRAWN")
+            snapshot = [package_source(load_experiment_package_runtime(
+                self.db, self.diagnosis.experiment_version_id).version)]
+        else:
+            snapshot = []
+            for case_id in sorted(self.knowledge_case_ids):
+                case = self.db.get(KnowledgeCase, case_id, populate_existing=True)
+                if not approved_case(case, is_test_data=self.diagnosis.is_test_data):
+                    raise AIQuotaDenied("AI_KNOWLEDGE_WITHDRAWN")
+                snapshot.append(case_source(case))
+        if self._knowledge_snapshot is not None and snapshot != self._knowledge_snapshot:
+            raise AIQuotaDenied("AI_KNOWLEDGE_CHANGED")
+        self._knowledge_snapshot = snapshot
 
     @property
     def attempts(self) -> int:

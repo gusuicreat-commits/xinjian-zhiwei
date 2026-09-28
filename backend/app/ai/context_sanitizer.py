@@ -114,7 +114,7 @@ def sanitize_text(
     value: Any,
     *,
     sensitive_values: Iterable[str] = (),
-    max_chars: int = 500,
+    max_chars: int | None = 500,
 ) -> str:
     text = str(value or "")
     for secret in sorted(set(sensitive_values), key=len, reverse=True):
@@ -123,17 +123,18 @@ def sanitize_text(
     for pattern in TEXT_PATTERNS:
         text = pattern.sub("[REDACTED]", text)
     text = re.sub(r"\s+", " ", text).strip()
-    return text[:max_chars]
+    return text if max_chars is None else text[:max_chars]
 
 
 def _safe_value(
     value: Any,
     *,
     sensitive_values: Iterable[str],
-    max_chars: int = 500,
+    max_chars: int | None = 500,
     field_name: str = "",
     path: tuple[str, ...] = (),
     trusted_references: ReferenceAllowlist | None = None,
+    strict: bool = False,
 ) -> Any:
     if trusted_references is not None and path in trusted_references:
         if value is None:
@@ -142,7 +143,7 @@ def _safe_value(
             not isinstance(value, str)
             or value not in trusted_references[path]
             or sanitize_text(value, sensitive_values=sensitive_values,
-                             max_chars=len(value)) != value
+                             max_chars=None) != value
         ):
             raise ProviderInputError()
         return value
@@ -152,12 +153,14 @@ def _safe_value(
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
-        return sanitize_text(
-            value,
-            sensitive_values=sensitive_values,
-            max_chars=max_chars,
-        )
+        cleaned = sanitize_text(value, sensitive_values=sensitive_values,
+                                max_chars=None if strict else max_chars)
+        if strict and max_chars is not None and len(cleaned) > max_chars:
+            raise ProviderInputError("AI_CONTEXT_INCOMPLETE")
+        return cleaned
     if isinstance(value, list):
+        if strict and len(value) > 50:
+            raise ProviderInputError("AI_CONTEXT_INCOMPLETE")
         return [
             _safe_value(
                 item,
@@ -165,6 +168,7 @@ def _safe_value(
                 max_chars=max_chars,
                 path=(*path, "*"),
                 trusted_references=trusted_references,
+                strict=strict,
             )
             for item in (
                 value if trusted_references and (*path, "*") in trusted_references else value[:50]
@@ -179,6 +183,7 @@ def _safe_value(
                 field_name=str(key),
                 path=(*path, str(key)),
                 trusted_references=trusted_references,
+                strict=strict,
             )
             for key, item in value.items()
             if not _is_sensitive_key(key)
@@ -197,6 +202,7 @@ def sanitize_provider_payload(
     max_chars: int = 1000,
     trusted_references: ReferenceAllowlist | None = None,
     sensitive_sources: Iterable[Any] = (),
+    strict: bool = False,
 ) -> dict[str, Any]:
     """Project business data for a Provider without mutating its source snapshot.
 
@@ -216,6 +222,7 @@ def sanitize_provider_payload(
         sensitive_values=secrets,
         max_chars=max_chars,
         trusted_references=trusted_references,
+        strict=strict,
     )
 
 
@@ -322,14 +329,14 @@ def _safe_rule_matches(
             "summary": sanitize_text(
                 match.get("summary"),
                 sensitive_values=sensitive_values,
-                max_chars=500,
+                max_chars=None,
             ),
             "evidence": [
                 {
                     "fact": evidence.get("fact"),
                     "observed_value": _safe_value(
                         evidence.get("observed_value"),
-                        sensitive_values=sensitive_values,
+                        sensitive_values=sensitive_values, max_chars=None, strict=True,
                     ),
                 }
                 for evidence in match.get("evidence", [])
@@ -354,7 +361,7 @@ def _safe_guidance(
                         sanitize_text(
                             cause.get(key),
                             sensitive_values=sensitive_values,
-                            max_chars=500,
+                            max_chars=None,
                         )
                         if key == "title"
                         else cause.get(key)
@@ -370,7 +377,7 @@ def _safe_guidance(
                         sanitize_text(
                             hint.get(key),
                             sensitive_values=sensitive_values,
-                            max_chars=500,
+                            max_chars=None,
                         )
                         if key == "text"
                         else hint.get(key)
@@ -390,58 +397,9 @@ def _safe_knowledge(
     settings: Settings,
     sensitive_values: set[str],
 ) -> list[AIKnowledgeReference]:
-    def safe_content(reference: AIKnowledgeReference) -> str:
-        content = reference.content
-        try:
-            structured = json.loads(content)
-        except (TypeError, ValueError):
-            return sanitize_text(
-                content,
-                sensitive_values=sensitive_values,
-                max_chars=settings.ai_knowledge_content_max_chars,
-            )
-        cleaned = _safe_value(
-            structured,
-            sensitive_values=sensitive_values | _sensitive_values(structured),
-            max_chars=settings.ai_knowledge_content_max_chars,
-            trusted_references={
-                ("caseId",): {reference.case_id or reference.chunk_id},
-                ("case_id",): {reference.case_id or reference.chunk_id},
-            },
-        )
-        return json.dumps(cleaned, ensure_ascii=False)[:settings.ai_knowledge_content_max_chars]
+    from app.ai.context_builder import select_knowledge
 
-    return [
-        item.model_copy(
-            update={
-                "source_title": sanitize_text(
-                    item.source_title,
-                    sensitive_values=sensitive_values,
-                    max_chars=200,
-                ),
-                "source_uri": None,
-                "source_key": sanitize_text(
-                    item.source_key,
-                    sensitive_values=sensitive_values,
-                    max_chars=200,
-                ),
-                "source_version": sanitize_text(
-                    item.source_version,
-                    sensitive_values=sensitive_values,
-                    max_chars=100,
-                )
-                if item.source_version
-                else None,
-                "locator": _safe_value(
-                    item.locator,
-                    sensitive_values=sensitive_values,
-                    max_chars=200,
-                ),
-                "content": safe_content(item),
-            }
-        )
-        for item in knowledge
-    ]
+    return select_knowledge(knowledge, settings, sensitive_values)[0]
 
 
 def build_safe_ai_input(
@@ -462,7 +420,9 @@ def build_safe_ai_input(
         except (TypeError, ValueError):
             pass
     experiment = context.get("experiment_template") or {}
-    safe_knowledge = _safe_knowledge(knowledge, settings, sensitive_values)
+    from app.ai.context_builder import select_knowledge
+
+    safe_knowledge, omissions = select_knowledge(knowledge, settings, sensitive_values)
     payload = AIDiagnosisInput(
         diagnosis_result_id=record.id,
         episode_id=episode_id,
@@ -474,12 +434,12 @@ def build_safe_ai_input(
                 "template_id": sanitize_text(
                     experiment.get("template_id"),
                     sensitive_values=sensitive_values,
-                    max_chars=100,
+                    max_chars=None,
                 ),
                 "metric_ranges": _safe_value(
                     experiment.get("metric_ranges") or {},
                     sensitive_values=sensitive_values,
-                    max_chars=100,
+                    max_chars=None, strict=True,
                 ),
             },
         },
@@ -506,7 +466,7 @@ def build_safe_ai_input(
             sanitize_text(
                 f"{item.get('fact')}: {item.get('observed_value')}",
                 sensitive_values=sensitive_values,
-                max_chars=500,
+                max_chars=None,
             )
             for match in record.matched_rules
             for item in match.get("evidence", [])
@@ -514,7 +474,7 @@ def build_safe_ai_input(
         user_question=sanitize_text(
             user_question,
             sensitive_values=sensitive_values,
-            max_chars=2000,
+            max_chars=None,
         )
         if user_question
         else None,
@@ -559,9 +519,11 @@ def build_safe_ai_input(
     safe = sanitize_provider_payload(
         raw, allowed_fields=tuple(raw), trusted_references=references,
         sensitive_sources=(context, state, {"secret": list(sensitive_values)}),
-        max_chars=max(2000, settings.ai_knowledge_content_max_chars),
+        max_chars=max(2000, settings.ai_knowledge_content_max_chars), strict=True,
     )
-    return AIDiagnosisInput.model_validate(safe)
+    result = AIDiagnosisInput.model_validate(safe)
+    result._context_omissions = omissions
+    return result
 
 
 def audit_snapshot(payload: AIDiagnosisInput) -> dict[str, Any]:

@@ -154,7 +154,15 @@ def change_package_status(
     if version is None:
         raise HTTPException(status_code=404, detail="experiment package version not found")
     try:
-        transition_experiment_package(db, actor, version, payload.status)
+        from app.services.memory_governance import require_manager
+
+        transition_experiment_package(
+            db, actor, version, payload.status,
+            recheck_access=lambda: require_manager(db, actor),
+        )
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     experiment = db.get(Experiment, version.experiment_id)

@@ -57,3 +57,5 @@ firmware/**/.pio/
 # Generated test reports; keep reviewed policy in docs/test-reporting.md.
 /output/workflow-evaluation/
 /output/audits/
+
+/output/context-evaluation/

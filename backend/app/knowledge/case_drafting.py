@@ -44,7 +44,9 @@ class CaseDraftError(ValueError):
     pass
 
 
-def withdraw_case(db, case, actor, *, request_id, expected_version, reason):
+def withdraw_case(
+    db, case, actor, *, request_id, expected_version, reason, recheck_access=None
+):
     from app.models.classroom import AuditEvent
 
     case = db.scalar(
@@ -53,6 +55,8 @@ def withdraw_case(db, case, actor, *, request_id, expected_version, reason):
         .with_for_update()
         .execution_options(populate_existing=True)
     )
+    if recheck_access is not None:
+        recheck_access()
     payload = {"expected_version": expected_version, "reason": reason}
     for audit in db.scalars(
         select(AuditEvent).where(
@@ -67,6 +71,9 @@ def withdraw_case(db, case, actor, *, request_id, expected_version, reason):
             return audit.details_json["result"]
     if case.version != expected_version or case.review_status not in {"approved", "pending"}:
         raise CaseDraftError("case state changed; refresh before withdrawal")
+    from app.services.memory import case_source, register_stop
+
+    register_stop(db, case_source(case), actor, reason)
     case.review_status = "withdrawn"
     result = {"id": case.id, "version": case.version, "review_status": "withdrawn"}
     db.add(

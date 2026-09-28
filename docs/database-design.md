@@ -8,10 +8,10 @@
 ## 1. 迁移与存储基线
 
 - 标准环境使用 PostgreSQL 16；历史初始迁移要求 `vector` 扩展，当前诊断不使用向量检索。
-- Alembic 代码 Head 为 `20260927_0034`。这是仓库结构版本，不代表运行数据库已升级。
+- Alembic 代码 Head 为 `20260927_0035`。这是仓库结构版本，不代表运行数据库已升级。
 - 容器入口 `app.startup` 先执行迁移再启动 API；手工迁移、备份与回滚按 [部署说明](deployment.md) 执行。
 - LangGraph checkpoint 表由 PostgreSQL saver 的 `setup()` 管理，不在 Alembic 中重复定义。
-- 结构修改追加迁移，历史关联允许为空；不能通过猜测回填归属、来源或处理状态。
+- 结构变更与历史数据处理遵守[数据变更要求](development-guidelines.md#data-change)。
 
 ## 2. 按业务分类的表
 
@@ -20,7 +20,7 @@
 | 账号与授权 | `users`、`roles`、`permissions`、`user_roles`、`role_permissions`、`auth_sessions`；账号、角色权限与可撤销会话 |
 | 课堂 | `courses`、`classes`、`enrollments`、`teaching_assignments`、`experiment_assignments`、`device_bindings`；资格、授课范围、任务及当前设备绑定 |
 | 实验会话 | `experiment_sessions`、`experiment_session_commands`；固定学生—任务—设备—包版本，保存状态版本和操作回执 |
-| 设备采集 | `devices`、`ingestion_requests`、`device_logs`、`sensor_readings`、`device_heartbeats`；设备身份、幂等批次、原始遥测和时间质量 |
+| 设备采集 | `devices`、`ingestion_requests`、`legacy_ingestion_admissions`、`device_logs`、`sensor_readings`、`device_heartbeats`；设备身份、批次回执、旧入口准入计数、原始遥测和时间质量 |
 | 诊断事实 | `diagnosis_results`、`diagnosis_evidence`；固定输入、规则结果、标准证据与解释快照 |
 | 问题及指导 | `diagnosis_episodes`、`diagnosis_issues`、`guidance_history`、`diagnosis_feedback`；持久化故障、诊断到问题的关联、针对性指导和反馈 |
 | 检查与流程 | `diagnosis_checks`、`diagnosis_workflow_runs`、`diagnosis_workflow_reviews`；显式检查身份、冻结输入、图业务流水与审核 |
@@ -28,6 +28,7 @@
 | 旧模板兼容 | `experiment_templates`、`experiment_template_versions`、`diagnostic_artifacts`；既有模板及诊断工件版本 |
 | 知识内容 | `knowledge_sources`、`knowledge_documents`、`knowledge_chunks`、`knowledge_reviews`、`knowledge_cases`、`knowledge_case_drafts`；来源、资料整理审核、正式案例及事实草稿 |
 | 模型调用 | `ai_usage_reservations`、`ai_call_records`、`ai_explanation_cache`；外发尝试的预算预留、调用审计和可重验缓存 |
+| 记忆治理 | `memory_uses`、`memory_events`、`memory_impact_reviews`、`memory_cleanup_plans`；来源使用、停用、影响复核和固定缓存清理计划，不复制事实正文 |
 | 教师处置 | `intervention_cases`、`intervention_events`、`classroom_messages`；工单、公开/私密事件与课堂消息 |
 | 通用审计 | `audit_events`；身份、版本发布、会话管理、导出等事件 |
 | 历史向量兼容 | `knowledge_embeddings`；保留旧结构，不是当前诊断真相源或检索依赖 |
@@ -76,6 +77,8 @@
 
 `diagnosis_checks` 唯一键为 `(session_id, request_id)`，保存原参数、载荷哈希、基准诊断、
 输入签名、私有输入快照、工作流关联及回执。回执投影不返回私有输入；读取回执不运行检查。
+新请求复用旧证据结论时，单次查询当前问题的 `status/resolution_source` 并保存到新回执；
+原回执不更新。归属或目标无法核实时返回冲突，不从设备当前绑定补造关联。
 
 `diagnosis_workflow_runs.id` 是流程身份，`graph_thread_id = 'diagnosis:' || id` 受数据库检查约束；
 `diagnosis_result_id` 是另一个可空、唯一关联的诊断结果 ID，不能将两个 ID 混为一谈。
@@ -115,22 +118,25 @@
 解决事件，不能从历史冗余摘要绕过隐私。工单 resolve/close 不自动关闭问题；明确问题解决报告另走
 版本/证据修订核验。
 
-## 8. 关键后续迁移与维护
+## 8. 迁移与历史检查
 
-| 迁移 | 结构目的 |
-| --- | --- |
-| `0026` | 实验包版本、工件、标准证据与诊断/工作流绑定 |
-| `0027` | 反馈请求身份、会话及处理状态 |
-| `0028` | 持久化 AI 外发预算预留 |
-| `0029` | 遥测会话归属、草稿版本、正式案例来源唯一性、证据修订 |
-| `0030` | 会话固定包版本、状态版本与操作回执 |
-| `0031` | 多问题关联、指导/反馈/工单目标、等待时间与 AI 归因 |
-| `0032` | 四张采集相关表的协议计数扩大为 BIGINT |
-| `0033` | 显式检查命令、冻结输入与回执 |
-| `0034` | 旧逐条遥测近期准入记录，与批次回执共用限额；不回填历史数据 |
-
-更早迁移的精确语句以版本文件为准，不在此复制第二份迁移历史。0031 在存在无法无损合并的
-多问题记录时拒绝降级，0033 在有检查回执时拒绝直接删表；其他降级也不能据此推断无损。
+迁移文件维护逐版结构历史，本文仅保留影响操作的边界：`0031` 在存在无法无损合并的
+多问题记录时拒绝降级，`0032` 在协议计数超过 32 位时拒绝缩列，`0033` 在有检查回执时
+拒绝直接删表；`0034` 只为旧入口建立近期准入记录，不回填历史流量。其他降级也不能据此推断无损。
 删除或级联行为不是历史清理授权，历史异常只读检查使用 `app.cli.audit_historical_integrity`。
-新增结构的验收须覆盖空库、已有数据升级、元数据一致性、唯一约束及历史 NULL 保留；
-当次实际结果另列报告，不在设计文档中累积通过数量。
+验收要求见[验证规则](development-guidelines.md#validation)，备份、升级和回滚命令见
+[部署说明](deployment.md)；当次执行结果保存在测试报告。
+
+## 9. 记忆来源与生命周期
+
+三类记忆沿用原业务事实：固定包配置、审核案例、任务/证据/反馈/Checkpoint。工作流的 `memory_context` 是有界只读投影，不是第二份事实库。具体契约见[AI设计](ai-diagnosis-design.md#memory-lifecycle-design)。
+
+`memory_uses` 按来源类型、ID、版本、内容哈希及包身份记录目标和用途；确定性摘要键让重复执行不重复插入，与调用/工作流写入同事务。索引分别支持按来源反查、按诊断核验及按缓存目标处理。来源是多类对象，不能凭同名ID跨类型/包关联；服务核对来源，诊断外键使用RESTRICT，防止级联毁掉关系。
+
+`memory_events.source_key` 唯一，停用与原案例/包状态同事务；待清理状态索引用于重试处理。`memory_impact_reviews` 的事件＋诊断唯一，复核使用预期版本和事件行锁，保留审计；权限来自原课堂。`memory_cleanup_plans` 固定操作者、截止时间和目标指纹，执行时重验，已完成重放原结果。当前只物理清理过期或精确关联的解释缓存，其他存储保留期未配置时禁止删除。
+
+0035只新增治理表，不回填历史来源；旧审计仅按明确版本引用辅助查阅，缺哈希标为未知。治理表非空时拒绝降级删除。隔离库迁移与模型对照不代表运行库已升级。
+
+## 上下文清单（无新迁移）
+
+复用 `ai_call_records.input_snapshot.context_manifest`，合同 `context-manifest-v1`、策略 `whole-unit-v1`；未新增表，schema head仍为 `20260927_0035`。MemoryUse的matched保留匹配快照，provided只记录真实尝试提交的来源子集，cited按有效引用、derived记录缓存派生；选择后不读取新版本冒充调用时来源。清单不存原始正文。旧 `(workflow_run_id, call_stage)` 唯一性与历史记录不变；旧记录不回填。

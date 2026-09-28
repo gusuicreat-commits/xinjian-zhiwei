@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
@@ -178,7 +179,7 @@ def _persisted_evidence_registry(
         )
     )
     registry: list[dict[str, str]] = []
-    for item in rows[:50]:
+    for item in rows:
         value = item.normalized_value or {}
         kind = value.get("kind")
         if kind == "rule_fact":
@@ -195,8 +196,8 @@ def _persisted_evidence_registry(
         registry.append(
             {
                 "id": item.id,
-                "fact": sanitize_text(fact, max_chars=300),
-                "source": sanitize_text(item.source_type, max_chars=50),
+                "fact": fact,
+                "source": item.source_type,
                 "status": str(value.get("status", "unknown"))
                 if kind == "observation"
                 else "observed",
@@ -529,7 +530,7 @@ def fault_tree_analyzer(
                 f"{hint.get('level', item.hint_level)}"
             ),
             "cause_id": str(hint.get("cause_id") or ""),
-            "text": sanitize_text(hint.get("text"), max_chars=1000),
+            "text": sanitize_text(hint.get("text"), max_chars=None),
             "source": "fault_tree",
         }
         for item in guidance
@@ -559,8 +560,9 @@ def ai_reasoning_node(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
 ) -> dict[str, Any]:
     diagnosis = _diagnosis(runtime, state)
-    graph_knowledge, _ = _load_graph_knowledge(state, runtime)
+    graph_knowledge, safe_refs = _load_graph_knowledge(state, runtime)
     reasoning_state = dict(state)
+    reasoning_state["knowledge_context"] = safe_refs
     reasoning_state["evidence_registry"] = _persisted_evidence_registry(runtime, diagnosis.id)
     reasoning_state["knowledge_constraints"] = build_reasoning_knowledge_constraints(
         state.get("experiment_context"), graph_knowledge
@@ -578,6 +580,7 @@ def ai_reasoning_node(
         ),
         ai_client=runtime.context.ai_client,
         ai_clients=runtime.context.ai_clients,
+        sensitive_sources=tuple(json.loads(ref.content) for ref in graph_knowledge),
     )
     reasoned_causes = [item.model_dump(mode="json") for item in result.ranked_causes]
     return {
@@ -683,6 +686,9 @@ def _load_graph_knowledge(
         trusted = by_id.get(str(state_item["chunk_id"]))
         if trusted is None:
             continue
+        previous_version = (state_item.get("metadata") or {}).get("source_version")
+        if previous_version != trusted.source_version:
+            continue
         metadata = state_item.get("metadata") or {}
         reference = trusted.model_copy(
             update={
@@ -714,6 +720,11 @@ def knowledge_context(
         guidance,
         runtime.context.settings,
     )
+    from app.services.memory import record_uses
+
+    record_uses(runtime.context.db, diagnosis, references, target_type="workflow",
+                target_id=state["diagnosis_id"], use_kind="matched")
+    runtime.context.db.commit()
     knowledge_context = [_knowledge_state_reference(item) for item in references]
     supply = {
         "status": "available" if references else "no_approved_case",

@@ -16,6 +16,12 @@ from app.ai.clients import (
     AIProviderError,
     build_ai_client,
 )
+from app.ai.context_builder import audit_manifest, prepare_explanation, selected_sources
+from app.ai.context_contract import (
+    CONTEXT_CONTRACT_VERSION,
+    CONTEXT_POLICY_VERSION,
+    ContextManifestV1,
+)
 from app.ai.context_sanitizer import (
     ProviderInputError,
     anonymous_device_id,
@@ -29,7 +35,6 @@ from app.ai.governance import (
     estimate_prompt_tokens,
 )
 from app.ai.output_contract import OUTPUT_CONTRACT_VERSION, explanation_contract
-from app.ai.prompts import build_prompts
 from app.ai.schemas import (
     AIDiagnosisInput,
     AIExplanationResponse,
@@ -282,6 +287,7 @@ def _save_record(
     transport: str | None = None,
     workflow_run_id: str | None = None,
     call_stage: str = "explanation",
+    memory_sources: list[dict[str, Any]] | None = None,
 ) -> tuple[AICallRecord, bool]:
     existing = _workflow_ai_record(db, workflow_run_id, call_stage)
     if existing is not None:
@@ -311,6 +317,10 @@ def _save_record(
         input_snapshot={
             **_audit_snapshot(payload),
             "output_contract": explanation_contract(payload),
+            **({"context_manifest": audit_manifest(
+                payload._context_manifest, attempts=attempt_count,
+                cache_origin=payload._context_manifest.get("cache_origin"),
+            )} if payload._context_manifest else {}),
         },
         output_json=explanation.model_dump(mode="json") if explanation else None,
         knowledge_references=[item.model_dump(mode="json") for item in knowledge],
@@ -330,6 +340,22 @@ def _save_record(
     )
     db.add(record)
     try:
+        db.flush()
+        from app.services.memory import record_uses
+
+        record_uses(db, diagnosis, knowledge, target_type="ai_call", target_id=record.id,
+                    use_kind="matched", sources=memory_sources)
+        provided_sources = payload._context_manifest.get("prepared_source_refs", [])
+        if attempt_count or cache_status == "hit":
+            record_uses(db, diagnosis, [], target_type="ai_call", target_id=record.id,
+                        use_kind="provided" if attempt_count else "derived",
+                        sources=provided_sources)
+        if explanation and memory_sources:
+            cited = {key for cause in explanation.possible_causes
+                     for key in [*cause.knowledge_case_ids, *cause.knowledge_chunk_ids]}
+            record_uses(db, diagnosis, [], target_type="ai_call", target_id=record.id,
+                        use_kind="cited", sources=[source for source in memory_sources
+                        if source["kind"] in {"case", "package_case"} and source["id"] in cited])
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -358,11 +384,26 @@ def _response(
     route_path: str | None = None,
     deterministic_result: dict[str, Any] | None = None,
 ) -> AIExplanationResponse:
+    from sqlalchemy.orm import object_session
+
+    from app.services.experiment_packages import teaching_available
+    from app.services.memory import references_available
+
+    db = object_session(record)
+    available = db is not None
+    if db is not None:
+        diagnosis = db.get(DiagnosisResult, record.diagnosis_result_id)
+        available = bool(diagnosis and teaching_available(db, diagnosis)
+                         and references_available(db, diagnosis, knowledge))
+    if not available:
+        explanation, knowledge, deterministic_result = None, [], None
+        notice = "引用资料已停用或无法核验，请联系教师。"
+        enhancement_status = "failed_fallback"
     return AIExplanationResponse(
         call_record_id=record.id,
         diagnosis_result_id=record.diagnosis_result_id,
-        status=record.status,
-        mode="ai_enhanced" if record.status == "succeeded" else "rules_only",
+        status=record.status if available else "skipped",
+        mode="ai_enhanced" if record.status == "succeeded" and available else "rules_only",
         provider_configured=settings.ai_configured,
         explanation=explanation,
         knowledge_references=knowledge,
@@ -377,10 +418,28 @@ def _response(
 
 
 def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanationResponse:
+    from sqlalchemy.orm import object_session
+
+    from app.services.experiment_packages import teaching_available
+    from app.services.memory import references_available
+
+    db = object_session(record)
+    if db is not None:
+        diagnosis = db.get(DiagnosisResult, record.diagnosis_result_id)
+        if diagnosis is None or not teaching_available(db, diagnosis) or not references_available(
+                db, diagnosis, record.knowledge_references):
+            return _response(record, None, [], settings,
+                             "引用资料已停用或无法核验，请联系教师。",
+                             enhancement_status="failed_fallback").model_copy(
+                                 update={"mode": "rules_only", "status": "skipped"})
     explanation = None
     contract = (record.input_snapshot or {}).get("output_contract") or {}
     if record.output_json:
         try:
+            for ref in record.knowledge_references:
+                content = str(ref.get("content") or "").lstrip()
+                if content.startswith(("{", "[")):
+                    json.loads(content)
             explanation = AIStructuredExplanation.model_validate(record.output_json)
             if contract.get("version") != OUTPUT_CONTRACT_VERSION or any(
                 step not in contract.get("allowed_steps", []) for step in explanation.steps
@@ -455,6 +514,7 @@ def _skipped_response(
     estimated_cost: float = 0.0,
     workflow_run_id: str | None = None,
     call_stage: str = "explanation",
+    memory_sources: list[dict[str, Any]] | None = None,
 ) -> AIExplanationResponse:
     route_path = (
         "ai_disabled → deterministic_only"
@@ -472,6 +532,7 @@ def _skipped_response(
         duration_ms=int((time.monotonic() - started) * 1000),
         explanation=None,
         knowledge=knowledge,
+        memory_sources=memory_sources,
         error_code=error_code,
         error_message=error_message,
         episode=episode,
@@ -571,12 +632,17 @@ def explain_diagnosis(
             knowledge = _match_structured_knowledge(db, diagnosis, guidance, settings)
         except (AIProviderError, ValueError) as exc:
             retrieval_error = str(exc)
+    from app.services.memory import sources_for_references
+
+    memory_sources = sources_for_references(db, diagnosis, knowledge)
     core = build_diagnosis_core(diagnosis, guidance, [item.chunk_id for item in knowledge])
     deterministic = render_deterministic_explanation(core)
     diagnosis.deterministic_core = core.model_dump(mode="json")
     diagnosis.deterministic_explanation = deterministic.model_dump(mode="json")
     episode = upsert_episode(db, device, diagnosis, guidance, settings)
     policy = decide_ai_policy(core, settings, episode=episode, user_question=user_question)
+
+    rejected_context = None
 
     def without_provider(code: str, notice: str) -> AIExplanationResponse:
         # Minimal local audit only: neither telemetry aggregation nor Provider
@@ -598,6 +664,14 @@ def explain_diagnosis(
             allowed_evidence=[],
             is_test_data=diagnosis.is_test_data,
         )
+        if rejected_context is not None:
+            local._context_manifest = audit_manifest(rejected_context)
+            reason = ("source_changed" if "KNOWLEDGE" in code else
+                      "scope_unavailable" if "SCOPE" in code or code == "AI_RESULT_STALE"
+                      else "context_incomplete")
+            local._context_manifest["reason_codes"] = list(dict.fromkeys([
+                *local._context_manifest.get("reason_codes", []), reason,
+            ]))
         return _skipped_response(
             db,
             diagnosis=diagnosis,
@@ -648,8 +722,14 @@ def explain_diagnosis(
             user_question=user_question,
             workflow_state=workflow_state,
         )
-        system_prompt, user_prompt, prompt_hash = build_prompts(payload, settings.ai_prompt_version)
+        payload, system_prompt, user_prompt, prompt_hash = prepare_explanation(
+            payload, settings, memory_sources,
+        )
+        rejected_context = payload._context_manifest
     except (ValueError, TypeError, KeyError) as exc:
+        rejected_context = ContextManifestV1(
+            stage="explanation", required_complete=False, reason_codes=["context_incomplete"],
+        )
         return without_provider(
             exc.code if isinstance(exc, ProviderInputError) else "AI_INPUT_INVALID",
             "AI 输入未通过外发边界检查，当前返回确定性诊断。",
@@ -669,8 +749,11 @@ def explain_diagnosis(
         user_question=user_question,
     )
 
-    # Include the actual allowlisted input, not only a configured prompt label.
-    cache_fingerprint = hashlib.sha256(f"{cache_fingerprint}:{prompt_hash}".encode()).hexdigest()
+    # Include both the actual prompt and the context selection contract.
+    cache_fingerprint = hashlib.sha256(
+        f"{cache_fingerprint}:{prompt_hash}:{CONTEXT_CONTRACT_VERSION}:"
+        f"{CONTEXT_POLICY_VERSION}".encode()
+    ).hexdigest()
     skip_code: str | None = None
     notice: str | None = None
     if retrieval_error:
@@ -680,6 +763,9 @@ def explain_diagnosis(
         skip_code = policy.reason
         notice = "确定性结果已足够，本次无需调用 AI。"
     estimated_input_tokens = estimate_prompt_tokens(system_prompt, user_prompt)
+    if not payload._context_manifest["required_complete"]:
+        skip_code = "INPUT_TOKEN_LIMIT"
+        notice = "必需上下文无法完整放入预算，当前保留确定性结果。"
     if skip_code:
         return _skipped_response(
             db,
@@ -688,6 +774,7 @@ def explain_diagnosis(
             payload=payload,
             prompt_hash=prompt_hash,
             knowledge=knowledge,
+            memory_sources=memory_sources,
             episode=episode,
             trigger_reason=policy.reason,
             error_code=skip_code,
@@ -707,6 +794,15 @@ def explain_diagnosis(
         )
     )
     if cached is not None:
+        from app.services.memory import current_source
+
+        if not all(current_source(db, source, is_test_data=diagnosis.is_test_data)
+                   for source in memory_sources):
+            return without_provider("AI_KNOWLEDGE_CHANGED", "资料来源已变化，保留确定性结果。")
+        try:
+            current_delivery_scope(db, diagnosis)
+        except AIQuotaDenied as exc:
+            return without_provider(exc.code, "当前教学范围已变化，保留确定性结果。")
         try:
             explanation = _validate_explanation(json.dumps(cached.explanation_json), payload)
         except (ValueError, TypeError):
@@ -714,6 +810,7 @@ def explain_diagnosis(
             db.flush()
             cached = None
     if cached is not None:
+        payload._context_manifest["cache_origin"] = cache_fingerprint
         cached.hit_count += 1
         cached.last_hit_at = now
         saved, created = _save_record(
@@ -727,6 +824,7 @@ def explain_diagnosis(
             duration_ms=int((time.monotonic() - started) * 1000),
             explanation=explanation,
             knowledge=knowledge,
+            memory_sources=memory_sources,
             episode=episode,
             trigger_reason=policy.reason,
             cache_status="hit",
@@ -772,6 +870,7 @@ def explain_diagnosis(
             payload=payload,
             prompt_hash=prompt_hash,
             knowledge=knowledge,
+            memory_sources=memory_sources,
             episode=episode,
             trigger_reason=policy.reason,
             error_code="AI_NOT_CONFIGURED",
@@ -791,6 +890,7 @@ def explain_diagnosis(
             payload=payload,
             prompt_hash=prompt_hash,
             knowledge=knowledge,
+            memory_sources=memory_sources,
             episode=episode,
             trigger_reason=policy.reason,
             error_code="KNOWLEDGE_NOT_READY",
@@ -810,6 +910,7 @@ def explain_diagnosis(
             payload=payload,
             prompt_hash=prompt_hash,
             knowledge=knowledge,
+            memory_sources=memory_sources,
             episode=episode,
             trigger_reason=policy.reason,
             error_code="INPUT_TOKEN_LIMIT",
@@ -835,6 +936,7 @@ def explain_diagnosis(
             payload=payload,
             prompt_hash=prompt_hash,
             knowledge=knowledge,
+            memory_sources=memory_sources,
             episode=episode,
             trigger_reason=policy.reason,
             error_code=budget_reason or "AI_BUDGET_LIMIT",
@@ -860,6 +962,7 @@ def explain_diagnosis(
         call_stage=call_stage,
         episode=episode,
         knowledge_case_ids=tuple(k.case_id for k in knowledge if k.case_id),
+        source_snapshot=memory_sources,
     )
     for candidate_route, candidate in clients:
         route = candidate_route
@@ -879,10 +982,16 @@ def explain_diagnosis(
                 break
             except (AIProviderError, ValidationError, ValueError, json.JSONDecodeError) as exc:
                 last_error = exc
-                user_prompt = f"{user_prompt}\n上一次输出未通过结构或证据校验，请仅返回合法 JSON。"
+                # Retry the sealed request: audit hash and budget cover every attempt.
         if explanation is not None or isinstance(last_error, AIQuotaDenied):
             break
     attempts = governor.attempts
+    if isinstance(last_error, AIQuotaDenied):
+        payload._context_manifest["reason_codes"].append(
+            "source_changed" if "KNOWLEDGE" in last_error.code else
+            "scope_unavailable" if ("SCOPE" in last_error.code
+                                    or last_error.code == "AI_RESULT_STALE")
+            else "governance_denied")
     if not attempts and isinstance(last_error, AIQuotaDenied):
         return _skipped_response(
             db,
@@ -891,6 +1000,7 @@ def explain_diagnosis(
             payload=payload,
             prompt_hash=prompt_hash,
             knowledge=knowledge,
+            memory_sources=memory_sources,
             episode=episode,
             trigger_reason=policy.reason,
             error_code=last_error.code,
@@ -920,6 +1030,7 @@ def explain_diagnosis(
             duration_ms=duration_ms,
             explanation=None,
             knowledge=knowledge,
+            memory_sources=memory_sources,
             error_code="AI_OUTPUT_OR_PROVIDER_FAILED",
             error_message=_safe_error_summary(last_error),
             episode=episode,
@@ -980,6 +1091,7 @@ def explain_diagnosis(
         duration_ms=duration_ms,
         explanation=explanation,
         knowledge=knowledge,
+        memory_sources=memory_sources,
         input_tokens=completion.input_tokens if completion else None,
         output_tokens=completion.output_tokens if completion else None,
         episode=episode,
@@ -998,6 +1110,11 @@ def explain_diagnosis(
     )
     if not created:
         return serialize_ai_call(saved, settings)
+    from app.services.memory import record_uses
+
+    record_uses(db, diagnosis, knowledge, target_type="cache", target_id=cache_fingerprint,
+                use_kind="derived", sources=selected_sources(
+                    memory_sources, {item.case_id or item.chunk_id for item in knowledge}))
     db.add(
         AIExplanationCache(
             fingerprint=cache_fingerprint,

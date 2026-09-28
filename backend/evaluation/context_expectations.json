@@ -1,0 +1,142 @@
+{
+  "schema": "context-expectations-v1",
+  "provenance": "independent explicit business oracle; never provider input",
+  "cases": {
+    "CTX-F01": {
+      "eligible_ids": [
+        "dht-synthetic"
+      ],
+      "matched_ids": [
+        "dht-synthetic"
+      ],
+      "selected_ids": [
+        "dht-synthetic"
+      ],
+      "forbidden_ids": [],
+      "omission_counts": {},
+      "attribution": "provided_material_ready",
+      "source_versions": {
+        "dht-synthetic": "fixture-1"
+      },
+      "required_fields": {
+        "dht-synthetic": {
+          "normalState": {
+            "voltage": "3.3 V"
+          },
+          "teacherNotes": "历史案例不能证明本次接线错误。"
+        }
+      }
+    },
+    "CTX-F02": {
+      "eligible_ids": [],
+      "matched_ids": [],
+      "selected_ids": [],
+      "forbidden_ids": [
+        "dht-synthetic"
+      ],
+      "omission_counts": {},
+      "attribution": "source_unreviewed"
+    },
+    "CTX-F03": {
+      "eligible_ids": [],
+      "matched_ids": [],
+      "selected_ids": [],
+      "forbidden_ids": [
+        "dht-synthetic"
+      ],
+      "omission_counts": {},
+      "attribution": "source_unreviewed"
+    },
+    "CTX-F04": {
+      "eligible_ids": [],
+      "matched_ids": [],
+      "selected_ids": [],
+      "forbidden_ids": [
+        "dht-synthetic"
+      ],
+      "omission_counts": {},
+      "attribution": "source_unreviewed"
+    },
+    "CTX-F05": {
+      "eligible_ids": [],
+      "matched_ids": [],
+      "selected_ids": [],
+      "forbidden_ids": [
+        "dht-synthetic"
+      ],
+      "omission_counts": {},
+      "attribution": "source_unreviewed"
+    },
+    "CTX-F06": {
+      "eligible_ids": [],
+      "matched_ids": [],
+      "selected_ids": [],
+      "forbidden_ids": [
+        "dht-synthetic"
+      ],
+      "omission_counts": {},
+      "attribution": "source_inapplicable"
+    },
+    "CTX-F07": {
+      "eligible_ids": [],
+      "matched_ids": [],
+      "selected_ids": [],
+      "forbidden_ids": [
+        "dht-synthetic"
+      ],
+      "omission_counts": {},
+      "attribution": "source_inapplicable"
+    },
+    "CTX-F08": {
+      "eligible_ids": [
+        "dht-synthetic"
+      ],
+      "matched_ids": [
+        "dht-synthetic"
+      ],
+      "selected_ids": [],
+      "forbidden_ids": [],
+      "omission_counts": {
+        "budget_omitted": 1
+      },
+      "attribution": "packing_omitted"
+    },
+    "CTX-F09": {
+      "eligible_ids": [],
+      "matched_ids": [],
+      "selected_ids": [],
+      "forbidden_ids": [],
+      "omission_counts": {},
+      "attribution": "source_absent"
+    },
+    "CTX-F10": {
+      "eligible_ids": [],
+      "matched_ids": [],
+      "selected_ids": [],
+      "forbidden_ids": [
+        "dht-synthetic"
+      ],
+      "omission_counts": {},
+      "attribution": "source_inapplicable"
+    },
+    "CTX-F11": {
+      "eligible_ids": [
+        "led-synthetic"
+      ],
+      "matched_ids": [
+        "led-synthetic"
+      ],
+      "selected_ids": [
+        "led-synthetic"
+      ],
+      "forbidden_ids": [],
+      "omission_counts": {},
+      "attribution": "provided_material_ready",
+      "required_fields": {
+        "led-synthetic": {
+          "teacherNotes": "仅有命令，实际电压和是否发光均未知。"
+        }
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ from pydantic import Field, model_validator
 from typing_extensions import TypedDict
 
 from app.diagnosis.schemas import ExperimentTemplateContext, StrictModel
+from app.schemas.memory import MemoryContext
 
 DiagnosisWorkflowStatus = Literal[
     "created",
@@ -197,6 +198,7 @@ class DiagnosisWorkflowMetricsResponse(StrictModel):
 
 
 class DiagnosisWorkflowResponse(StrictModel):
+    memory_context: MemoryContext | None = None
     check: dict[str, Any] | None = None
     teaching_available: bool = True
     id: str

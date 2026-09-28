@@ -1,6 +1,9 @@
 {
-  "version": "binary-semantic-review-v1",
-  "allowed_judgements": ["符合", "不符合"],
+  "version": "binary-semantic-review-v2",
+  "allowed_judgements": [
+    "符合",
+    "不符合"
+  ],
   "review_mode": "manual_not_implemented_as_model_judge",
   "rubrics": [
     {
@@ -22,6 +25,36 @@
       "id": "SEM-04",
       "criterion": "回答中的下一步检查说明了该检查要核实的对象。",
       "evidence": "当前案例允许的检查动作及实际最终回答"
+    },
+    {
+      "id": "COT-SEM-01",
+      "criterion": "每个候选理由中的事实陈述由其引用的本次证据支持。",
+      "evidence": "候选关联、证据正文及实际 reason"
+    },
+    {
+      "id": "COT-SEM-02",
+      "criterion": "缺少区分候选的证据时，回答保留无法确定原因的结论。",
+      "evidence": "全部适用候选、证据、实际推理结果及最终回答"
+    },
+    {
+      "id": "COT-SEM-03",
+      "criterion": "输入存在冲突时，最终回答保留该冲突造成的判断限制。",
+      "evidence": "冲突输入及实际最终回答"
+    },
+    {
+      "id": "COT-SEM-04",
+      "criterion": "回答把尚未执行的检查表达为下一步建议。",
+      "evidence": "当前执行记录、允许动作及实际最终回答"
+    },
+    {
+      "id": "COT-SEM-05",
+      "criterion": "回答中的解释与其给出的结论一致。",
+      "evidence": "实际推理产物及最终回答"
+    },
+    {
+      "id": "COT-SEM-06",
+      "criterion": "面向学生的说明以清楚、尊重的语言表达当前判断。",
+      "evidence": "实际学生呈现及相关用户输入"
     }
   ]
 }

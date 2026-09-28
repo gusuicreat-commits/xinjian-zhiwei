@@ -1,3 +1,4 @@
+import type { MemoryContext } from '@/types/memory'
 import type { CheckReceipt } from '@/api/diagnosisChecks'
 export type DiagnosisWorkflowStatus =
   | 'created'
@@ -122,6 +123,8 @@ export interface WorkflowRetrievalAudit {
 }
 
 export interface DiagnosisWorkflowRecord {
+  teaching_available?: boolean
+  memory_context?: MemoryContext | null
   check?: CheckReceipt | null
   id: string
   diagnosis_id?: string

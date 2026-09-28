@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     ai_thinking_enabled: bool = False
     ai_timeout_seconds: float = 30.0
     ai_max_retries: int = 1
-    ai_prompt_version: str = "phase9.5-v1"
+    ai_prompt_version: str = "phase9.5-v2"
     ai_require_knowledge: bool = True
     ai_knowledge_limit: int = 5
     ai_max_context_items: int = 50

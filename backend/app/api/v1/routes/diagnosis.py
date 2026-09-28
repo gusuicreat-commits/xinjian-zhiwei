@@ -40,7 +40,7 @@ from app.services.diagnosis_workflow import (
     WorkflowScopeViolation,
     resolve_experiment_session,
 )
-from app.services.experiment_packages import load_experiment_package_runtime
+from app.services.experiment_packages import load_experiment_package_runtime, teaching_available
 from app.services.guidance import (
     generate_guidance,
     history_to_evaluation,
@@ -154,6 +154,7 @@ def run_device_diagnosis(
         "cache_status": "not_checked",
     }
     db.commit()
+    teaching_ready = teaching_available(db, record)
     return DiagnosisRunResponse(
         id=record.id,
         device_id=device.device_key,
@@ -163,8 +164,8 @@ def run_device_diagnosis(
         matches=[DiagnosisMatch.model_validate(match) for match in record.matched_rules],
         is_test_data=record.is_test_data,
         created_at=record.created_at,
-        deterministic_result=record.deterministic_core,
-        explanation=record.deterministic_explanation,
+        deterministic_result=record.deterministic_core if teaching_ready else None,
+        explanation=record.deterministic_explanation if teaching_ready else None,
         ai_enhancement=record.ai_enhancement,
         episode=(
             {
@@ -205,9 +206,12 @@ def run_guidance(
     if diagnosis_result is None or diagnosis_result.device_id != device.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="diagnosis not found")
     _assert_diagnosis_scope(db, diagnosis_result, session)
+    if not teaching_available(db, diagnosis_result):
+        return GuidanceRunResponse(items=[])
     records = generate_guidance(db, device, diagnosis_result)
     return GuidanceRunResponse(
         items=[_guidance_response(record, device.device_key) for record in records]
+        if teaching_available(db, diagnosis_result) else []
     )
 
 
@@ -308,6 +312,7 @@ def get_device_guidance(
         if (owner := diagnosis_session(db, db.get(DiagnosisResult, record.diagnosis_result_id)))
         is not None
         and owner.id == session.id
+        and teaching_available(db, db.get(DiagnosisResult, record.diagnosis_result_id))
     ]
 
 

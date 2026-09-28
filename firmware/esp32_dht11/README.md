@@ -9,6 +9,7 @@
 - 按 Aosong DHT11 单总线时序发起真实读取，校验 40 位帧和 8 位校验和，并拒绝越界值。读取失败只生成 `DHT11_READ_FAILED` 日志，不会生成虚构温湿度。
 - DHT11 返回前一次转换结果。上电后第一次有效帧只用于 priming；下一次有效帧才发布温度和湿度，并在 `metadata.measurement_semantics=previous_conversion` 中保留转换触发与读取完成的单调时间。
 - 每个请求含唯一 `requestId`、本次启动内递增的 `sequenceNo`、`bootId`、`uptimeMs`、固件版本和 `isTestData`。设备时间未通过 NTP 校准时省略 `occurredAt`，服务端按既定规则记录 `server_fallback`。
+- 运行时长、采样触发和读取完成使用 ESP-IDF `esp_timer_get_time()` 的 64 位单调时钟，不对已回绕的 `millis()` 仅作类型转换。
 - 配好上传身份后，LittleFS 先保存一个冻结批次，再判断联网状态。会话 ID、请求体、记录数、重试次数和回执确认状态一起保存。缓存满时暂停新的传感器读取，恢复后重新 priming，不把暂停前转换当作新测量；这是单批次缓存，不保证断网期间连续采样。
 - 写入必须达到完整长度且读回一致，才原子改名。挂载、读写、内容损坏或改名失败时停止采样和上传，保留文件，不自动格式化。首次使用没有文件系统时，需要负责人单独初始化；不能用自动格式化绕过错误。
 - 成功响应必须是 200/201、请求 ID 相同、记录数相同且每条状态为 `accepted`。先持久化已确认状态再清理；清理失败只重试删除，即使重启或断网也不重新发送已确认批次。确认状态尚未落盘就断电的窗口仍可能重放原请求，由服务端幂等处理。
@@ -36,6 +37,5 @@ pio device monitor -d firmware/esp32_dht11
 `python firmware/esp32_dht11/docs/fetch_sources.py`，脚本只访问登记过的官方 URL 并校验 SHA-256。
 协议请求样例见 `docs/protocol-example.json`；运行 `python scripts/check_firmware_protocol.py`
 会同时使用后端批次及逐记录校验。编译后运行 `python scripts/test_firmware_host.py`，使用实际
-固件源码及 ArduinoJson，模拟文件、网络、重启和回执故障。新测试不改变硬件待验收状态。
-
-0.2.2使用ESP-IDF `esp_timer_get_time()`的64位单调时钟保存运行时长、触发采样和读取完成时间；不会对已经回绕的`millis()`仅作类型转换。主机测试覆盖2^31和2^32毫秒两侧；这仍不等于实物连续运行数十天已经验收。
+固件源码及 ArduinoJson，模拟文件、网络、重启和回执故障，并覆盖 2^31 和 2^32 毫秒两侧的时钟边界。
+这些检查不等于实物连续运行数十天已经验收。

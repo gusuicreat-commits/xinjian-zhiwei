@@ -19,6 +19,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { pendingInterventionCommand, reportTeacherProblemResolved } from '@/api/teacher'
+import MemoryGovernancePanel from '@/components/MemoryGovernancePanel.vue'
 import ManagedExperimentSessions from '@/components/ManagedExperimentSessions.vue'
 import TeacherDeviceChart from '@/components/TeacherDeviceChart.vue'
 import TeacherErrorRankingChart from '@/components/TeacherErrorRankingChart.vue'
@@ -832,6 +833,11 @@ onBeforeUnmount(() => {
           <p class="teacher-section-note">
             诊断解释审核、工单处理与正式案例审核各自独立。批准解释不代表确认硬件恢复或发布正式案例。
           </p>
+          <MemoryGovernancePanel
+            v-if="!REVIEW_MODE && sessionStore.accessToken"
+            :access-token="sessionStore.accessToken"
+            :administrator="sessionStore.session?.roles.includes('admin') ?? false"
+          />
           <article class="teacher-panel intervention-panel">
             <header>
               <h2>诊断解释审核</h2>

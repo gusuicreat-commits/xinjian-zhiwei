@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MemorySummary from './MemorySummary.vue'
 import { REVIEW_MODE } from '@/review/fixtures'
 import { issueLabel, readableText, evidenceText } from '@/presentation/userLanguage'
 import TeachingReferencePanel from './TeachingReferencePanel.vue'
@@ -627,6 +628,7 @@ function formatReviewTime(value?: string | null): string {
         </section>
         <section class="record-section ai-explanation-panel">
           <h3>辅助诊断进度</h3>
+          <MemorySummary v-if="workflow?.memory_context" :memory="workflow.memory_context" />
           <el-tag :type="workflowStatus.type" size="small">{{ workflowStatus.label }}</el-tag>
           <p>{{ workflowStatusMessage }}</p>
           <DiagnosisCheckPanel :check="workflow?.check" />

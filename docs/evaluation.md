@@ -1,6 +1,6 @@
 # 测试与评测操作指南
 
-核对日期：2026-09-27。本文维护怎样运行和解释检查；持续开发约束见 [开发准则](development-guidelines.md)，要求到测试的映射见 [评测要求对应表](evaluation-requirements.md)。历史执行数量不作为当前通过证明。
+本文维护检查依赖与运行命令。验收规则见 [开发准则](development-guidelines.md#validation)，要求与测试入口见 [评测要求对应表](evaluation-requirements.md)，报告格式见 [测试报告约定](test-reporting.md)。
 
 ## 1. 每层检查能证明什么
 
@@ -12,8 +12,8 @@
 | 实验包与知识 | `verify_experiment_packages`、`verify_structured_knowledge`、`verify_v2_evidence_workflow` | Schema、引用、版本、测试边界和固定流程；包内正常样例不代替完整运行状态验证 |
 | PostgreSQL 流程 | `app.cli.run_workflow_evaluation --postgres` | 真实路由、诊断图、业务表和 Checkpoint 的合成流程；连接重建不等于断电或任意进程崩溃验证 |
 | 浏览器 Mock API | `npm run test:e2e` | 页面行为；不能证明真实后端联通 |
-| 浏览器真实后端 | `npm run test:e2e:integration
-npx playwright test --config playwright.review.config.ts` | 浏览器 → FastAPI → LangGraph → PostgreSQL；身份与设备数据为合成，Provider 为 Mock |
+| 浏览器真实后端 | `npm run test:e2e:integration` | 浏览器 → FastAPI → LangGraph → PostgreSQL；身份与设备数据为合成，Provider 为 Mock |
+| 离线审阅包 | `npx playwright test --config playwright.review.config.ts` | 独立构建的前端审阅页面；不连接真实后端 |
 | 固件 | `check_firmware_protocol.py`、PlatformIO、`test_firmware_host.py` | 协议样例、实际编译、主机 I/O 故障模拟；不代替 ESP32 闪存、断电、接线和无线网络实测 |
 | 版本 | `check_version.py` | 应用版本、资料包内容与版本、指定当前文档版本；不代表软件或资料已发布 |
 
@@ -51,7 +51,7 @@ scripts/verify.sh
 以下命令在仓库根目录、已激活所需 Python 环境后执行。单独运行一层不能称为完整验收。
 
 ```bash
-ruff check backend simulator scripts/prepare_evaluation_postgres.py
+ruff check backend simulator scripts/prepare_evaluation_postgres.py scripts/database_backup.py
 PYTHONPATH=backend python -m pytest backend/tests
 PYTHONPATH=simulator python -m pytest simulator/tests
 PYTHONPATH=backend python -m app.cli.run_synthetic_evaluation
@@ -62,6 +62,7 @@ PYTHONPATH=backend python scripts/check_firmware_protocol.py
 PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
   --postgres --output output/workflow-evaluation/local-latest.json
 python scripts/check_version.py --base-ref HEAD
+scripts/security_scan.sh
 pio run -d firmware/esp32_dht11
 python scripts/test_firmware_host.py
 ```
@@ -96,22 +97,18 @@ npx playwright test --config playwright.review.config.ts
 
 本机通过、CI 已配置、远端 CI 实际通过是三种不同结论；必须给出对应运行记录。人工语义、真实硬件和课堂验证不在这些 CI 作业中。
 
-## 5. 报告语义
-
-合成评测当前使用 `7-code-and-semantic-separated`：`code_checks_passed` 表示代码检查；`pattern_scan` 仅记录出现的片段；`semantic_review` 未审阅时为 `not_run` / `judgement=null`。代码通过而语义未审阅时总体 `status=incomplete`。此 CLI 的退出码 0 只表示代码检查通过。
-
-完整流程 CLI 另有自己的 `status`：全部场景软件检查通过退出 0，失败/执行错误退出 1，受阻/未完成退出 2；不能混用这两个报告的总体状态。旧版 `passed`、`forbidden_claims` 或 v6 字段属于历史格式，不作为当前消费契约。
-
-## 6. 迁移、部署与真实验收
+## 5. 迁移、部署与真实验收
 
 迁移变更在隔离库验证空库升级、涉及的历史版本升级、历史记录保留、单一 Head 和 `alembic check`。同版本的模型检查不能代替历史升级测试。默认 `verify.sh` 不等于目标环境迁移验收，部署操作见 [部署说明](deployment.md)。
 
 真实上线还需结合目标环境验证备份恢复、持久化 Checkpoint、凭据撤销、班级隔离、无 Key 降级和监控；并按 [硬件验证计划](hardware-validation-plan.md) 记录板卡、固件、接线、原始采样、独立真值和恢复证据。规则调整数据与验收样本应隔离。
 
-## 7. 失败定位与历史依据
+## 6. 失败定位
 
-失败先区分实现缺陷、预期过期、环境受阻和材料缺失。修复须保留失败反例，不能通过删除测试、弱化判据或取消测试标记绕过。规则和反例的对应关系维护在开发准则第 19.4 节及评测要求表，不在本文再复制业务规则。
+失败先区分实现缺陷、预期过期、环境受阻和材料缺失，再按 [如何修复 Bug](development-guidelines.md#fix-bugs) 处理。对应反例查 [规则入口表](development-guidelines.md#rule-map) 和 [评测要求表](evaluation-requirements.md)。
 
-- [第二阶段失败基线](archive/workflow-evaluation-phase2.md) 与 [反馈/流程整改记录](archive/workflow-remediation.md)：保留当时失败、兼容性和已执行结果，不作为当前全部通过证明。
-- 教学参考、重新检查、归属/并发/恢复和开发门禁回归由 `backend/tests/` 与 `frontend/tests/` 自动收集；具体测试数量取本次日志，不在操作指南维护重复计数。
-- 当前软件范围和未完成事项见 [实现状态](implementation-status.md) 与 [真实性看板](project-truth-status.md)。
+当前范围和未完成事项查 [实现状态](implementation-status.md) 与 [真实性看板](project-truth-status.md)；历史失败依据从 [评测要求表](evaluation-requirements.md) 的对应编号追溯，不用历史数量补成本次未运行的结果。
+
+## 受控上下文独立评测
+
+执行 `PYTHONPATH=backend "$BACKEND_PYTHON" -m app.cli.run_context_evaluation --output output/context-evaluation/latest.json`。输入 `backend/evaluation/context_inputs.json` 与独立期望 `context_expectations.json` 分离；仅评测器读取期望。当前11个样本均为合成回归，覆盖资格与完整打包，真实语义和独立保留集待验收。服务级关联、来源、缓存、预算、重放及破坏反例运行 `PYTHONPATH=backend "$BACKEND_PYTHON" -m pytest backend/tests/test_context_construction.py backend/tests/test_context_evaluation.py`；跨链路仍执行完整门禁，不能只凭该CLI交付。

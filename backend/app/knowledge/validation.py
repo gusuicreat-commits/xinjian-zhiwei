@@ -16,10 +16,10 @@ def _safe_case_payload(reference: AIKnowledgeReference) -> dict[str, Any] | None
         return None
     return {
         "is_test_data": reference.is_test_data,
-        "case_id": sanitize_text(raw.get("caseId") or reference.chunk_id, max_chars=100),
-        "experiment_type": sanitize_text(raw.get("experimentType"), max_chars=100),
-        "error_type": sanitize_text(raw.get("errorType"), max_chars=100),
-        "symptom": sanitize_text(raw.get("symptom"), max_chars=500),
+        "case_id": sanitize_text(raw.get("caseId") or reference.chunk_id, max_chars=None),
+        "experiment_type": sanitize_text(raw.get("experimentType"), max_chars=None),
+        "error_type": sanitize_text(raw.get("errorType"), max_chars=None),
+        "symptom": sanitize_text(raw.get("symptom"), max_chars=None),
         "normal_state": raw.get("normalState") if isinstance(raw.get("normalState"), dict) else {},
         "evidence": raw.get("evidence") if isinstance(raw.get("evidence"), list) else [],
         "possible_causes": (
@@ -28,9 +28,9 @@ def _safe_case_payload(reference: AIKnowledgeReference) -> dict[str, Any] | None
         "solution_steps": (
             raw.get("solutionSteps") if isinstance(raw.get("solutionSteps"), list) else []
         ),
-        "teacher_notes": sanitize_text(raw.get("teacherNotes"), max_chars=1000),
+        "teacher_notes": sanitize_text(raw.get("teacherNotes"), max_chars=None),
         "root_cause": raw.get("rootCause") if isinstance(raw.get("rootCause"), dict) else {},
-        "source_id": sanitize_text(reference.source_key, max_chars=200),
+        "source_id": sanitize_text(reference.source_key, max_chars=None),
     }
 
 

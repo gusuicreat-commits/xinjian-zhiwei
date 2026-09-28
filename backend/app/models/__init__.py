@@ -44,9 +44,11 @@ from app.models.knowledge import (
     KnowledgeReview,
     KnowledgeSource,
 )
+from app.models.memory import MemoryCleanupPlan, MemoryEvent, MemoryImpactReview, MemoryUse
 from app.models.sensor_reading import SensorReading
 
 __all__ = [
+    "MemoryUse", "MemoryEvent", "MemoryImpactReview", "MemoryCleanupPlan",
     "DiagnosisCheck",
     "AICallRecord",
     "AIExplanationCache",

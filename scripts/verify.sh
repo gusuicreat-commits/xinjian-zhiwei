@@ -38,6 +38,7 @@ fi
 PYTHONPATH=backend "$backend_bin/pytest" backend/tests
 PYTHONPATH=simulator "$backend_bin/pytest" simulator/tests
 PYTHONPATH=backend "$backend_python" -m app.cli.run_synthetic_evaluation >/dev/null
+PYTHONPATH=backend "$backend_python" -m app.cli.run_context_evaluation
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_experiment_packages
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_structured_knowledge
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_v2_evidence_workflow

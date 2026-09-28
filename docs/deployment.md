@@ -1,6 +1,6 @@
 # 部署与运行操作指南
 
-核对日期：2026-09-27。适用于仓库 [compose.yaml](../compose.yaml)；当前实现与待验收项见 [实现状态](implementation-status.md)。本文提供操作方法，不证明目标环境已部署、已迁移或具备正式课堂条件。
+适用于仓库 [compose.yaml](../compose.yaml)。本文维护启动、迁移、备份与探针操作；当前部署及验收状态见 [实现状态](implementation-status.md)。
 
 ## 1. 首次本地运行
 
@@ -75,16 +75,31 @@ scripts/restore_drill.sh /explicit/path/backup.dump
 docker compose exec -T backend python -m app.cli.retention_dry_run --days 30
 ```
 
-- 备份使用 `pg_dump -Fc --snapshot`，要求Python 3.10+、Docker与当前Compose postgres服务。父目录须存在，拒绝覆盖dump或同名`.manifest.json`；普通失败清理本次不完整dump，强制终止留下无清单文件不能作为完成备份。
+- 备份使用 `pg_dump -Fc --snapshot`，需要 Python 3.10+、Docker 与当前 Compose postgres 服务。父目录须存在，拒绝覆盖 dump 或同名 `.manifest.json`；普通失败清理本次不完整 dump，强制终止留下的无清单文件不算完成备份。
 - 恢复演练在同一个 PostgreSQL 实例创建临时数据库，退出时删除该临时库，不替换业务库、不删除数据卷。
-- 内容清单与dump使用同一REPEATABLE READ导出快照，覆盖全部非系统表（包含会话、问题、指导、反馈、工单、案例、包及检查回执）的全行SHA-256摘要、条数、列类型和关系约束。恢复先验dump摘要，再比清单，源库后续写入不会造成误报。清单不含记录原文；仍需与dump一起受控保存。备份窗口避免DDL，副本恢复还须人工核验业务可用性及所需角色权限。
+- dump 与清单来自同一 `REPEATABLE READ` 导出快照，覆盖全部非系统表的全行 SHA-256、条数、列类型和关系约束。恢复先验 dump 摘要再比清单，源库后续写入不会造成误报。清单不含记录原文，仍须与 dump 一起受控保存；备份窗口避免 DDL，恢复后人工核验业务可用性及所需角色权限。
 - `retention_dry_run` 只报告候选数量，`deleted=0`；不实施删除策略。
 
 正式备份存储位置、加密、保留周期、恢复目标和负责人仍需部署方确定。业务库与独立 Checkpoint 库若分开，当前脚本仅证明指定数据库；须暂停相关业务写入并分别备份两个库，再按同一停写窗口联合恢复，单库通过不能称跨库一致；仅复制容器文件不是数据库备份。
 
+### 记忆停用与维护
+
+部署新代码前迁移到仓库当前Head；本轮没有替运行库执行迁移。治理表应与业务库一起备份，另外独立保存最新停用登记。以下命令使用显式选择的 `DATABASE_URL`，从backend目录执行；先在隔离副本验证。
+
+```bash
+python -m app.cli.memory_maintenance clear-stopped-caches
+python -m app.cli.memory_maintenance export-stops --file /safe/new-memory-stops.json
+# 仅在隔离恢复库，迁移到当前Head后执行；不要连正在提供服务的库。
+python -m app.cli.memory_maintenance replay-stops --file /safe/latest-memory-stops.json --isolated-restore
+```
+
+缓存维护每批最多100个待处理停用事件，可重复运行，不删除事实或Checkpoint。导出拒绝覆盖已有文件，只包含必要来源标识；文件哈希校验完整性，不证明文件来自可信操作者或已经最新。恢复重放会重新停用精确来源并使解释缓存到期；对象、内容或操作人无法核验时失败，不猜测对应关系。重放不自动授权上线，仍需核对Checkpoint和实际读取路径；跨存储保留/删除策略、第三方及离线副本尚未确认，不能宣称所有副本已清除。
+
+教师“资料与审核”提供影响复核；管理员可预览并执行固定的过期缓存计划。权限变化、计划变化或部分失败须重新读取当前结果；普通保留数据没有通用破坏性删除入口。
+
 ## 5. AI 配置边界
 
-非敏感默认配置在 [.env.example](../.env.example) 与 Compose。保持 AI 关闭即可运行基础流程；真实 Key 只从服务器密钥管理或不提交 Git 的环境配置注入。启用模型、更换 Provider 或采用示例模型名称前，按开发准则完成实际可用性、外发字段、预算与降级验证；本文不保证外部模型当前可用。
+非敏感默认配置在 [.env.example](../.env.example) 与 Compose。真实 Key 从服务器密钥管理或不提交 Git 的环境配置注入；启用模型、更换 Provider 或采用示例模型前，按 [模型与外发约束](development-guidelines.md#model-core) 验证可用性、字段、预算与降级。
 
 `/health/dependencies` 的 AI 状态仅检查启用和密钥配置，不实际调用 Provider；结构化知识状态也不等于正式资料审核通过。`/api/v1/readiness/status` 是业务就绪提示，不能代替运行探针、硬件验收或生产验收。
 
@@ -103,4 +118,4 @@ curl --fail -I http://127.0.0.1:8080/student
 
 页面能打开和存活探针成功不足以验收。还应按 [测试与评测](evaluation.md) 核对目标范围的登录、上传、诊断、反馈、教师处置、无 Key 降级及恢复。
 
-正式部署还需落实 HTTPS、网络访问、账号/设备凭据生命周期、持久化 Checkpoint、备份恢复、监控告警、隐私和数据保留责任，以及真实硬件与课程验收。仓库已有部分软件入口不表示部署方已完成这些运营事项；本次文档整理没有启动服务或迁移任何现有运行数据库。
+正式部署还需落实 HTTPS、网络访问、账号/设备凭据生命周期、持久化 Checkpoint、备份恢复、监控告警、隐私和数据保留责任，以及真实硬件与课程验收。仓库具备入口不表示部署方已完成这些事项。

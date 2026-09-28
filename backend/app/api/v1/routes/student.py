@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user, get_student_device
+from app.api.dependencies import get_current_user, get_student_device, revalidate_student_access
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.experiment_packages.loader import ExperimentPackageLoadError
@@ -222,7 +222,11 @@ def create_student_feedback(
             experiment_session_id,
             getattr(request.app.state, "diagnosis_graph", None),
             settings,
+            authorize=lambda: revalidate_student_access(request, db),
         )
+    except HTTPException:
+        db.rollback()
+        raise
     except WorkflowScopeViolation as exc:
         db.rollback()
         raise HTTPException(status_code=403, detail=str(exc)) from exc

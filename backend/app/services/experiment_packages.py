@@ -38,11 +38,17 @@ RUNTIME_STATUSES = {"published", "superseded"}
 
 
 def teaching_available(db, diagnosis):
-    if diagnosis.experiment_version_id is None:
-        return True
+    from app.models.diagnosis_result import DiagnosisResult
+    from app.services.memory import diagnosis_sources_available
+
     try:
-        load_experiment_package_runtime(db, diagnosis.experiment_version_id)
-        return True
+        if diagnosis.experiment_version_id:
+            load_experiment_package_runtime(db, diagnosis.experiment_version_id)
+        record = diagnosis if isinstance(diagnosis, DiagnosisResult) else (
+            db.get(DiagnosisResult, diagnosis.diagnosis_result_id)
+            if diagnosis.diagnosis_result_id else None
+        )
+        return record is None or diagnosis_sources_available(db, record)
     except ExperimentPackageLoadError:
         return False
 
@@ -160,11 +166,15 @@ def transition_experiment_package(
     actor: User,
     version: ExperimentVersion,
     target: str,
+    *,
+    recheck_access=None,
 ) -> ExperimentVersion:
     original_status = version.status
     # All releases of one experiment serialize on the same durable parent row.
     db.scalar(select(Experiment).where(Experiment.id == version.experiment_id).with_for_update())
     db.refresh(version)
+    if recheck_access is not None:
+        recheck_access()
     if version.status != original_status:
         raise ValueError("package state changed; refresh before applying a transition")
     if target not in PACKAGE_TRANSITIONS.get(version.status, set()):
@@ -192,6 +202,10 @@ def transition_experiment_package(
         version.published_at = utc_now()
     elif target in {"revoked", "superseded"}:
         version.is_current = False
+    if target == "revoked":
+        from app.services.memory import package_source, register_stop
+
+        register_stop(db, package_source(version), actor, "experiment_package.revoked")
     version.status = target
     version.reviewed_by_user_id = actor.id
     db.add(
@@ -216,7 +230,10 @@ def load_experiment_package_runtime(
     *,
     require_published: bool = True,
 ) -> ExperimentPackageRuntime:
-    version = db.get(ExperimentVersion, experiment_version_id, populate_existing=True)
+    version = db.scalar(
+        select(ExperimentVersion).where(ExperimentVersion.id == experiment_version_id)
+        .with_for_update(read=True).execution_options(populate_existing=True)
+    )
     if version is None:
         raise ExperimentPackageLoadError("experiment package version not found")
     if require_published and version.status not in RUNTIME_STATUSES:

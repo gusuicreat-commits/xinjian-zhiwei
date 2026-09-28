@@ -1,6 +1,6 @@
 # 测试报告约定
 
-核对日期：2026-09-27。本文只维护报告位置、格式、退出码和保留方式。运行依赖与命令见 [测试与评测](evaluation.md)，历史结果不能替代本次执行。
+本文维护报告位置、格式、退出码和保留方式。运行依赖与命令见 [测试与评测](evaluation.md)，交付证据要求见 [开发准则](development-guidelines.md#validation)。
 
 ## 位置与生成范围
 
@@ -17,14 +17,7 @@
 
 ## 完整流程报告
 
-在仓库根目录，使用已安装后端依赖的 Python，并配置隔离测试 `XINJIAN_EVAL_POSTGRES_DSN`：
-
-```bash
-PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
-  --postgres --output output/workflow-evaluation/local-latest.json
-```
-
-`--output` 必填且以 `.json` 结尾；工具同时生成同名 Markdown。`verify.sh` 使用上述固定名称，也可通过 `WORKFLOW_EVALUATION_REPORT` 指定其他 JSON 路径。
+使用 [流程评测命令](evaluation.md#3-分层定位失败)。`--output` 必填且以 `.json` 结尾，工具同时生成同名 Markdown；`verify.sh` 默认使用 `output/workflow-evaluation/local-latest.json`，可通过 `WORKFLOW_EVALUATION_REPORT` 改名。
 
 | 参数 | 保存内容 |
 | --- | --- |
@@ -40,7 +33,11 @@ PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
 | 1 | 断言失败或执行错误 |
 | 2 | 数据库环境受阻，或场景未完成 |
 
-这套退出码不能套用到合成诊断 CLI：后者退出 0 只代表 `code_checks_passed=true`，语义未审阅时总体仍为 `incomplete`。不能把报告中的 software passed 写成语义、硬件或课堂通过。
+## 合成诊断报告
+
+`run_synthetic_evaluation` 使用 `evaluation_version=7-code-and-semantic-separated`：`code_checks_passed` 表示代码检查，`pattern_scan` 只记录出现的片段；`semantic_review` 未审阅时为 `not_run` / `judgement=null`，总体 `status=incomplete`。该 CLI 退出 0 只代表代码检查通过，与完整流程 CLI 的退出码语义不同。
+
+旧版 `passed`、`forbidden_claims` 或 v6 字段不作为当前消费契约。两类报告均不证明真实模型语义、硬件或课堂效果已通过。
 
 ## 保留与敏感信息
 
@@ -50,16 +47,12 @@ PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
 - 摘要只描述本次流程评测。后端、前端、固件、迁移等结果分别附实际命令、环境、源码状态与退出码；不得借用历史数量拼成“全量通过”。失败后未执行的后续步骤应写未执行。
 - 详细附件可能包含合成请求、快照和页面内容。保留测试边界，分享前核对凭据和个人信息；历史只读清单只保留记录 ID、固定原因与数量，不导出私密正文。
 
-## 已有专项证据入口
-
-这些是对应历史任务的本机取证位置，不是当前门禁结果，也不是所有检出副本都必然拥有的文件：
-
-- 第二轮修复：`output/audits/remediation-r2-latest.md`、`r2-history-inventory.json`、`remediation-r2-evidence.zip`。
-- 新旧入口一致性修复：`output/audits/legacy-boundary-remediation-latest/`；报告区分原始全链路失败日志、修正后联调/离线审核结果和最终定向复测，不合并重复测试数量。
-- 七项软件修复：`output/audits/software-remediation-latest/`，保存修复前失败、最终门禁、JUnit 与源码指纹；系统 Chrome 退出失败与配套 Chromium 成功分别保留。
-
 ## 格式实现与参考
 
 实际写入规则见 [reporting.py](../backend/app/evaluation/reporting.py)；上传范围见 [CI](../.github/workflows/ci.yml)；浏览器格式见 [Mock 配置](../frontend/playwright.config.ts) 与 [真实联调配置](../frontend/playwright.integration.config.ts)。
 
 外部设计参考：[Playwright Reporters](https://playwright.dev/docs/test-reporters)、[GitHub artifacts](https://docs.github.com/en/actions/tutorials/store-and-share-data)、[Job Summary](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#adding-a-job-summary)。实际项目行为以上述仓库配置为准。
+
+## 上下文评测报告
+
+`context-evaluation-v1` 同名JSON/Markdown输出到 `output/context-evaluation/`；JSON保留逐项代码断言、归因、输入/源码指纹、语义/真实Provider/硬件/保留集状态。代码退出0不等于语义通过，1是检查失败或执行错误，2是必需软件材料缺失/损坏。语义缺材料为not_run/null；0次真实调用、Token和费用未知不得写成已验证的成本收益。软件服务/并发/浏览器门禁另存本次审计报告，不把纯选择器报告扩称端到端验收。

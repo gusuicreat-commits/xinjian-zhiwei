@@ -1,6 +1,6 @@
 # Experiment Package 与证据治理
 
-代码核对日期：2026-09-27。本文维护包结构、运行契约及语义边界；制作与审核规则统一见 [开发准则](development-guidelines.md)，软件/硬件/教学验收状态见 [项目真实性看板](project-truth-status.md)。
+代码核对日期：2026-09-27。本文维护包结构、运行契约及语义边界；制作、来源登记与审核流程见[资料包内容规则](development-guidelines.md#package-content)，软件/硬件/教学验收状态见[项目真实性看板](project-truth-status.md)。
 
 ## 目标
 
@@ -78,7 +78,7 @@ draft → pending → approved → published → superseded/revoked
 诊断；原因 ID 必须属于故障树候选集；错误类型必须与规则结果一致。不满足任一条件就回退
 确定性结果或输出 `unknown`。
 
-## 当前示例与新增实验步骤
+## 当前示例与校验入口
 
 当前完整包为 `dht11_temperature_humidity@2.0.5` 和
 `gpio_led_output@2.0.3`。DHT11 工作区版本 2.0.5 仍是测试草稿；两包用于证明同一套加载、规则、故障树和证据链可以处理不同实验。
@@ -87,9 +87,8 @@ draft → pending → approved → published → superseded/revoked
 正式实验知识发布。`metadata.compatibility.engine` 在导入、发布检查和运行装载时执行版本范围校验。
 `knowledge/concepts.yaml` 和 `teaching/steps.yaml` 通过显式 bindings 接入新指导，详见下方教学参考契约；旧记录不补关联。
 
-新增实验时：复制包结构，填写硬件与证据映射，编写规则和故障树，补齐教师审核知识和
-四级提示，至少提供一个正常样例和一个故障样例，运行
-`python -m app.cli.verify_experiment_packages`，再通过 API 导入和发布。
+本地校验入口为 `python -m app.cli.verify_experiment_packages`；导入与发布端点见
+[API 契约](api-design.md#experiment-package-接口)。内容制作不在此另列流程，以顶部准则链接为准。
 
 ## 证据和测试资料的语义边界
 
@@ -155,7 +154,7 @@ LED 旧 level 映射用 `match.metric: null` 与显式 command/electrical/optica
 当前版本说明。内容有变化必须升版本；只更新 hash 不能绕过基准比较。历史报告保留当时版本，不批量改写。
 版本检查不是包发布，也不代表硬件适用性通过；完整包校验仍由 loader 和包内样例执行。
 
-## 教学参考契约（2026-09-20，引擎2.1.0）
+## 教学参考契约
 
 以下为当前可选字段；旧包缺字段仍可读，原始快照及 hash 不改变。
 
@@ -177,3 +176,11 @@ LED 旧 level 映射用 `match.metric: null` 与显式 command/electrical/optica
 参考文字不进入推理/解释/润色Provider投影，不新增模型调用、Prompt字段或AI缓存契约。
 学生页面通过原文显示“知识说明”“预期观察（不是实测结果）”，明确测试材料状态；不提供执行完成按钮。
 教学参考不改变计数、提示升级、复测流程、恢复判据或教师审核事实。
+
+## 设计参考来源
+
+以下方法仅作设计参考，不替代本项目的软件、硬件和教学验收：
+
+- The Carpentries：[内容组织](https://carpentries.github.io/lesson-development-training/lesson-content.html)、[试教与维护](https://carpentries.github.io/lesson-development-training/instructor/operations.html)用于明确目标、练习和教学反馈。
+- Wokwi：[电路结构](https://docs.wokwi.com/diagram-format)、[自动化场景](https://docs.wokwi.com/wokwi-ci/automation-scenarios)用于记录可复现场景；仿真不能证明真实供电、接触和器件状态，也不要求采用其接口。
+- Zephyr：[样例规范](https://docs.zephyrproject.org/latest/samples/sample_definition_and_criteria.html)用于写清硬件要求、运行方法及预期输出；可运行样例不能代替异常与恢复测试。

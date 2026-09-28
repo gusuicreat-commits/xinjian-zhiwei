@@ -1,3 +1,4 @@
+import hashlib
 import json
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -16,6 +17,113 @@ from app.diagnosis.workflow_schemas import DiagnosisWorkflowStartRequest
 from app.models import AICallRecord, Device, DiagnosisResult
 from app.services.ai_diagnosis import explain_diagnosis
 from app.services.diagnosis_workflow import start_workflow
+
+
+class EvidenceReviewProvider:
+    """Scripted output tests transport/guards, not model reasoning quality."""
+
+    configured = True
+    provider = "synthetic"
+    model = "synthetic-evidence-review"
+
+    def __init__(self, *, invalid_action=False):
+        self.requests = []
+        self.invalid_action = invalid_action
+
+    def complete_json(self, *, system_prompt, user_prompt):
+        self.requests.append((system_prompt, user_prompt))
+        return AICompletion(json.dumps({
+            "error_type": "SENSOR_READ_FAILED",
+            "conclusion": "unknown",
+            "ranked_causes": [],
+            "summary": "当前合成材料不足以区分候选原因。",
+            "limitations": ["尚未确认实际接线。"],
+            "missing_evidence": ["需要核对实际接线与程序引脚。"],
+            "next_verification_action": "执行白名单外操作" if self.invalid_action else None,
+            "conflict": False,
+        }, ensure_ascii=False), input_tokens=10, output_tokens=10)
+
+
+@pytest.fixture
+def evidence_review_run(api_context, request):
+    _post_failure(api_context)
+    provider = EvidenceReviewProvider(invalid_action=getattr(request, "param", False))
+    graph = build_diagnosis_graph(InMemorySaver())
+    with api_context["session_factory"]() as db:
+        workflow = start_workflow(
+            db, graph, db.query(Device).one(),
+            Settings(_env_file=None, ai_enabled=False, diagnosis_teacher_review_score=0),
+            DiagnosisWorkflowStartRequest(lookback_seconds=60),
+        )
+        state = dict(graph.get_state({"configurable": {
+            "thread_id": workflow.graph_thread_id,
+        }}).values)
+        diagnosis = db.get(DiagnosisResult, state["diagnosis_result_id"])
+        settings = Settings(_env_file=None, ai_enabled=True, ai_require_knowledge=False,
+                            ai_max_retries=0, ai_input_token_limit=20000)
+
+        def run():
+            return reason_about_causes(
+                db, diagnosis, state, settings, workflow_run_id=workflow.id,
+                call_stage="reasoning:cot-contract-test", ai_client=provider,
+            )
+
+        result, mode = run()
+        record = db.query(AICallRecord).filter_by(
+            call_stage="reasoning:cot-contract-test",
+        ).one()
+        yield provider, result, mode, record, run, db
+
+
+def test_evidence_review_uses_one_governed_call(evidence_review_run):
+    provider, result, mode, record, _, _ = evidence_review_run
+    assert len(provider.requests) == record.attempt_count == 1
+    assert mode == "ai"
+    assert result.conclusion == "unknown"
+    assert result.ranked_causes == []
+    assert record.output_json == result.model_dump(mode="json")
+
+
+def test_evidence_review_request_and_audit_keep_versioned_contract(evidence_review_run):
+    provider, _, _, record, _, _ = evidence_review_run
+    system, user = provider.requests[0]
+    document = json.loads(user)
+    assert document["prompt_version"] == record.prompt_version == "evidence-reasoning-v2.7"
+    assert record.prompt_hash == hashlib.sha256(f"{system}\n{user}".encode()).hexdigest()
+    assert set(document) == {
+        "prompt_version", "error_type", "device_status", "experiment_context",
+        "candidate_causes", "evidence_registry", "knowledge_constraints",
+        "allowed_verification_actions", "output_json_schema",
+    }
+    assert document["error_type"] == "SENSOR_READ_FAILED"
+    assert "cot_steps" not in document["output_json_schema"]["properties"]
+
+
+@pytest.mark.parametrize("evidence_review_run", [True], indirect=True)
+def test_evidence_review_cannot_bypass_action_assertions(evidence_review_run):
+    provider, result, mode, record, _, _ = evidence_review_run
+    assert mode == "deterministic_fallback"
+    assert record.validation_status == "fallback"
+    assert record.fallback_reason == "ValueError"
+    assert result.next_verification_action != "执行白名单外操作"
+    assert len(provider.requests) == 1
+
+
+def test_old_reasoning_replay_is_not_relabelled_or_called_again(evidence_review_run):
+    provider, result, _, record, run, db = evidence_review_run
+    record.prompt_version = "evidence-reasoning-v2.5"
+    record.prompt_hash = "historical-synthetic-hash"
+    record.input_snapshot = {key: value for key, value in record.input_snapshot.items()
+                             if key != "context_manifest"}
+    db.commit()
+    replay, mode = run()
+    assert replay == result
+    assert mode == "ai"
+    assert len(provider.requests) == 1
+    db.refresh(record)
+    assert record.prompt_version == "evidence-reasoning-v2.5"
+    assert record.prompt_hash == "historical-synthetic-hash"
+    assert "context_manifest" not in record.input_snapshot
 
 
 def _state(count=35, candidates=1):

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from copy import deepcopy
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from app.diagnosis.schemas import DiagnosisContext
 from app.models import (
     Device,
     DiagnosisCheck,
+    DiagnosisEpisode,
     DiagnosisResult,
     DiagnosisWorkflowRun,
 )
@@ -216,6 +218,35 @@ def comparison(db, check, diagnosis):
     }
 
 
+def reused_result(db, previous, baseline_id, diagnosis_id):
+    """Reuse evidence conclusions, snapshot handling afresh for this new command."""
+    result = deepcopy(previous.result or {})
+    # One SELECT reads current state, bypassing any earlier ORM identity snapshot.
+    # IDs come from this session's server-owned prior receipt, never from the
+    # device's current binding. Keep closed incidents from earlier comparisons.
+    states = {
+        row.id: (row.status, row.resolution_source)
+        for row in db.execute(
+            select(
+                DiagnosisEpisode.id, DiagnosisEpisode.status, DiagnosisEpisode.resolution_source
+            ).where(
+                DiagnosisEpisode.id.in_([item["episode_id"] for item in result.get("issues", [])]),
+                DiagnosisEpisode.device_id == previous.device_id,
+            )
+        )
+    }
+    for item in result.get("issues", []):
+        state = states.get(item["episode_id"])
+        if state is None:
+            raise WorkflowConflict("recorded problem scope changed; refresh before checking again")
+        item["handling_status"], item["resolution_source"] = state
+        if baseline_id == diagnosis_id:
+            item.update(observation="no_new_related_data", new_records=0)
+    if baseline_id == diagnosis_id:
+        result.update(new_records=0, data_change="none")
+    return result
+
+
 def run_check(db, graph, device, settings, payload, session):
     from app.services.student_feedback import feedback_lock
 
@@ -316,19 +347,7 @@ def run_check(db, graph, device, settings, payload, session):
                     ),
                     input_signature=input_signature,
                     context_snapshot=frozen.model_dump(mode="json"),
-                    result=(
-                        {
-                            **(previous.result or {}),
-                            "new_records": 0,
-                            "data_change": "none",
-                            "issues": [
-                                {**item, "observation": "no_new_related_data", "new_records": 0}
-                                for item in (previous.result or {}).get("issues", [])
-                            ],
-                        }
-                        if baseline_id == (previous.result or {}).get("diagnosis_result_id")
-                        else previous.result
-                    ),
+                    result=reused_result(db, previous, baseline_id, latest_diagnosis.id),
                 )
                 db.add(command)
                 db.commit()

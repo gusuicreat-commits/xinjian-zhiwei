@@ -1,6 +1,6 @@
 # 合成演示与定向重置
 
-核对日期：2026-09-27。本文用于隔离的本地演示环境。演示会创建、上传或删除测试记录，不是只读检查；不应用于正式学生数据。
+用于隔离的本地演示环境。以下操作会创建、上传或删除测试记录，不应用于正式学生数据；有断言的软件验收使用 [评测入口](evaluation.md)。
 
 ## 1. 创建测试身份
 
@@ -46,7 +46,7 @@ xinjian-simulator run offline --iterations 2
 
 该命令先上报一轮，再跳过一轮；默认约 5 秒就结束，不会自动等待后端离线阈值。命令退出后保持不上报，等待实际 `DEVICE_OFFLINE_AFTER_SECONDS` 再查看。不要紧接着运行 normal/recovery 后仍声称离线已出现；超过两轮会循环场景并再次发送心跳。
 
-AI 禁用演示保持 `AI_ENABLED=false`，学生端应显示确定性结果；切换标签页和刷新不应被当作重新诊断。完整的有断言流程使用 [评测入口](evaluation.md)，不能仅凭演示画面判定通过。
+AI 禁用演示保持 `AI_ENABLED=false`，学生端应显示确定性结果；切换标签页和刷新不应触发重新诊断。
 
 ## 3. 查看记录与就绪边界
 
@@ -58,7 +58,7 @@ xinjian-simulator report <test-run-uuid>
 
 `replay` 会按当前场景与配置创建一次新运行，不是重发原批次；详见模拟器说明。
 
-业务就绪 API 为 `GET /api/v1/readiness/status`，页面为 `/readiness`。`ready`、`blocked`、`not_required`、`test_only` 反映具体项目，不能把某一项 ready 当作生产验收。该接口含静态待办与简单计数，不会替你实测硬件、调用 Provider 或验证部署；当前事实还需 [真实性看板](project-truth-status.md) 和对应证据。
+业务就绪 API 为 `GET /api/v1/readiness/status`，页面为 `/readiness`。它显示各项 `ready`、`blocked`、`not_required`、`test_only`，包含静态待办与简单计数；不执行硬件、Provider 或部署验收。当前事实查 [真实性看板](project-truth-status.md)。
 
 ## 4. 清理指定测试范围
 

@@ -206,7 +206,19 @@ def test_graph_supplied_knowledge_is_reused_without_second_retrieval(
         primary = diagnosis.matched_rules[0]
         evidence_item = primary["evidence"][0]
         allowed_evidence = f"{evidence_item['fact']}: {evidence_item['observed_value']}"
+        # Supplied graph references must still have an approved, versioned source.
+        from app.models import KnowledgeCase
+
+        db.add(KnowledgeCase(
+            id="graph-kb-chunk", experiment_type=diagnosis.experiment_id or "synthetic",
+            error_type=primary["error_type"], symptom="合成图检索来源",
+            root_cause_status="confirmed", facts_locked=True, quality_check_passed=True,
+            review_status="approved", source_ref="graph-kb-source", version="1",
+            is_test_data=True,
+        ))
+        db.commit()
         knowledge = AIKnowledgeReference(
+            source_version="1",
             chunk_id="graph-kb-chunk",
             case_id="graph-kb-chunk",
             source_key="graph-kb-source",
