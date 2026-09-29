@@ -23,6 +23,15 @@ template<> struct Converter<String> {
 };
 }
 inline uint64_t host_ms = 0;
+// Decoder tests compile the real driver; these stubs do not model GPIO timing.
+constexpr int INPUT = 0, OUTPUT = 1, LOW = 0, HIGH = 1;
+inline uint32_t micros() { static uint32_t ticks = 0; return ++ticks; }
+inline int digitalRead(uint8_t) { return HIGH; }
+inline void digitalWrite(uint8_t, int) {}
+inline void pinMode(uint8_t, int) {}
+inline void delayMicroseconds(uint32_t) {}
+inline void noInterrupts() {}
+inline void interrupts() {}
 inline uint32_t millis() { return host_ms; }
 inline void delay(uint32_t ms) { host_ms += ms; }
 inline void configTime(int, int, const char*, const char*) {}

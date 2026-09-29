@@ -18,6 +18,7 @@
 | [AI 诊断设计](ai-diagnosis-design.md) | 固定工作流、受约束推理、校验与降级如何执行？CoT 第一版已接入，真实模型效果尚未验收；[记忆生命周期方案](ai-diagnosis-design.md#memory-lifecycle-design)已接入三类投影、来源追踪与受控清理；完整删除仍受保留策略限制。 |
 | [实验包设计](experiment-package-design.md) | 十类工件如何关联、校验、发布并固定为运行快照？ |
 | [受控上下文建设方案](context-construction-plan.md) | 如何借鉴RAG思想，分阶段完善现有资料选择、完整打包和评测？含代码依据、验收场景及兼容边界；软件已实施，真实效果待验收。 |
+| [资料包与上下文衔接方案](package-context-evolution-plan.md) | 怎样把案例适用限制、来源登记和阶段调用预检接到现有体系？含旧包兼容及后续概念解释设计；P0–P3已实施，P4保留后续阶段。 |
 | [API 设计](api-design.md) | 各接口怎样认证、授权、幂等和兼容？字段细节查当前 Schema/OpenAPI。 |
 | [数据库设计](database-design.md) | 实体关联、事务和迁移边界在哪里？ |
 | [设备协议](device-protocol.md) | 怎样上传批次，处理会话、时间、重试和冲突？ |
@@ -32,7 +33,12 @@
 | [部署说明](deployment.md) | 配置、启动、迁移、Checkpoint、备份与恢复 |
 | [演示手册](demo-runbook.md) | 合成账号、模拟设备和页面操作闭环 |
 | [模拟器说明](../simulator/README.md) | 场景选择、发送、重试与重放 |
-| [ESP32 固件说明](../firmware/esp32_dht11/README.md) | 候选接线、构建、配置、缓存与实物待验项目 |
+| [DHT11内部实验指南](experiments/dht11-internal-lab.md) | 已确定硬件的准备、接线、采集、平台前提、六类排查卡与记录模板 |
+| [DHT11首轮实物施工方案](experiments/dht11-hardware-execution-plan.md) | 硬件已具备后的软件修复前置、同机/异机部署、串口、实测参数、新包和异常恢复验收顺序；本轮为设计 |
+| [DHT11到货执行清单](experiments/dht11-arrival-checklist.md) | 按T0—T4顺序勾选构建、接线、烧录、采集、入库和故障恢复，逐项登记原始证据 |
+| [内部测试实验准备](experiments/internal-lab-preparation.md) | 隔离环境、管理员测试包操作、初始化CLI、学生开会话与合成演练 |
+| [DHT11软件验收与准备方案](experiments/dht11-software-readiness-plan.md) | 2026-09-29方案与实施边界：构建/浏览器修复、内部实验初始化及合成演练；结果见本轮报告 |
+| [ESP32 固件说明](../firmware/esp32_dht11/README.md) | 已确定接线设计、构建、配置、缓存与实物待验项目 |
 | [硬件验证计划](hardware-validation-plan.md) | 实物对照试验与独立真值记录；不代表已实测 |
 | [真人试用模板](usability-trial.md) | 学生任务、观察和误解记录；不代表已开展试用 |
 | [离线审核包模板](../frontend/review-package/审核说明.md) | 构建和组装审核包；源码目录本身不是完整可运行包 |

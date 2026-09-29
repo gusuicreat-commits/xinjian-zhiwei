@@ -38,7 +38,15 @@
           "review_status": "approved",
           "facts_locked": true,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -78,7 +86,15 @@
           "review_status": "pending",
           "facts_locked": true,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -118,7 +134,15 @@
           "review_status": "approved",
           "facts_locked": false,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -158,7 +182,15 @@
           "review_status": "approved",
           "facts_locked": true,
           "quality_check_passed": false,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -198,7 +230,15 @@
           "review_status": "approved",
           "facts_locked": true,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -238,7 +278,15 @@
           "review_status": "approved",
           "facts_locked": true,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -278,7 +326,15 @@
           "review_status": "approved",
           "facts_locked": true,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -318,7 +374,15 @@
           "review_status": "approved",
           "facts_locked": true,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -376,7 +440,15 @@
           "review_status": "approved",
           "facts_locked": true,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     },
@@ -415,7 +487,15 @@
           "review_status": "approved",
           "facts_locked": true,
           "quality_check_passed": true,
-          "is_test_data": true
+          "is_test_data": true,
+          "facts": {
+            "fixture_origin": "controlled_test"
+          },
+          "solution_record": {
+            "confirmation_material": {
+              "applicability_limits": "仅用于当前合成实验的上下文回归；不能证明真实硬件状态。"
+            }
+          }
         }
       ]
     }

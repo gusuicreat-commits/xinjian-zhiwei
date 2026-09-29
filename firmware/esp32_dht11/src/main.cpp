@@ -156,6 +156,23 @@ bool postPending(PendingEnvelope& pending) {
         return false;
     }
     if (WiFi.status() != WL_CONNECTED) return false;
+    const String endpoint(XJ_API_BASE_URL);
+    const bool use_tls = endpoint.startsWith("https://");
+    if (use_tls) {
+        if (String(XJ_CA_CERT).isEmpty()) {
+            Serial.println("[xinjian] HTTPS blocked: no CA certificate configured");
+            return false;
+        }
+    } else if (endpoint.startsWith("http://")) {
+#if !XJ_ALLOW_INSECURE_HTTP
+        Serial.println("[xinjian] HTTP blocked: set XJ_ALLOW_INSECURE_HTTP only for an isolated test server");
+        return false;
+#endif
+    } else {
+        Serial.println("[xinjian] transport blocked: unsupported URL scheme");
+        return false;
+    }
+    // Invalid configuration never consumes the persisted HTTP attempt budget.
     if (pending.attempts >= XJ_MAX_HTTP_ATTEMPTS) {
         Serial.println("[xinjian] transport paused: bounded retry budget exhausted; payload retained");
         return false;
@@ -167,19 +184,9 @@ bool postPending(PendingEnvelope& pending) {
     }
     int http_code = -1;
     String response;
-    if (String(XJ_API_BASE_URL).startsWith("https://")) {
+    if (use_tls) {
         WiFiClientSecure client;
-        if (String(XJ_CA_CERT).isEmpty()) {
-#if !XJ_ALLOW_INSECURE_HTTP
-            Serial.println("[xinjian] HTTPS blocked: no CA certificate configured");
-            return false;
-#endif
-        } else {
-            client.setCACert(XJ_CA_CERT);
-        }
-#if XJ_ALLOW_INSECURE_HTTP
-        if (String(XJ_CA_CERT).isEmpty()) client.setInsecure();
-#endif
+        client.setCACert(XJ_CA_CERT);
         HTTPClient http;
         if (!http.begin(client, XJ_API_BASE_URL)) return false;
         http.setTimeout(XJ_HTTP_TIMEOUT_MS);
@@ -265,7 +272,9 @@ void setup() {
         Serial.println("[xinjian] storage unavailable: transport and sampling paused; no auto-format");
     }
     connectWifi();
-    delay(1000);  // Aosong recommends a one-second power-up settling time.
+    // Also protect board-only resets while the sensor remains powered: the
+    // previous boot may have triggered a conversion immediately before reset.
+    delay(XJ_SAMPLE_INTERVAL_MS);
     Serial.printf("[xinjian] firmware=%s test_data=%s gpio=%u boot_id=%s\n",
                   XJ_FIRMWARE_VERSION, XJ_IS_TEST_DATA ? "true" : "false",
                   XJ_DHT11_DATA_GPIO, boot_id.c_str());
@@ -282,6 +291,12 @@ void setup() {
 
 void loop() {
     const uint64_t now = monotonicMillis();
+    // A retained batch invalidates conversion continuity even when its retry
+    // succeeds and clears the cache within this same iteration.
+    if (configuredForTransport() &&
+        (!pending_store.healthy() || pending_store.hasPending())) {
+        has_previous_conversion = false;
+    }
     if (pending_store.hasPending() && pending_store.healthy() &&
         now - last_retry_ms >= 10000UL) {
         PendingEnvelope retry;
@@ -291,10 +306,12 @@ void loop() {
     const bool sampling_blocked = configuredForTransport() &&
                                   (!pending_store.healthy() || pending_store.hasPending());
     if (sampling_blocked) has_previous_conversion = false;
-    if (!sampling_blocked && now - last_sample_ms >= XJ_SAMPLE_INTERVAL_MS) {
-        last_sample_ms = now;
+    const uint64_t sample_now = monotonicMillis();  // HTTP above may have blocked.
+    if (!sampling_blocked && sample_now - last_sample_ms >= XJ_SAMPLE_INTERVAL_MS) {
         const String trigger_iso = nowIso();
         Dht11Frame frame = readDht11(XJ_DHT11_DATA_GPIO);
+        // Every request, including a failed read, advances the timing anchor.
+        last_sample_ms = frame.trigger_started_ms;
         if (frame.status == Dht11ReadStatus::Ok) {
             if (has_previous_conversion) {
                 emitBatch(&frame, false, true, last_successful_trigger_iso);

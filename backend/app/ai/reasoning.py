@@ -17,7 +17,7 @@ from app.ai.context_builder import (
     seal_context,
     select_reasoning_constraints,
 )
-from app.ai.context_contract import ContextManifestV1
+from app.ai.context_contract import ContextManifestV1, current_context_policy
 from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_payload, sanitize_text
 from app.ai.governance import (
     AIQuotaDenied,
@@ -30,7 +30,7 @@ from app.core.config import Settings
 from app.models.ai_call_record import AICallRecord
 from app.models.diagnosis_result import DiagnosisResult
 
-REASONING_PROMPT_VERSION = "evidence-reasoning-v2.7"
+REASONING_PROMPT_VERSION = "evidence-reasoning-v2.8"
 REASONING_SYSTEM_PROMPT = """你是受约束的嵌入式实验原因排序器。
 error_type 是规则引擎已经确定的事实，不得修改。
 只能使用 candidate_causes 中已有的 cause_id，不得创造新故障。
@@ -40,6 +40,8 @@ used_evidence_ids 必须同时属于 evidence_registry 和该 cause_id 的 evide
 next_verification_action 只能逐字选择 allowed_verification_actions 中的 text。
 knowledge_constraints 只提供实验定义、正常条件、标准故障映射和已确认案例；
 不得将历史案例直接当作本次根因。
+applicability.limits_text 是完整适用限制，必须保留；text_only 表示条件尚未自动核验。
+matched 仅表示已声明的有限字段匹配，不证明自由文本前提、实物状态或本次根因。
 使用 high、medium、low、unknown 表示证据支持等级，不得把它表述为统计概率。
 证据冲突时 conflict=true，且不得给出 high；资料不足时 conclusion 必须为 unknown。
 GPIO_COMMAND_HIGH、GPIO_ACTUAL_LEVEL_HIGH、LED_PHYSICALLY_ON 是不同事实；
@@ -245,8 +247,10 @@ def _reasoning_prompt(
     if any(not set(item.get("evidence_refs") or []).issubset(evidence_ids)
            for item in state.get("fault_tree_candidates") or []):
         raise ProviderInputError("AI_CONTEXT_INCOMPLETE")
+    trace = []
     constraints, case_ids, omissions = select_reasoning_constraints(
         state.get("knowledge_constraints") or {}, settings, (state, *sensitive_sources),
+        trace=trace,
     )
     candidates = [
         {
@@ -306,13 +310,16 @@ def _reasoning_prompt(
             settings.ai_input_token_limit
         ) or not case_ids:
             break
-        case_ids.pop()
+        dropped = case_ids.pop()
+        for entry in trace:
+            if entry["case_id"] == dropped:
+                entry["reason"] = "budget_omitted"
         payload["knowledge_constraints"] = filter_constraints(
             payload["knowledge_constraints"], case_ids,
         )
         omissions["budget_omitted"] = omissions.get("budget_omitted", 0) + 1
     if context_details is not None:
-        context_details.update(case_ids=case_ids, omissions=omissions)
+        context_details.update(case_ids=case_ids, omissions=omissions, trace=trace)
     prompt_hash = hashlib.sha256(f"{REASONING_SYSTEM_PROMPT}\n{user_prompt}".encode()).hexdigest()
     return REASONING_SYSTEM_PROMPT, user_prompt, prompt_hash, evidence
 
@@ -372,18 +379,23 @@ def reason_about_causes(
             AICallRecord.call_stage == call_stage,
         )
     )
-    if existing and existing.output_json:
+    def replay_record(record):
         try:
+            if not current_context_policy(record.input_snapshot):
+                raise ValueError("historical reasoning lacks applicability policy")
             current_delivery_scope(db, diagnosis)
             governor._check_knowledge()
             replay = _validate_reasoning(
-                json.dumps(existing.output_json), state, build_evidence_registry(state, strict=True)
+                json.dumps(record.output_json), state, build_evidence_registry(state, strict=True)
             )
         except (ValueError, TypeError, AIQuotaDenied):
             return _fallback_reasoning(
                 state, limitation="历史推理不符合当前证据约束。"
             ), "deterministic_fallback"
-        return replay, "ai" if existing.status == "succeeded" else "deterministic_fallback"
+        return replay, "ai" if record.status == "succeeded" else "deterministic_fallback"
+
+    if existing and existing.output_json:
+        return replay_record(existing)
     if not state.get("fault_tree_candidates"):
         return _fallback_reasoning(state, limitation="故障树没有可排序的候选原因。"), (
             "deterministic_fallback"
@@ -527,15 +539,6 @@ def reason_about_causes(
             )
         )
         if replay and replay.output_json:
-            try:
-                checked = _validate_reasoning(
-                    json.dumps(replay.output_json), state, build_evidence_registry(state)
-                )
-            except (ValueError, TypeError):
-                return (
-                    _fallback_reasoning(state, limitation="历史推理不符合当前证据约束。"),
-                    "deterministic_fallback",
-                )
-            return checked, "ai" if replay.status == "succeeded" else "deterministic_fallback"
+            return replay_record(replay)
         raise
     return result, mode

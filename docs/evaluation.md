@@ -14,7 +14,7 @@
 | 浏览器 Mock API | `npm run test:e2e` | 页面行为；不能证明真实后端联通 |
 | 浏览器真实后端 | `npm run test:e2e:integration` | 浏览器 → FastAPI → LangGraph → PostgreSQL；身份与设备数据为合成，Provider 为 Mock |
 | 离线审阅包 | `npx playwright test --config playwright.review.config.ts` | 独立构建的前端审阅页面；不连接真实后端 |
-| 固件 | `check_firmware_protocol.py`、PlatformIO、`test_firmware_host.py` | 协议样例、实际编译、主机 I/O 故障模拟；不代替 ESP32 闪存、断电、接线和无线网络实测 |
+| 固件 | `check_firmware_protocol.py`、PlatformIO、`test_firmware_host.py` | 协议样例、实际编译、LittleFS 初始镜像构建、主机 I/O 故障模拟（含慢网络采样间隔、启动等待、HTTP/HTTPS配置矩阵）；不代替 ESP32 闪存、断电、接线和无线网络实测 |
 | 版本 | `check_version.py` | 应用版本、资料包内容与版本、指定当前文档版本；不代表软件或资料已发布 |
 
 本项目当前不执行向量召回评测。真实模型语义、硬件因果与教学效果分别需要独立材料和验收，不能从软件通过率推导。
@@ -26,7 +26,7 @@
 - Python 3.10+ 环境，安装 `backend/requirements.lock`、后端和模拟器包以及 pytest、Ruff；Python 3.10 还需要 tomli。脚本统一使用 `BACKEND_PYTHON` 所在目录的 pytest/Ruff，并不使用另一套模拟器虚拟环境。
 - Node 满足 `frontend/package.json` 的 engines（当前 `>=22.12.0`），通过 `npm ci` 安装锁定依赖及 Playwright Chromium。
 - 专用测试 PostgreSQL，能创建临时 schema，并具备历史迁移所需的 vector 扩展。不能指向正在运行的业务数据库。
-- PlatformIO（CI 固定为 6.1.19）、对应固件工具链与 C++ 编译器。
+- PlatformIO（CI 固定为 6.1.19）、对应固件工具链、`tool-mklittlefs` 与 C++ 编译器；首次构建需取得锁定依赖。
 
 ```bash
 export BACKEND_PYTHON=/absolute/path/to/venv/bin/python
@@ -64,6 +64,7 @@ PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
 python scripts/check_version.py --base-ref HEAD
 scripts/security_scan.sh
 pio run -d firmware/esp32_dht11
+pio run -d firmware/esp32_dht11 -t buildfs
 python scripts/test_firmware_host.py
 ```
 
@@ -91,7 +92,7 @@ npx playwright test --config playwright.review.config.ts
 [CI 配置](../.github/workflows/ci.yml) 使用 Linux、Python 3.12、Node 22、pgvector PostgreSQL 16；`APP_ENV=test`。健康测试独立注入 development/test 设置，不依赖本地 `.env`。
 
 - `verify` 作业运行软件检查、真实 PostgreSQL 流程、迁移与 Checkpoint 设置、前端及真实联调。
-- `firmware` 作业独立运行协议检查、PlatformIO 编译和主机故障回归。
+- `firmware` 作业独立运行协议检查、PlatformIO 编译、LittleFS 镜像构建和主机故障回归。
 - CI 版本基线来自 PR base SHA 或 push 前 SHA，checkout 获取完整历史。新仓库或异常基线不能视为已验证。
 - 流程报告、浏览器报告按现有配置上传 artifact，保留 14 天；报告存在不等于对应步骤成功。
 
@@ -112,3 +113,25 @@ npx playwright test --config playwright.review.config.ts
 ## 受控上下文独立评测
 
 执行 `PYTHONPATH=backend "$BACKEND_PYTHON" -m app.cli.run_context_evaluation --output output/context-evaluation/latest.json`。输入 `backend/evaluation/context_inputs.json` 与独立期望 `context_expectations.json` 分离；仅评测器读取期望。当前11个样本均为合成回归，覆盖资格与完整打包，真实语义和独立保留集待验收。服务级关联、来源、缓存、预算、重放及破坏反例运行 `PYTHONPATH=backend "$BACKEND_PYTHON" -m pytest backend/tests/test_context_construction.py backend/tests/test_context_evaluation.py`；跨链路仍执行完整门禁，不能只凭该CLI交付。
+
+<a id="package-context-preview"></a>
+## 资料包调用预检
+
+P0–P3提供无数据库写入、无Provider调用的预检，复用运行时资格筛选、投影及推理/解释的实际Prompt builder。仓库根目录执行：
+
+```bash
+PYTHONPATH=backend python -m app.cli.preview_package_context --strict \
+  --expectations backend/evaluation/package_context_expectations.json
+```
+
+默认输入是`backend/evaluation/package_context_inputs.json`，预期独立保存在expectations；严格模式已加入`verify.sh`。报告写`output/package-context-preview/latest.json`及Markdown。`--package`可指定显式包目录，`--inputs`指定合成场景，`--budgets`指定允许的预算JSON，`--trusted-sources`提供显式来源身份快照，`--output`保存独立报告；不按来源登记自动抓文件/URL。
+
+退出0表示分析完成（普通模式可含省略/降级）或严格断言全部通过；解析/执行/断言错误退出1，缺必需材料退出2。结构、来源身份和阶段覆盖分别记录，包含真实阶段ID/省略原因、清洗长度、完整Prompt估算和指纹。来源不可取得为unverifiable；身份比对成功不等于内容语义真实。报告固定标offline_fixture、权限not_evaluated、真实Provider/语义/硬件未运行。
+
+双阶段实际Mock请求与隐私、旧call-stage及并发重放、冻结工作流建议、1.0hash兼容和派生影响在`test_package_context_runtime.py`、`test_r2_provider_data_boundary.py`、`test_current_advice.py`、`test_case_applicability.py`、`test_package_registry.py`、`test_package_context_preview.py`断言。预检报告不代替这些运行服务边界检查。
+
+## 内部测试准备与演练
+
+`test_internal_experiment_cli.py`与`test_internal_experiment_preparation.py`验证显式目标、授权、重复、冲突及回滚；`test_internal_experiment_preparation_postgres.py`验证真实PostgreSQL的并发与锁后复核。`test_internal_experiment_drill.py`从空实验schema经管理员包API、准备CLI和学生/设备API走完整合成流程，设置`XINJIAN_INTERNAL_DRILL_REPORT`可留脱敏成功过程。上述均被后端全量测试收集；缺测试DSN会跳过PostgreSQL层，不能称完成。
+
+真实浏览器联调另含新初始化任务的学生选择、开始、资料展示和结束用例。演练与旧有8项流程分别有实际结果，不能把数据库published、合成记录、AI skipped审计行数当实物验收或真实Provider调用。操作入口见[内部准备说明](experiments/internal-lab-preparation.md)。

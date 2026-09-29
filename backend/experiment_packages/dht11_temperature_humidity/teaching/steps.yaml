@@ -1,16 +1,22 @@
 steps:
 - step_id: connect
   title: 按接线表连接 DHT11
-  expected_state: 按四针裸 DHT11 引脚图连接 3.3V、GND、DATA→GPIO4，DATA 外接 4.7kΩ 上拉，NC 不接；购买后仍需以实物引脚图复核。
+  expected_state: 断电，按原厂图核对四针裸DHT11观察方向和脚号，再比对3.3V、共同GND、DATA→GPIO4及4.7kΩ上拉，NC不接；保存接线照片和器件标识。预期仅是接线表与实物对应，通电效果仍待记录。
+  prerequisite_step_ids:
+  - identify
 - step_id: configure
   title: 配置代码
-  expected_state: 使用统一固件配置和设备协议 V1；固件以 3 秒采样、至少 2 秒 DHT11 请求间隔、测试标记和会话 ID 运行。
+  expected_state: 核对统一固件、设备协议V1、GPIO4及3秒项目请求周期（满足厂商严格大于2秒）；记录构建版本。仅本地观察与已配置上传身份是不同模式；首次有效帧不发布未知前序转换的温湿度，失败或存储阻塞须保留原始日志。
+  prerequisite_step_ids:
+  - identify
 - step_id: observe
   title: 观察串口数据
-  expected_state: 只有真实驱动返回有效读数时才记录温度和湿度；没有读数时保持 unknown，不生成合成值。
+  expected_state: 按时间顺序记录心跳、有效读数或读取失败日志，并区分串口预览与平台接收。保存操作前后记录及版本，只有驱动返回有效帧时才有温湿度；无读数或缺判据保持unknown。新数据到达后可按现有重新检查流程分析，不把结果记录当独立测量或自动确认恢复。
+  prerequisite_step_ids:
+  - identify
 - step_id: identify
   title: 回看设备身份和实验版本
-  expected_state: 设备 ID、固件版本、实验包版本和测试标记可追溯；这些信息不代表硬件已经正常。
+  expected_state: 核对实物型号、固件版本、设备标识、活动会话及固定包版本，记录采集方式和测试标记；缺身份/版本时先标明缺口，不把旧会话记录用于本次判断。细节见内部实验指南第2、5节。
 expected_behaviors: []
 bindings:
 - tree_id: dht11-read-failure-v2
@@ -23,6 +29,9 @@ bindings:
   - 4
   concept_ids:
   - dht11.single_bus
+  - dht11.protocol_evidence
+  - dht11.power_and_pullup
+  - dht11.identity_scope
   step_ids:
   - connect
 - tree_id: dht11-read-failure-v2
@@ -35,6 +44,8 @@ bindings:
   - 4
   concept_ids:
   - dht11.minimum_interval
+  - dht11.protocol_evidence
+  - dht11.identity_scope
   step_ids:
   - configure
 - tree_id: dht11-read-failure-v2
@@ -48,5 +59,8 @@ bindings:
   concept_ids:
   - dht11.failure_counts
   - dht11.single_bus
+  - dht11.protocol_evidence
+  - dht11.delivery_evidence
+  - dht11.recovery_boundary
   step_ids:
   - observe

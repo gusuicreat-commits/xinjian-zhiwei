@@ -24,10 +24,12 @@ def payload_digest(payload: Any) -> str:
     ).hexdigest()
 
 
-def select_knowledge(knowledge, settings: Settings, sensitive_values):
+def select_knowledge(knowledge, settings: Settings, sensitive_values, *, trace=None):
     """Keep complete existing case projections. Collect secrets before dropping any unit."""
     secrets = set(sensitive_values)
     for ref in knowledge:
+        for source in ref._sensitive_sources:
+            secrets.update(_sensitive_values(source))
         secrets.update(_sensitive_values(ref.model_dump(mode="json")))
         try:
             secrets.update(_sensitive_values(json.loads(ref.content)))
@@ -35,6 +37,10 @@ def select_knowledge(knowledge, settings: Settings, sensitive_values):
             pass
     selected, seen, omissions = [], set(), {}
     for ref in knowledge:
+        entry = {"case_id": ref.case_id or ref.chunk_id, "reason": "selected",
+                 "cleaned_chars": None}
+        if trace is not None:
+            trace.append(entry)
         # Source identities are provenance, not prose that may be rewritten.
         for value in (ref.chunk_id, ref.case_id, ref.source_key, ref.source_version):
             if (
@@ -44,6 +50,7 @@ def select_knowledge(knowledge, settings: Settings, sensitive_values):
                 raise ProviderInputError()
         key = (ref.source_type, ref.chunk_id, ref.source_version, payload_digest(ref.content))
         if key in seen:
+            entry["reason"] = "duplicate"
             omissions["duplicate"] = omissions.get("duplicate", 0) + 1
             continue
         seen.add(key)
@@ -67,6 +74,7 @@ def select_knowledge(knowledge, settings: Settings, sensitive_values):
                 if isinstance(structured, str)
                 else json.dumps(cleaned, ensure_ascii=False, separators=(",", ":"))
             )
+            entry["cleaned_chars"] = len(content)
             if len(content) > settings.ai_knowledge_content_max_chars:
                 raise ProviderInputError("AI_CONTEXT_INCOMPLETE")
             safe = ref.model_copy(
@@ -85,8 +93,10 @@ def select_knowledge(knowledge, settings: Settings, sensitive_values):
             if exc.code != "AI_CONTEXT_INCOMPLETE":
                 raise
             omissions["budget_omitted"] = omissions.get("budget_omitted", 0) + 1
+            entry["reason"] = "budget_omitted"
             continue
         if len(selected) >= settings.ai_knowledge_limit:
+            entry["reason"] = "policy_omitted"
             omissions["policy_omitted"] = omissions.get("policy_omitted", 0) + 1
             continue
         selected.append(safe)
@@ -115,7 +125,7 @@ CONSTRAINT_CASE_FIELDS = (
 )
 
 
-def select_reasoning_constraints(constraints, settings, sensitive_sources):
+def select_reasoning_constraints(constraints, settings, sensitive_sources, *, trace=None):
     """All existing projections of a case are one optional unit, including conditions."""
     secrets = _sensitive_values(constraints)
     for source in sensitive_sources:
@@ -130,6 +140,9 @@ def select_reasoning_constraints(constraints, settings, sensitive_sources):
     )
     selected, omissions = [], {}
     for case_id in ids:
+        entry = {"case_id": case_id, "reason": "selected", "cleaned_chars": None}
+        if trace is not None:
+            trace.append(entry)
         if sanitize_text(case_id, sensitive_values=secrets, max_chars=None) != case_id:
             raise ProviderInputError()
         unit = {
@@ -138,7 +151,10 @@ def select_reasoning_constraints(constraints, settings, sensitive_sources):
         }
         try:
             safe = _safe_value(unit, sensitive_values=secrets, max_chars=None, strict=True)
-            if len(json.dumps(safe, ensure_ascii=False, separators=(",", ":"))) > (
+            entry["cleaned_chars"] = len(
+                json.dumps(safe, ensure_ascii=False, separators=(",", ":"))
+            )
+            if entry["cleaned_chars"] > (
                 settings.ai_knowledge_content_max_chars
             ):
                 raise ProviderInputError("AI_CONTEXT_INCOMPLETE")
@@ -146,8 +162,10 @@ def select_reasoning_constraints(constraints, settings, sensitive_sources):
             if exc.code != "AI_CONTEXT_INCOMPLETE":
                 raise
             omissions["budget_omitted"] = omissions.get("budget_omitted", 0) + 1
+            entry["reason"] = "budget_omitted"
             continue
         if len(selected) >= settings.ai_knowledge_limit:
+            entry["reason"] = "policy_omitted"
             omissions["policy_omitted"] = omissions.get("policy_omitted", 0) + 1
         else:
             selected.append(case_id)
@@ -230,11 +248,13 @@ def audit_manifest(manifest, *, attempts=0, cache_origin=None):
     return result
 
 
-def prepare_explanation(payload: AIDiagnosisInput, settings: Settings, sources=()):
+def prepare_explanation(payload: AIDiagnosisInput, settings: Settings, sources=(), *,
+                        context_details=None):
     from app.ai.prompts import build_prompts
 
     payload = payload.model_copy(deep=True)
     omissions = dict(payload._context_omissions)
+    trace = deepcopy(payload._context_trace)
     while True:
         ids = {ref.case_id or ref.chunk_id for ref in payload.knowledge}
         if "knowledge_context" in payload.workflow_state:
@@ -248,7 +268,10 @@ def prepare_explanation(payload: AIDiagnosisInput, settings: Settings, sources=(
             break
         if not payload.knowledge:
             break
-        payload.knowledge.pop()
+        dropped = payload.knowledge.pop()
+        for entry in trace:
+            if entry["case_id"] == (dropped.case_id or dropped.chunk_id):
+                entry["reason"] = "budget_omitted"
         omissions["budget_omitted"] = omissions.get("budget_omitted", 0) + 1
     prepared = seal_context(
         "explanation",
@@ -267,4 +290,7 @@ def prepare_explanation(payload: AIDiagnosisInput, settings: Settings, sources=(
         ],
     )
     payload._context_manifest = asdict(prepared.manifest)
+    if context_details is not None:
+        context_details.update(trace=trace, omissions=omissions,
+                               case_ids=[ref.case_id or ref.chunk_id for ref in payload.knowledge])
     return payload, system, user, prompt_hash

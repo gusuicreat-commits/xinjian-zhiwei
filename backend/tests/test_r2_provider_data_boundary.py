@@ -88,7 +88,7 @@ def test_evidence_review_request_and_audit_keep_versioned_contract(evidence_revi
     provider, _, _, record, _, _ = evidence_review_run
     system, user = provider.requests[0]
     document = json.loads(user)
-    assert document["prompt_version"] == record.prompt_version == "evidence-reasoning-v2.7"
+    assert document["prompt_version"] == record.prompt_version == "evidence-reasoning-v2.8"
     assert record.prompt_hash == hashlib.sha256(f"{system}\n{user}".encode()).hexdigest()
     assert set(document) == {
         "prompt_version", "error_type", "device_status", "experiment_context",
@@ -117,13 +117,40 @@ def test_old_reasoning_replay_is_not_relabelled_or_called_again(evidence_review_
                              if key != "context_manifest"}
     db.commit()
     replay, mode = run()
-    assert replay == result
-    assert mode == "ai"
+    assert replay != result
+    assert mode == "deterministic_fallback"
+    assert record.output_json == result.model_dump(mode="json")
     assert len(provider.requests) == 1
     db.refresh(record)
     assert record.prompt_version == "evidence-reasoning-v2.5"
     assert record.prompt_hash == "historical-synthetic-hash"
     assert "context_manifest" not in record.input_snapshot
+
+
+def test_competing_reasoning_record_cannot_bypass_current_policy(evidence_review_run, monkeypatch):
+    provider, result, _, record, run, db = evidence_review_run
+    record.input_snapshot = {"legacy": True}
+    db.commit()
+    original_scalar = db.scalar
+    hidden = False
+
+    def hide_initial_lookup(statement, *args, **kwargs):
+        nonlocal hidden
+        columns = getattr(statement, "column_descriptions", [])
+        if not hidden and columns and columns[0].get("entity") is AICallRecord:
+            hidden = True
+            return None
+        return original_scalar(statement, *args, **kwargs)
+
+    monkeypatch.setattr(db, "scalar", hide_initial_lookup)
+    replay, mode = run()  # The real unique constraint exercises IntegrityError recovery.
+    assert hidden
+    assert mode == "deterministic_fallback"
+    assert replay != result
+    assert len(provider.requests) == 2  # One competing attempt, never a recovery re-call.
+    db.refresh(record)
+    assert record.input_snapshot == {"legacy": True}
+    assert record.output_json == result.model_dump(mode="json")
 
 
 def _state(count=35, candidates=1):

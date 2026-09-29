@@ -415,6 +415,8 @@ def build_safe_ai_input(
     context = dict(record.context_snapshot or {})
     sensitive_values = _sensitive_values(context) | _sensitive_values(workflow_state or {})
     for reference in knowledge:
+        for source in reference._sensitive_sources:
+            sensitive_values.update(_sensitive_values(source))
         try:
             sensitive_values.update(_sensitive_values(json.loads(reference.content)))
         except (TypeError, ValueError):
@@ -422,7 +424,8 @@ def build_safe_ai_input(
     experiment = context.get("experiment_template") or {}
     from app.ai.context_builder import select_knowledge
 
-    safe_knowledge, omissions = select_knowledge(knowledge, settings, sensitive_values)
+    trace = []
+    safe_knowledge, omissions = select_knowledge(knowledge, settings, sensitive_values, trace=trace)
     payload = AIDiagnosisInput(
         diagnosis_result_id=record.id,
         episode_id=episode_id,
@@ -523,6 +526,7 @@ def build_safe_ai_input(
     )
     result = AIDiagnosisInput.model_validate(safe)
     result._context_omissions = omissions
+    result._context_trace = trace
     return result
 
 

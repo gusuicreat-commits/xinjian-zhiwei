@@ -498,7 +498,9 @@ def approve_case_draft(
         from app.schemas.knowledge_case import CaseConfirmationMaterial
         from app.services.diagnosis_episode import confirmed_recovery
 
-        material = CaseConfirmationMaterial.model_validate(confirmation_material).model_dump()
+        material = CaseConfirmationMaterial.model_validate(confirmation_material).model_dump(
+            exclude_none=True
+        )
         original = db.get(DiagnosisResult, draft.diagnosis_result_id)
         recovery = db.get(DiagnosisResult, material["recovery_diagnosis_id"])
         if original is None or recovery is None or not confirmed_recovery(recovery, original):

@@ -1,4 +1,4 @@
-version: 2.0.5
+version: 2.0.10
 rules:
 - id: dht11-read-failed-v2
   error_type: SENSOR_READ_FAILED

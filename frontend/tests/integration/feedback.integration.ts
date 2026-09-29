@@ -743,3 +743,108 @@ e.dispose()
     fullPage: true,
   })
 })
+
+test('a prepared internal lab starts through student UI and shows its pinned references', async ({
+  page,
+  backend,
+}, testInfo) => {
+  const setup = await exec(
+    python,
+    [
+      '-c',
+      `
+import json, os
+from pathlib import Path
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+from app.cli.browser_integration_fixture import scoped_url
+from app.cli.prepare_internal_experiment import build_parser, run
+from app.core.security import hash_password
+from app.models import User, ExperimentVersion
+from app.services.auth import create_session
+from app.services.rbac import assign_role, ensure_rbac_catalog
+manifest = json.loads(Path(os.environ['LAB_SOURCE_MANIFEST']).read_text())
+url = scoped_url(os.environ['XINJIAN_EVAL_POSTGRES_DSN'], manifest['schema'])
+engine = create_engine(url)
+with Session(engine, expire_on_commit=False) as db:
+    admin = User(username='prepared-browser-admin', display_name='Synthetic test admin',
+                 password_hash=hash_password('prepared-browser-admin-password', iterations=1000),
+                 is_test_data=True)
+    db.add(admin)
+    db.flush()
+    assign_role(db, admin, ensure_rbac_catalog(db)['admin'])
+    db.commit()
+    token = create_session(db, admin.username, 'prepared-browser-admin-password', 1)[1]
+    version = next(v for v in db.scalars(select(ExperimentVersion))
+                   if v.package_content['metadata.yaml']['experiment']['code'] == 'dht11_temperature_humidity')
+    version_id, digest = version.id, version.package_hash
+engine.dispose()
+os.environ.update(APP_ENV='test', LAB_TEST_DSN=url.render_as_string(hide_password=False),
+                  LAB_ADMIN_TOKEN=token, LAB_STUDENT_PASSWORD='prepared-browser-student-password',
+                  LAB_TEACHER_PASSWORD='prepared-browser-teacher-password',
+                  LAB_DEVICE_TOKEN='prepared-browser-device-token')
+args = build_parser().parse_args(['apply', '--test-database', '--dsn-env', 'LAB_TEST_DSN',
+    '--actor-token-env', 'LAB_ADMIN_TOKEN', '--prefix', 'lab-browser',
+    '--package-version-id', version_id, '--package-hash', digest,
+    '--student-password-env', 'LAB_STUDENT_PASSWORD', '--teacher-password-env', 'LAB_TEACHER_PASSWORD',
+    '--device-token-env', 'LAB_DEVICE_TOKEN'])
+result = run(args)
+print(json.dumps({'device_key': result['objects']['device_key'],
+                  'student_username': 'lab-browser-student',
+                  'student_password': os.environ['LAB_STUDENT_PASSWORD'],
+                  'device_token': os.environ['LAB_DEVICE_TOKEN'], 'version_id': version_id}))
+`,
+    ],
+    {
+      cwd: backendDir,
+      env: { ...process.env, LAB_SOURCE_MANIFEST: join(backend.controlDir, 'manifest.json') },
+    },
+  )
+  const identity = JSON.parse(setup.stdout) as {
+    device_key: string
+    student_username: string
+    student_password: string
+    device_token: string
+    version_id: string
+  }
+  await page.goto('/login')
+  await page.getByPlaceholder('学生账号', { exact: true }).fill(identity.student_username)
+  await page.getByPlaceholder('学生密码', { exact: true }).fill(identity.student_password)
+  await page.getByRole('button', { name: '验证学生账号', exact: true }).click()
+  await page.getByText('选择实验任务', { exact: true }).click()
+  await page.getByRole('option', { name: /内部测试/ }).click()
+  await page.getByText('选择设备', { exact: true }).click()
+  await page.getByRole('option', { name: /内部测试设备/ }).click()
+  const startButton = page.getByRole('button', { name: '开始所选实验', exact: true })
+  await expect(startButton).toBeEnabled()
+  const started = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/student/experiment-sessions') &&
+      response.request().method() === 'POST',
+  )
+  await startButton.click()
+  const response = await started
+  expect(response.status()).toBe(201)
+  const session = await response.json()
+  expect(session.experiment_version_id).toBe(identity.version_id)
+  await expect(page).toHaveURL(/\/student$/)
+  const current: Backend = {
+    ...backend,
+    manifest: {
+      ...backend.manifest,
+      ...identity,
+      session_id: session.id,
+    },
+  }
+  await ingestAndDiagnose(page, current)
+  const reference = page.locator('.teaching-reference').first()
+  await reference.locator('summary').click()
+  await expect(reference).toContainText(`版本 ${await currentDht11PackageVersion()}`)
+  await expect(reference).toContainText('不是实测结果')
+  await testInfo.attach('prepared-internal-lab', {
+    body: await reference.screenshot(),
+    contentType: 'image/png',
+  })
+  await page.getByRole('button', { name: '结束本次实验', exact: true }).click()
+  await expect(page).toHaveURL(/\/login$/)
+})

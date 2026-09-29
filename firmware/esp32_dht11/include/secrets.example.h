@@ -8,4 +8,5 @@
 // PEM certificate text for the API host. Keep empty only when HTTPS is not used.
 #define XJ_CA_CERT ""
 // Set to 1 only for an isolated local HTTP test server; never for production.
+// This does not disable HTTPS certificate validation; HTTPS always requires CA.
 #define XJ_ALLOW_INSECURE_HTTP 0

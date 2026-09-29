@@ -157,6 +157,7 @@ def read_impact_history(
     event_id: str, diagnosis_id: str, db: Database, actor: Actor, response: Response
 ):
     from app.models import DiagnosisWorkflowRun
+    from app.services.current_advice import workflow_context_status
 
     _run(db, lambda: service._scoped_diagnoses(db, actor))
     diagnosis = db.get(DiagnosisResult, diagnosis_id)
@@ -175,5 +176,8 @@ def read_impact_history(
         "diagnosis_result_id": diagnosis.id,
         "rules": diagnosis.matched_rules,
         "historical_result": workflow.final_result if workflow else None,
+        "historical_context_policy": (
+            workflow_context_status(db, workflow) if workflow else "unknown"
+        ),
         "is_test_data": diagnosis.is_test_data,
     }

@@ -1,0 +1,263 @@
+{
+  "schema_version": "package-context-expectations-v1",
+  "cases": {
+    "draft-dht11": {
+      "matched_ids": [],
+      "matcher_reasons": {
+        "dht11.sensor-read-failed.test-data.v2_0_2": "review_not_approved"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        }
+      }
+    },
+    "draft-led": {
+      "matched_ids": [],
+      "matcher_reasons": {
+        "led.output-failed.test-data.v2_0_2": "review_not_approved"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        }
+      }
+    },
+    "text-only": {
+      "matched_ids": [
+        "fixture.sensor.failure"
+      ],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "eligible"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [
+            "fixture.sensor.failure"
+          ],
+          "required_complete": true,
+          "omission_counts": {},
+          "required_applicability": {
+            "fixture.sensor.failure": {
+              "condition_status": "text_only",
+              "limits_text": "仅用于合成回归场景；不能据此确认本次根因。"
+            }
+          }
+        },
+        "explanation": {
+          "selected_ids": [
+            "fixture.sensor.failure"
+          ],
+          "required_complete": true,
+          "omission_counts": {},
+          "required_applicability": {
+            "fixture.sensor.failure": {
+              "condition_status": "text_only",
+              "limits_text": "仅用于合成回归场景；不能据此确认本次根因。"
+            }
+          }
+        }
+      }
+    },
+    "matched-conditions": {
+      "matched_ids": [
+        "fixture.sensor.failure"
+      ],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "eligible"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [
+            "fixture.sensor.failure"
+          ],
+          "required_complete": true,
+          "omission_counts": {},
+          "required_applicability": {
+            "fixture.sensor.failure": {
+              "condition_status": "matched",
+              "limits_text": "仅用于合成回归场景；不能据此确认本次根因。"
+            }
+          }
+        },
+        "explanation": {
+          "selected_ids": [
+            "fixture.sensor.failure"
+          ],
+          "required_complete": true,
+          "omission_counts": {},
+          "required_applicability": {
+            "fixture.sensor.failure": {
+              "condition_status": "matched",
+              "limits_text": "仅用于合成回归场景；不能据此确认本次根因。"
+            }
+          }
+        }
+      }
+    },
+    "unknown-component": {
+      "matched_ids": [],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "applicability_unknown"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        }
+      }
+    },
+    "mismatched-condition": {
+      "matched_ids": [],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "applicability_mismatch"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        }
+      }
+    },
+    "missing-limits": {
+      "matched_ids": [],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "applicability_missing"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        }
+      }
+    },
+    "invalid-condition": {
+      "matched_ids": [],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "applicability_invalid"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {}
+        }
+      }
+    },
+    "whole-unit-budget": {
+      "matched_ids": [
+        "fixture.sensor.failure"
+      ],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "eligible"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {
+            "budget_omitted": 1
+          }
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {
+            "budget_omitted": 1
+          }
+        }
+      }
+    },
+    "required-prompt-budget": {
+      "matched_ids": [
+        "fixture.sensor.failure"
+      ],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "eligible"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [],
+          "required_complete": false,
+          "omission_counts": {
+            "budget_omitted": 1
+          }
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": false,
+          "omission_counts": {
+            "budget_omitted": 1
+          }
+        }
+      }
+    },
+    "stage-projection-difference": {
+      "matched_ids": [
+        "fixture.sensor.failure"
+      ],
+      "matcher_reasons": {
+        "fixture.sensor.failure": "eligible"
+      },
+      "stages": {
+        "reasoning": {
+          "selected_ids": [
+            "fixture.sensor.failure"
+          ],
+          "required_complete": true,
+          "omission_counts": {},
+          "required_applicability": {
+            "fixture.sensor.failure": {
+              "condition_status": "text_only",
+              "limits_text": "仅用于合成回归场景；不能据此确认本次根因。"
+            }
+          }
+        },
+        "explanation": {
+          "selected_ids": [],
+          "required_complete": true,
+          "omission_counts": {
+            "budget_omitted": 1
+          }
+        }
+      }
+    }
+  }
+}

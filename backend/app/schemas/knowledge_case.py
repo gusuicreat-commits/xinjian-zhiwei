@@ -1,14 +1,64 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 
 class StrictKnowledgeCaseModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+ApplicabilityField = Literal["experiment_code", "package_version", "component_id"]
+ApplicabilityValue = Annotated[str, Field(strict=True, min_length=1, max_length=100)]
+
+
+class CaseApplicabilityCondition(StrictKnowledgeCaseModel):
+    field: ApplicabilityField
+    operator: Literal["in"]
+    values: list[ApplicabilityValue] = Field(min_length=1, max_length=20)
+
+    @field_validator("values")
+    @classmethod
+    def distinct_nonblank_values(cls, values: list[str]) -> list[str]:
+        if any(not value.strip() or value != value.strip() for value in values):
+            raise ValueError("applicability values must be nonblank exact identifiers")
+        return list(dict.fromkeys(values))
+
+
+class CaseApplicabilityConditions(StrictKnowledgeCaseModel):
+    version: Literal[1]
+    conditions: list[CaseApplicabilityCondition] = Field(min_length=1, max_length=10)
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def require_integer_version(cls, version: Any) -> int:
+        if type(version) is not int:
+            raise ValueError("applicability version must be an integer")
+        return version
+
+    @model_validator(mode="after")
+    def validate_scope_dependencies(self) -> CaseApplicabilityConditions:
+        fields = [condition.field for condition in self.conditions]
+        if len(fields) != len(set(fields)):
+            raise ValueError("applicability fields must be unique")
+        if set(fields) & {"package_version", "component_id"} and "experiment_code" not in fields:
+            raise ValueError("package and component conditions require experiment_code")
+        return self
+
+
+class CaseApplicabilityCheck(CaseApplicabilityCondition):
+    actual: ApplicabilityValue | None = None
+    status: Literal["matched", "mismatch", "unknown"]
+
+
+class CaseApplicabilityProjection(StrictKnowledgeCaseModel):
+    version: Literal["case-applicability-v1"] = "case-applicability-v1"
+    limits_text: str = Field(strict=True, min_length=1, max_length=2000)
+    condition_status: Literal["text_only", "matched"]
+    checks: list[CaseApplicabilityCheck] = Field(default_factory=list, max_length=10)
 
 
 class KnowledgeCaseDefinition(StrictKnowledgeCaseModel):
@@ -84,6 +134,10 @@ class KnowledgeCaseResponse(StrictKnowledgeCaseModel):
 
 
 class MatchedKnowledgeCase(StrictKnowledgeCaseModel):
+    # Only the provider sanitizer may consume these transient raw sources.
+    # Pydantic excludes private attributes from API and checkpoint serialization.
+    _sensitive_sources: tuple[Any, ...] = PrivateAttr(default_factory=tuple)
+
     case_id: str
     experiment_type: str
     error_type: str
@@ -100,6 +154,7 @@ class MatchedKnowledgeCase(StrictKnowledgeCaseModel):
     match_score: float = Field(ge=0, le=1)
     matched_on: list[str] = Field(default_factory=list)
     is_test_data: bool = False
+    applicability: CaseApplicabilityProjection
 
 
 class KnowledgeCaseDraftResponse(StrictKnowledgeCaseModel):
@@ -132,6 +187,14 @@ class CaseConfirmationMaterial(StrictKnowledgeCaseModel):
     finding: str = Field(min_length=1, max_length=4000)
     recovery_diagnosis_id: str = Field(min_length=36, max_length=36)
     applicability_limits: str = Field(min_length=1, max_length=2000)
+    applicability_conditions: CaseApplicabilityConditions | None = None
+
+    @field_validator("applicability_limits")
+    @classmethod
+    def require_nonblank_limits(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("applicability limits must not be blank")
+        return value
 
 
 class CaseWithdrawRequest(StrictKnowledgeCaseModel):

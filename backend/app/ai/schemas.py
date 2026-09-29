@@ -8,6 +8,7 @@ class StrictAIModel(BaseModel):
 
 
 class AIKnowledgeReference(StrictAIModel):
+    _sensitive_sources: tuple[Any, ...] = PrivateAttr(default_factory=tuple)
     chunk_id: str
     case_id: Optional[str] = None
     source_key: str
@@ -32,6 +33,7 @@ class AIKnowledgeReference(StrictAIModel):
 class AIDiagnosisInput(StrictAIModel):
     _context_manifest: dict[str, Any] = PrivateAttr(default_factory=dict)
     _context_omissions: dict[str, int] = PrivateAttr(default_factory=dict)
+    _context_trace: list[dict[str, Any]] = PrivateAttr(default_factory=list)
 
     diagnosis_result_id: str
     episode_id: Optional[str] = None

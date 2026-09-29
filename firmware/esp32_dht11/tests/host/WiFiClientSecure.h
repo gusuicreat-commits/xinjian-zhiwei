@@ -1,2 +1,6 @@
 #pragma once
-struct WiFiClientSecure { void setCACert(const char*){} void setInsecure(){} };
+inline unsigned ca_calls = 0, insecure_calls = 0;
+struct WiFiClientSecure {
+    void setCACert(const char*) { ++ca_calls; }
+    void setInsecure() { ++insecure_calls; }
+};

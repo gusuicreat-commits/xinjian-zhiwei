@@ -56,3 +56,5 @@
 ## 上下文评测报告
 
 `context-evaluation-v1` 同名JSON/Markdown输出到 `output/context-evaluation/`；JSON保留逐项代码断言、归因、输入/源码指纹、语义/真实Provider/硬件/保留集状态。代码退出0不等于语义通过，1是检查失败或执行错误，2是必需软件材料缺失/损坏。语义缺材料为not_run/null；0次真实调用、Token和费用未知不得写成已验证的成本收益。软件服务/并发/浏览器门禁另存本次审计报告，不把纯选择器报告扩称端到端验收。
+
+资料包预检使用`package-context-preview-v1`：分开structure、source_traceability、stage_coverage；来源identity比对与内容可信性分开。报告仅存定位、长度、有限条件状态、固定省略原因和指纹，不保存私密审核正文或完整Prompt。输入/预期分离，严格评测与普通分析退出语义不同，见[预检命令](evaluation.md#package-context-preview)。P4概念解释检查须单列未实施，不能随P0–P3软件门禁标通过。

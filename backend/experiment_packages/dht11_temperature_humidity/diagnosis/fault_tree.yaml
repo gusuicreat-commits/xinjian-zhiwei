@@ -1,4 +1,4 @@
-version: 2.0.5
+version: 2.0.10
 trees:
 - id: dht11-read-failure-v2
   title: DHT11 窗口累计读取失败
@@ -52,7 +52,7 @@ trees:
     hints:
       1: 检查代码里的传感器引脚。
       2: 确认代码使用 GPIO4 且类型为 DHT11。
-      3: 核对上电等待、单总线初始化和 3 秒采样间隔；DHT11 请求不得短于 2 秒。
+      3: 核对上电等待、单总线初始化和 3 秒采样间隔；项目最小请求间隔为 3 秒，满足厂商严格大于 2 秒的限制。
       4: 提交代码片段和失败日志，请教师复核。
   - id: hardware.sensor_failure
     title: 传感器本体异常

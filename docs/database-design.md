@@ -139,4 +139,6 @@
 
 ## 上下文清单（无新迁移）
 
-复用 `ai_call_records.input_snapshot.context_manifest`，合同 `context-manifest-v1`、策略 `whole-unit-v1`；未新增表，schema head仍为 `20260927_0035`。MemoryUse的matched保留匹配快照，provided只记录真实尝试提交的来源子集，cited按有效引用、derived记录缓存派生；选择后不读取新版本冒充调用时来源。清单不存原始正文。旧 `(workflow_run_id, call_stage)` 唯一性与历史记录不变；旧记录不回填。
+复用 `ai_call_records.input_snapshot.context_manifest`，合同 `context-manifest-v1`、策略 `whole-unit-applicability-v1`、投影 `case-applicability-v1`；未新增表，schema head仍为 `20260927_0035`。MemoryUse的matched保留匹配快照，provided只记录真实尝试提交的来源子集，cited按有效引用、derived记录缓存派生；选择后不读取新版本冒充调用时来源。清单不存原始正文。旧 `(workflow_run_id, call_stage)` 唯一性与历史记录不变；旧记录不回填。
+
+资料包格式1.1的登记与案例条件复用现有包内容、solution_record JSON；P0–P3没有新迁移。当前建议读取检验策略清单，旧结果只读降级，不回填历史call、final_result、Checkpoint或幂等回执，不自动补模型调用。

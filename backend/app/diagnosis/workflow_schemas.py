@@ -117,6 +117,7 @@ class DiagnosisState(TypedDict, total=False):
     retrieval_query: str
     retrieved_chunks: list[WorkflowRetrievedChunk]
     ai_result: dict[str, Any] | None
+    context_delivery: dict[str, str] | None
     deterministic_result: dict[str, Any] | None
     model_id: str | None
     needs_teacher: bool

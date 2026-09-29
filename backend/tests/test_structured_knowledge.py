@@ -44,7 +44,9 @@ def test_matcher_uses_explicit_experiment_error_and_review_fields() -> None:
                     root_cause_value="check wiring",
                     root_cause_status="confirmed",
                     confirmed_by="teacher-test",
-                    solution_record={"steps": ["preserve logs"]},
+                    solution_record={"steps": ["preserve logs"], "confirmation_material": {
+                        "applicability_limits": "仅为受控DHT11匹配夹具，不能用于真实硬件确认。"
+                    }},
                     ai_generated_fields={},
                     source_type="real_experiment",
                     facts_locked=True,

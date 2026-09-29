@@ -380,17 +380,25 @@ def package_candidates(db, actor, event, *, after_id="", limit=50):
     items = []
     for version in rows[:limit]:
         cases = (version.package_content.get("knowledge/cases.yaml") or {}).get("cases", [])
-        if event.source["kind"] == "case" and any(
+        from app.experiment_packages.registry import derived_case_matches
+
+        same_case = event.source["kind"] == "case" and any(
             case.get("id") == event.source["id"] and case.get("version") == event.source["version"]
             for case in cases
-        ):
+        )
+        derived_case = derived_case_matches(version.package_content, event.source)
+        if same_case or derived_case:
             items.append(
                 {
                     "version_id": version.id,
                     "version": version.version,
                     "package_hash": version.package_hash,
                     "status": version.status,
-                    "basis": "same_case_id_and_version_origin_requires_review",
+                    "basis": (
+                        "explicit_derived_source_identity_requires_review"
+                        if derived_case
+                        else "same_case_id_and_version_origin_requires_review"
+                    ),
                     "action": "explicit_package_revocation_required",
                     "is_test_data": version.is_test_data,
                 }
@@ -398,7 +406,7 @@ def package_candidates(db, actor, event, *, after_id="", limit=50):
     return {
         "items": items,
         "next_cursor": rows[limit - 1].id if len(rows) > limit else None,
-        "coverage": "explicit_case_identity_candidates_only",
+        "coverage": "explicit_case_identity_and_registered_derivation_candidates_only",
         "renamed_or_unlinked_copies": "unknown",
     }
 

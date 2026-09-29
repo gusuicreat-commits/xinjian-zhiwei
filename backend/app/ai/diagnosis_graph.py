@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient
-from app.ai.context_sanitizer import sanitize_text
+from app.ai.context_sanitizer import _sensitive_values, sanitize_text
 from app.ai.reasoning import build_evidence_registry, reason_about_causes
 from app.ai.schemas import AIExplanationResponse, AIKnowledgeReference
 from app.core.config import Settings
@@ -580,7 +580,10 @@ def ai_reasoning_node(
         ),
         ai_client=runtime.context.ai_client,
         ai_clients=runtime.context.ai_clients,
-        sensitive_sources=tuple(json.loads(ref.content) for ref in graph_knowledge),
+        sensitive_sources=tuple(
+            source for ref in graph_knowledge
+            for source in (json.loads(ref.content), *ref._sensitive_sources)
+        ),
     )
     reasoned_causes = [item.model_dump(mode="json") for item in result.ranked_causes]
     return {
@@ -618,37 +621,45 @@ _LOCATOR_KEYS = {
 _RETRIEVAL_SCORE_KEYS = {"structured_match"}
 
 
-def _safe_locator(locator: Any) -> dict[str, Any]:
+def _safe_locator(locator: Any, sensitive_values=()) -> dict[str, Any]:
     if not isinstance(locator, dict):
         return {}
     return {
-        key: (sanitize_text(value, max_chars=200) if isinstance(value, str) else value)
+        key: (sanitize_text(value, sensitive_values=sensitive_values, max_chars=200)
+              if isinstance(value, str) else value)
         for key, value in locator.items()
         if key in _LOCATOR_KEYS and isinstance(value, (str, int, float, bool))
     }
 
 
-def _knowledge_state_reference(item: AIKnowledgeReference) -> dict[str, Any]:
+def _knowledge_state_reference(item: AIKnowledgeReference) -> dict[str, Any] | None:
     """Project a retrieved chunk into a bounded checkpoint/public reference.
 
     Full chunk text is reloaded by exact approved chunk ID only at the synthesis
     node. It never enters LangGraph checkpoint state or workflow API payloads.
     """
 
+    secrets = set()
+    for source in item._sensitive_sources:
+        secrets.update(_sensitive_values(source))
+    identities = ((item.chunk_id, 100), (item.case_id or item.chunk_id, 100),
+                  (item.source_key, 200), (item.source_version, 100))
+    if any(value is not None and (len(value) > limit or sanitize_text(
+        value, sensitive_values=secrets, max_chars=None
+    ) != value) for value, limit in identities):
+        return None
     return {
-        "chunk_id": sanitize_text(item.chunk_id, max_chars=100),
-        "case_id": sanitize_text(item.case_id or item.chunk_id, max_chars=100),
-        "source_id": sanitize_text(item.source_key, max_chars=200),
-        "title": sanitize_text(item.source_title, max_chars=200),
+        "chunk_id": item.chunk_id,
+        "case_id": item.case_id or item.chunk_id,
+        "source_id": item.source_key,
+        "title": sanitize_text(item.source_title, sensitive_values=secrets, max_chars=200),
         "score": float(item.similarity),
         "metadata": {
-            "source_type": sanitize_text(item.source_type, max_chars=100)
+            "source_type": sanitize_text(item.source_type, sensitive_values=secrets, max_chars=100)
             if item.source_type
             else None,
-            "source_version": sanitize_text(item.source_version, max_chars=100)
-            if item.source_version
-            else None,
-            "locator": _safe_locator(item.locator),
+            "source_version": item.source_version,
+            "locator": _safe_locator(item.locator, secrets),
             "review_status": "approved",
             "retrieval_scores": {
                 key: float(value)
@@ -700,8 +711,10 @@ def _load_graph_knowledge(
                 },
             }
         )
-        references.append(reference)
-        safe_state_refs.append(_knowledge_state_reference(reference))
+        safe_ref = _knowledge_state_reference(reference)
+        if safe_ref is not None:
+            references.append(reference)
+            safe_state_refs.append(safe_ref)
     # Keep trusted JSON intact for deterministic pre/post reasoning checks.
     # The provider boundary applies its own bounded sanitization later.
     return references, safe_state_refs
@@ -722,10 +735,12 @@ def knowledge_context(
     )
     from app.services.memory import record_uses
 
+    pairs = [(item, _knowledge_state_reference(item)) for item in references]
+    references = [item for item, safe in pairs if safe is not None]
     record_uses(runtime.context.db, diagnosis, references, target_type="workflow",
                 target_id=state["diagnosis_id"], use_kind="matched")
     runtime.context.db.commit()
-    knowledge_context = [_knowledge_state_reference(item) for item in references]
+    knowledge_context = [safe for _, safe in pairs if safe is not None]
     supply = {
         "status": "available" if references else "no_approved_case",
         "case_ids": [item.chunk_id for item in references],
@@ -841,6 +856,7 @@ def ai_explanation(
         "ai_result": (
             response.explanation.model_dump(mode="json") if response.explanation else None
         ),
+        "context_delivery": {"explanation_call_id": response.call_record_id},
         "retrieved_chunks": safe_state_refs,
         "model_id": runtime.context.settings.ai_model,
         "status": "ai_analysis",
@@ -867,6 +883,7 @@ def feedback_handler(
             "candidates": state.get("fault_tree_candidates", []),
             "retrieved_chunks": state.get("retrieved_chunks", []),
             "ai_result": state.get("ai_result"),
+            "context_delivery": state.get("context_delivery"),
             "deterministic_result": state.get("deterministic_result"),
             "instruction": "请反馈：resolved / unresolved / request_teacher_help",
         }
@@ -1024,6 +1041,7 @@ def teacher_review(state: DiagnosisState) -> dict[str, Any]:
             "rule_hits": state.get("rule_hits", []),
             "retrieved_chunks": state.get("retrieved_chunks", []),
             "ai_result": state.get("ai_result"),
+            "context_delivery": state.get("context_delivery"),
             "deterministic_result": state.get("deterministic_result"),
             "instruction": "请审核：approve / edit / reject",
         }
@@ -1040,6 +1058,7 @@ def route_after_review(
 
 def _approved_result(state: DiagnosisState) -> dict[str, Any]:
     base = dict(state.get("ai_result") or state.get("deterministic_result") or {})
+    base["context_delivery"] = state.get("context_delivery")
     review = state.get("teacher_review") or {}
     edited = review.get("edited_result") or {}
     if review.get("action") == "edit":

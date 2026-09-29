@@ -9,9 +9,9 @@ from types import SimpleNamespace
 
 from app.ai.context_builder import payload_digest, select_knowledge
 from app.ai.context_contract import CONTEXT_CONTRACT_VERSION, CONTEXT_POLICY_VERSION
-from app.ai.schemas import AIKnowledgeReference
 from app.core.config import Settings
 from app.knowledge.matcher import match_knowledge_case_definitions
+from app.knowledge.projection import case_references
 
 ROOT = Path(__file__).resolve().parents[2]
 INPUTS = ROOT / "evaluation/context_inputs.json"
@@ -26,35 +26,7 @@ def exercise_input(sample):
     matched = match_knowledge_case_definitions(
         diagnosis, [], sources, limit=settings.ai_knowledge_limit
     )
-    references = [
-        AIKnowledgeReference(
-            chunk_id=item.case_id,
-            case_id=item.case_id,
-            source_key=item.source_ref,
-            source_title=item.symptom,
-            source_type="structured_case",
-            source_uri=None,
-            source_version=item.version,
-            similarity=item.match_score,
-            is_test_data=item.is_test_data,
-            content=json.dumps(
-                {
-                    "caseId": item.case_id,
-                    "experimentType": item.experiment_type,
-                    "errorType": item.error_type,
-                    "symptom": item.symptom,
-                    "normalState": item.normal_state,
-                    "evidence": item.evidence,
-                    "possibleCauses": item.possible_causes,
-                    "solutionSteps": item.solution_steps,
-                    "teacherNotes": item.teacher_notes,
-                    "rootCause": {"value": item.root_cause_value, "status": item.root_cause_status},
-                },
-                ensure_ascii=False,
-            ),
-        )
-        for item in matched
-    ]
+    references = case_references(matched)
     selected, omissions = select_knowledge(references, settings, set())
     return {
         "matched_ids": [item.case_id for item in matched],

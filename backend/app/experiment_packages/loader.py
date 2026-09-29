@@ -8,6 +8,7 @@ from typing import Any
 
 import yaml
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.version import Version
 from pydantic import ValidationError
 
 from app.diagnosis.schemas import ArtifactScope
@@ -22,6 +23,7 @@ from app.experiment_packages.schemas import (
     PackageHints,
     PackageManifest,
     PackageMetadata,
+    PackageMetadataV11,
     PackageRules,
     PackageSteps,
     PackageTests,
@@ -49,7 +51,7 @@ PACKAGE_FILES: dict[str, type] = {
 }
 
 # Diagnostic rule/package semantics version, distinct from the web application release.
-DIAGNOSIS_ENGINE_VERSION = "2.1.0"
+DIAGNOSIS_ENGINE_VERSION = "2.2.0"
 
 
 def engine_compatible(requirement: str) -> bool:
@@ -126,11 +128,19 @@ def _manifest_for_documents(documents: dict[str, Any]) -> PackageManifest:
 
 def _parse_bundle(documents: dict[str, Any], manifest: PackageManifest) -> ExperimentPackageBundle:
     try:
+        if not isinstance(documents["metadata.yaml"], dict):
+            raise ExperimentPackageLoadError("package metadata must be an object")
+        schema_version = documents["metadata.yaml"].get("schema_version", "1.0")
+        metadata_models = {"1.0": PackageMetadata, "1.1": PackageMetadataV11}
+        if not isinstance(schema_version, str) or schema_version not in metadata_models:
+            raise ExperimentPackageLoadError("unsupported experiment package schema version")
         parsed = {
-            relative: model.model_validate(documents[relative])
+            relative: (
+                metadata_models[schema_version] if relative == "metadata.yaml" else model
+            ).model_validate(documents[relative])
             for relative, model in PACKAGE_FILES.items()
         }
-        return ExperimentPackageBundle(
+        bundle = ExperimentPackageBundle(
             metadata=parsed["metadata.yaml"],
             hardware=parsed["hardware.yaml"],
             rules=parsed["diagnosis/rules.yaml"],
@@ -143,8 +153,16 @@ def _parse_bundle(documents: dict[str, Any], manifest: PackageManifest) -> Exper
             fault_tests=parsed["tests/fault_cases.yaml"],
             manifest=manifest,
         )
+        from app.experiment_packages.registry import validate_registry
+
+        validate_registry(bundle)
+        return bundle
     except ValidationError as exc:
         raise ExperimentPackageLoadError(f"package schema validation failed: {exc}") from exc
+    except ValueError as exc:
+        raise ExperimentPackageLoadError(
+            f"package content registry validation failed: {exc}"
+        ) from exc
 
 
 def package_to_experiment_definition(bundle: ExperimentPackageBundle) -> ExperimentDefinition:
@@ -262,6 +280,14 @@ def validate_experiment_package(bundle: ExperimentPackageBundle) -> PackageValid
             message=f"requires a supported diagnostic engine ({DIAGNOSIS_ENGINE_VERSION})",
         ),
         PackageCheck(
+            code="compatibility.schema_capability",
+            passed=(
+                bundle.metadata.schema_version == "1.0"
+                or Version(DIAGNOSIS_ENGINE_VERSION) >= Version("2.2.0")
+            ),
+            message="package format 1.1 requires registry-capable engine 2.2 or newer",
+        ),
+        PackageCheck(
             code="evidence.runtime_types",
             passed=(
                 bundle.hardware.runtime_expectations is None or evidence_types == emitted_types
@@ -353,6 +379,8 @@ def load_experiment_package_payload(
 def package_documents(bundle: ExperimentPackageBundle) -> dict[str, Any]:
     """Return the immutable, filename-keyed document snapshot stored in PostgreSQL."""
 
+    # Version-specific metadata classes deliberately preserve the V1 serializer:
+    # registry defaults must never be injected into old stored documents.
     return {
         "metadata.yaml": bundle.metadata.model_dump(mode="json", by_alias=True),
         "hardware.yaml": bundle.hardware.model_dump(mode="json", by_alias=True),

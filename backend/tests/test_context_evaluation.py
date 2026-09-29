@@ -40,10 +40,19 @@ def test_missing_materials_block_instead_of_passing(tmp_path):
 def test_invalid_source_gate_mutation_is_detected(monkeypatch):
     from app.knowledge.matcher import _rank_knowledge_cases
 
-    # Isolated mutation: bypass the real matcher eligibility gate, retain ranking.
-    monkeypatch.setattr(runner, "match_knowledge_case_definitions",
-                        lambda diagnosis, guidance, cases, limit: _rank_knowledge_cases(
-                            cases, diagnosis, guidance, limit=limit))
+    # Isolated mutation: falsely approve/test-scope every source before the now
+    # shared gate. The production wrapper no longer provides an unguarded route.
+    def bypass(diagnosis, guidance, cases, limit):
+        cases = deepcopy(cases)
+        for case in cases:
+            case.review_status = "approved"
+            case.root_cause_status = "confirmed"
+            case.facts_locked = True
+            case.quality_check_passed = True
+            case.is_test_data = False
+        return _rank_knowledge_cases(cases, diagnosis, guidance, limit=limit)
+
+    monkeypatch.setattr(runner, "match_knowledge_case_definitions", bypass)
     report = runner.run_context_evaluation()
     assert runner.context_exit_code(report) == 1
     failed = {case["id"] for case in report["cases"] if case["status"] == "failed"}

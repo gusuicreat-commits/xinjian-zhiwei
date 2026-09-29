@@ -81,6 +81,7 @@
 - 学生—会话—设备—班级—任务—版本以服务器持久化归属为准；换人/转班/改绑定不转移历史。归属不明保留受限检查，不给学生展示。无有效会话为空态，多会话需显式选择并返回409，越界403；无会话头的兼容仅限唯一有效会话。
 - 会话准备、活动、结束、取消分别表达。开始原子检查资格、任务开放时间、发布包和设备可用性，同设备只有一个采集归属；换学生新建、换设备保留接续、重启只改启动标识。小组需明确定义主体、成员有效期和个人反馈，不靠共用账号代替。
 - 学生结束、开始和管理释放共用actor→device锁顺序，等待后重读与重验，状态/审计/回执同事务。管理释放需`assignment.manage`及teacher/admin角色，教师按原任务班级授权；停用学生/班级不隐藏占用，审核角色不自动有管理权。释放须指定目标、请求身份、原版本和原因，只取消该会话，不结束故障、工单或课程，不影响后继会话。
+- 内部测试初始化（BR-LAB-PREP）只面向明确选择的隔离测试库和已认证测试管理员，要求当前已发布测试包及精确hash；不自动审批包或创建活动会话。初始化对象与回执同事务，前缀锁及包状态锁后重验权限。同前缀同身份同配置复用，不重置凭据；冲突或部分对象拒绝接管。会话经原入口固定版本，合成与实物使用独立设备身份。
 - 结束阻止新操作，当前仍有权限的原学生可确认原回执；恢复不得消费新操作。迟到上报保留原采集归属，不归给下一位学生。课后历史需单独本人授权。
 - 撤权在请求及长任务交付时重验；反馈锁、生命周期锁、工作流恢复行锁等待后，写入/继续前复用完整授权。新反馈、pending恢复、applied重放均适用；登录失效401、资格/权限不足403，不伪装为可重试503。审计保留原执行人，详情/列表/搜索/导出/缓存/通知/错误响应均不得泄露无权内容。
 
@@ -173,12 +174,14 @@
 | 6. 分层验证 | 软件、真实硬件、教学试用分别记录结果及未执行项，失败可返回前面阶段修订 |
 | 7. 审核维护 | 按职责确认事实和教学判据，走已有审核发布；新证据修订追加版本，保留原来源与旧结论 |
 
-允许独立工作并行，不必等齐外部材料才写软件草稿或做合成验证，但不能越过缺失的事实确认门槛。2026-09-22用户已授权维护者在缺购置硬件/教师支持时按官方资料选择候选板卡、器件与框架并推进软件自审；候选标`project_design`，实物/课程/教师结论保持pending，不能预填确认人和时间。
+允许独立工作并行，不必等齐外部材料才写软件草稿或做合成验证，但不能越过缺失的事实确认门槛。2026-09-22用户已授权维护者在缺购置硬件/教师支持时按官方资料选择候选板卡、器件与框架并推进软件自审；候选标`project_design`，实物/课程/教师结论保持pending，不能预填确认人和时间。用户于2026-09-28确认首轮硬件选型，决定统一记录于[真实性看板](project-truth-status.md)；采购选型确认与实物验证状态分开，不因选型确定清除pending。
 
 - **采信来源：**课程目标/判据优先教师和正式指导书；板卡/器件用对应厂商版本的手册、原理图；程序语义用实际源码、依赖和官方示例；实物结论用接线、原始日志、独立测量、操作及恢复新样本。社区材料只能提出待核查线索，通用器件参数不自动成为板级接线或阈值。
 - **来源登记：**至少记录位置、版本、页码/章节/代码定位、适用硬件、支持内容与未决问题；保留原附件，包内保存经审阅内容及引用。来源冲突先查型号、版本、条件和测量语义；教师经验有提供者和依据。使用现有字段/审阅材料，不向严格Schema偷加字段。
 - **正常流程：**学习目标、前置知识、器材接线、程序配置、步骤、预期观察、结果记录及课程判据；缺判据留缺口，预期不冒充实测。
 - **排查卡：**现象/证据、能判断与不能判断的内容、有限候选、允许动作/前提、区分作用、需留记录、新证据验证方式、何时求助。排查顺序不等原因概率；恢复沿用[生命周期判据](#business-rules)。正式案例可留空，合成场景明确标测试。
+- **模型资料采用：**案例限制正文只保存于确认材料；先按固定身份检查有限条件再排序，文字限制未自动核验须保留提示。案例与限制整条采用或省略，不能删前提留结论。完整受权源先用于识别敏感值，私有审核字段不进入Provider或Checkpoint。新旧策略、源hash与当前建议均重验，旧输出只读降级且不自动重调模型。
+- **来源与预检：**1.1登记只关联已有工件；参数所有者、引用、有限条件用代码断言，来源语义由独立审阅确认。离线报告分开结构、来源身份、阶段覆盖；草稿不临时批准，预期答案不进入builder，严格预检接完整门禁。变更追加版本，1.0原hash保持不变；规则与命令见[包设计](experiment-package-design.md)、[预检指南](evaluation.md#package-context-preview)。
 - **包契约：**实验差异用数据，不硬编码专用诊断分支。十类工件严格Schema、交叉引用、来源与单位、稳定ID、可复现hash、引擎兼容及必需能力均校验；规则仅使用已注册事实和运算，不包含脚本或任意表达式。运行绑定已发布数据库快照，不依赖可变工作区文件。
 - **教学参考：**concepts讲原理、steps讲环节/预期、故障树提示决定允许动作，独立hints不覆盖它。固定可用包与明确树/原因/组件/等级绑定才可选取；验证缺失、重复、循环。新指导保存正文、版本/hash，旧指导/包/运行库不回填；缺失保持不可用，不改变诊断、次数或动作。知识ID不当设备证据ID，参考原文不自动外发；未来开放需兼容、脱敏、长度、预算、引用及缓存审查。
 - **验收职责：**维护者验证结构/规则/引用/版本和正常、异常、缺测、旧数据、冲突、恢复；硬件负责人做正常—单因素异常—恢复的独立对照并隔离调参与验收数据；教师确认目标/动作/判据并观察未参与编写者的卡点、误解、求助。同人可兼任，职责与依据分开。AI可整理资料和软件检查，不代实测、教师确认或发布决定。
@@ -268,10 +271,12 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 | INTERVENTION：实际对象与公开投影 | `api/v1/routes/interventions.py::_case_response`、`services/interventions.py` | 创建/复用/冲突重读/列表/动作/仪表盘；跨班复用、私密旧摘要、重复求助、关闭不等恢复；`test_intervention_scope_r2.py`、`test_interventions.py` |
 | KNOWLEDGE：审批/润色竞争 | `knowledge/case_drafting.py` | submit/approve/reject/polish；双审批、来源唯一、事务失败、迟到润色、撤权、候选外根因；`test_knowledge_case_concurrency.py`、`test_business_knowledge.py` |
 | MEMORY：三类投影、来源、停用与副本 | `services/memory.py`、`memory_governance.py`、`memory_restore.py`；`cli/sync_knowledge_cases.py` | 工作流/解释/缓存/恢复/案例撤回/包撤销/教师复核/清理；跨班、缺来源、版本变更、迟到结果、计划变化、旧备份；`test_memory_lifecycle.py`、`test_memory_postgres.py`、浏览器记忆复核场景 |
-| PACKAGE：内容、版本与教学快照 | `experiment_packages/loader.py`、`experiment_packages/teaching.py`、`services/experiment_packages.py`、`services/teaching_materials.py` | 导入/发布/运行/撤回/初次与反馈指导/仪表盘；缺/重复/循环引用、组件隔离、不兼容、旧包不回填、参考不外发；`test_business_package_boundary.py`、`test_teaching_materials.py` |
+| PACKAGE：内容、版本与教学快照 | `experiment_packages/loader.py`、`experiment_packages/teaching.py`、`services/experiment_packages.py`、`services/teaching_materials.py` | 导入/发布/运行/撤回/初次与反馈指导/仪表盘；缺/重复/循环引用、组件隔离、不兼容、旧包不回填、参考不外发；`test_business_package_boundary.py`、`test_teaching_materials.py`、`test_dht11_material_contract.py` |
+| PKC：案例条件、来源登记与当前建议 | `knowledge/applicability.py`、`projection.py`、`experiment_packages/registry.py`、`context_preview.py`、`services/current_advice.py` | 包/全局、两阶段Provider、旧阶段/竞争重放、完成/等待快照；缺条件、未审资料、条件未知、私值重复、后来的调用不能替旧结果背书、1.0hash、改名派生；`test_case_applicability.py`、`test_package_context_runtime.py`、`test_current_advice.py`、`test_package_registry.py`、`test_package_context_preview.py` |
 | CTX：完整材料、预算与来源清单 | `ai/context_builder.py`、`context_contract.py`、两阶段适配器；`evaluation/context_runner.py` | 超长JSON、51条证据、秘密增长度、身份碰撞、缓存无provided、版本/重放、独立期望及两项破坏反例；`test_context_construction.py`、`test_context_evaluation.py`；[CTX对应表](evaluation-requirements.md#context-checks) |
 | AI：配额/外发/缓存/降级 | `ai/governance.py`、`ai/context_sanitizer.py`、`ai/reasoning.py`、`core/config.py` | 推理/解释/润色真实Provider请求与重试；并发配额、未知费用、短秘密/单位/嵌套ID、引用碰撞、0/30/31/35/50证据、关闭/失败/拒绝；`test_ai_quota_concurrency.py`、`test_r2_provider_data_boundary.py`、`test_business_ai_delivery.py` |
 | UI：对象/恢复/权限与中文 | `DiagnosisPanel`、学生/教师store与session、`api/diagnosisChecks`、`userLanguage.ts` | 三任务视图、刷新/切页/换登录、反馈/交接/审核；迟到成功/失败、503/403/409、私密清空、待确认可达、原文保留；组件/store单测、student/teacher浏览器及`feedback.integration.ts` |
 | UI：图表/边框/离线演示 | 图表挂载与页面样式、`review/state`、API守卫 | 显隐/等待中卸载、五类路由三种宽度、纯静态操作；`ChartMounting.test.ts`、`layoutAudit.ts`、`offline.spec.ts`及截图审查 |
+| LAB-PREP：内部测试准备 | `cli/prepare_internal_experiment.py`、`services/internal_experiment_preparation.py`；包发布与会话沿用现有服务 | 只读预览、权限撤销、重复/冲突/并发、原子提交及响应丢失；`test_internal_experiment_cli.py`、`test_internal_experiment_preparation*.py`、`test_internal_experiment_drill.py`及真实浏览器新任务用例 |
 | OPERATIONS：历史、版本与就绪 | `cli/audit_historical_integrity.py`、迁移、`scripts/check_version.py`、readiness/health | 空库/历史库、NULL保留、不删重复、内容只改hash、过期文档、授权与待办统计；`test_migration_r2.py`、`test_historical_audit_r2.py`、`test_development_gates.py`、`test_readiness.py` |
-| OPERATIONS：固件/备份/模拟器 | `firmware/esp32_dht11`、`scripts/database_backup.py`、simulator/config/runner/reports | 断网/重启/部分写/清理失败、2^31/2^32时钟、同快照删行/改值/断关系、首发中断/非法时限；固件主机测试与编译、备份恢复及模拟器测试 |
+| OPERATIONS：固件/备份/模拟器 | `firmware/esp32_dht11`、`scripts/database_backup.py`、simulator/config/runner/reports | 断网/重启/部分写/清理失败、2^31/2^32时钟、同快照删行/改值/断关系、首发中断/非法时限；固件主机测试与编译（含所选手册帧格式、负温度及上传序列化；`scheduling_policy_test.cpp`覆盖阻塞重试后的实际触发间隔、启动等待、同轮缓存解除priming、HTTP/HTTPS策略及拒绝配置不消耗预算）、备份恢复及模拟器测试 |

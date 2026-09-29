@@ -30,7 +30,7 @@ cases:
   qualityCheckPassed: false
   reviewStatus: draft
   sourceRef: experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml
-  version: 2.0.5
+  version: 2.0.10
   isTestData: true
   facts:
     verification_status: unverified
@@ -40,3 +40,17 @@ cases:
     teacher_status: pending_teacher
     student_case_status: pending_teacher
     course_status: pending_course_confirmation
+  solutionRecord:
+    confirmation_material:
+      applicability_limits: 仅用于验证软件合同的合成草稿；未核验实物、根因、恢复结果或教师经验，不得作为正式案例召回。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11

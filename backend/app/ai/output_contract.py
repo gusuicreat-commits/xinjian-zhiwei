@@ -1,9 +1,11 @@
 """Server-owned explanation fields; no semantic judge or hardware inference."""
 
+import json
+
 from app.ai.context_sanitizer import sanitize_text
 from app.ai.schemas import AIDiagnosisInput
 
-OUTPUT_CONTRACT_VERSION = "explanation-boundary-v2"
+OUTPUT_CONTRACT_VERSION = "explanation-boundary-v3"
 
 
 def explanation_contract(payload: AIDiagnosisInput) -> dict:
@@ -35,6 +37,16 @@ def explanation_contract(payload: AIDiagnosisInput) -> dict:
     if payload.workflow_state.get("reasoning_status") == "unknown":
         summary += "当前推理结果为 unknown，尚不能给出有证据支持的原因排序。"
     limitations = ["候选排序不等于根因确认；实际接线、硬件状态和教学验收需要独立核验。"]
+    for reference in payload.knowledge:
+        try:
+            case = json.loads(reference.content)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(case, dict) and (case.get("applicability") or {}).get(
+            "condition_status"
+        ) == "text_only":
+            limitations.append("参考案例的适用条件尚未自动核验，使用时必须同时核对所列限制。")
+            break
     if payload.workflow_state.get("evidence_conflict"):
         limitations.append("当前流程标记存在证据冲突，需要先核对冲突来源。")
     # These are model-originated requests, not verified absence or hardware facts.

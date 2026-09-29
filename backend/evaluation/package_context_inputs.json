@@ -1,0 +1,768 @@
+{
+  "schema_version": "package-context-inputs-v1",
+  "cases": [
+    {
+      "id": "draft-dht11",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "package",
+      "fixture_cases": [],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    },
+    {
+      "id": "draft-led",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/gpio_led_output",
+      "source_mode": "package",
+      "fixture_cases": [],
+      "error_type": "GPIO_EXPECTATION_FAILED",
+      "component_ids": [
+        "status_led"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.output_configuration",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.output_configuration",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    },
+    {
+      "id": "text-only",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": null,
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "applicability_limits": "仅用于合成回归场景；不能据此确认本次根因。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001"
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    },
+    {
+      "id": "matched-conditions",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": null,
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "applicability_limits": "仅用于合成回归场景；不能据此确认本次根因。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001",
+              "applicability_conditions": {
+                "version": 1,
+                "conditions": [
+                  {
+                    "field": "experiment_code",
+                    "operator": "in",
+                    "values": [
+                      "dht11_temperature_humidity"
+                    ]
+                  },
+                  {
+                    "field": "component_id",
+                    "operator": "in",
+                    "values": [
+                      "dht11"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    },
+    {
+      "id": "unknown-component",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": null,
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "applicability_limits": "仅用于合成回归场景；不能据此确认本次根因。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001",
+              "applicability_conditions": {
+                "version": 1,
+                "conditions": [
+                  {
+                    "field": "experiment_code",
+                    "operator": "in",
+                    "values": [
+                      "dht11_temperature_humidity"
+                    ]
+                  },
+                  {
+                    "field": "component_id",
+                    "operator": "in",
+                    "values": [
+                      "dht11"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": null,
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    },
+    {
+      "id": "mismatched-condition",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": null,
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "applicability_limits": "仅用于合成回归场景；不能据此确认本次根因。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001",
+              "applicability_conditions": {
+                "version": 1,
+                "conditions": [
+                  {
+                    "field": "experiment_code",
+                    "operator": "in",
+                    "values": [
+                      "dht11_temperature_humidity"
+                    ]
+                  },
+                  {
+                    "field": "component_id",
+                    "operator": "in",
+                    "values": [
+                      "other-component"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    },
+    {
+      "id": "missing-limits",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": null,
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001"
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    },
+    {
+      "id": "invalid-condition",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": null,
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "applicability_limits": "仅用于合成回归场景；不能据此确认本次根因。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001",
+              "applicability_conditions": {
+                "version": 1,
+                "conditions": [
+                  {
+                    "field": "firmware_magic",
+                    "operator": "in",
+                    "values": [
+                      "guess"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    },
+    {
+      "id": "whole-unit-budget",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": null,
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "applicability_limits": "仅用于合成回归场景；不能据此确认本次根因。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001"
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {
+        "ai_knowledge_content_max_chars": 200
+      }
+    },
+    {
+      "id": "required-prompt-budget",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": null,
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "applicability_limits": "仅用于合成回归场景；不能据此确认本次根因。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001"
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {
+        "ai_input_token_limit": 1
+      }
+    },
+    {
+      "id": "stage-projection-difference",
+      "mode": "offline_fixture",
+      "package": "experiment_packages/dht11_temperature_humidity",
+      "source_mode": "controlled_test",
+      "fixture_cases": [
+        {
+          "id": "fixture.sensor.failure",
+          "experimentType": "dht11_temperature_humidity",
+          "errorType": "SENSOR_READ_FAILED",
+          "symptom": "合成读取失败记录，不确认根因。",
+          "normalState": {
+            "note": "合成正常条件，仅供软件回归"
+          },
+          "evidence": [],
+          "possibleCauses": [
+            "software.gpio_mismatch"
+          ],
+          "solutionSteps": [],
+          "teacherNotes": "这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。",
+          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseStatus": "confirmed",
+          "sourceType": "controlled_test",
+          "factsLocked": true,
+          "qualityCheckPassed": true,
+          "reviewStatus": "approved",
+          "sourceRef": "offline_fixture:package_context_inputs",
+          "version": "fixture-1",
+          "isTestData": true,
+          "solutionRecord": {
+            "confirmation_material": {
+              "method": "controlled_test",
+              "finding": "独立软件夹具，不是教师或硬件确认。",
+              "applicability_limits": "仅用于合成回归场景；不能据此确认本次根因。",
+              "recovery_diagnosis_id": "00000000-0000-0000-0000-000000000001"
+            }
+          }
+        }
+      ],
+      "error_type": "SENSOR_READ_FAILED",
+      "component_ids": [
+        "dht11"
+      ],
+      "candidates": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "evidence_refs": [
+            "fixture-evidence-1"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "id": "fixture-evidence-1",
+          "fact": "合成读取失败事件。"
+        }
+      ],
+      "allowed_actions": [
+        {
+          "cause_id": "software.gpio_mismatch",
+          "hint_level": 1
+        }
+      ],
+      "stages": [
+        "reasoning",
+        "explanation"
+      ],
+      "budgets": {}
+    }
+  ]
+}

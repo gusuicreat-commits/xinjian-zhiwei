@@ -76,8 +76,13 @@ def main() -> None:
             values["root_cause_status"] = "confirmed"
             values["confirmed_by"] = "verification-teacher"
             values["facts"] = {"source_ids": ["verification-evidence"]}
-            values["solution_record"] = {"steps": values["solution_steps"]}
-            values["source_type"] = "real_experiment"
+            values["solution_record"] = {
+                "steps": values["solution_steps"],
+                "confirmation_material": {
+                    "applicability_limits": "仅为离线软件验收夹具，不代表真实实验或教师经验。",
+                },
+            }
+            values["source_type"] = "controlled_test"
             values["facts_locked"] = True
             values["quality_check_passed"] = True
             db.add(KnowledgeCase(**values))

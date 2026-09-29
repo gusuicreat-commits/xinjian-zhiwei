@@ -50,7 +50,7 @@ def test_selection_is_explicit_scoped_and_does_not_create_actions():
     bundle, _ = load_experiment_package_payload(documents())
     result = select(bundle)
     assert [c["concept_id"] for c in result["concepts"]] == ["dht11.single_bus"]
-    assert [s["step_id"] for s in result["steps"]] == ["connect"]
+    assert [s["step_id"] for s in result["steps"]] == ["identify", "connect"]
     assert "actions" not in result
     for overrides in (
         {"tree_id": "foreign"},
@@ -114,7 +114,7 @@ def test_reference_steps_follow_dependencies_but_are_not_executed():
     docs["teaching/steps.yaml"]["bindings"][0]["step_ids"] = ["configure", "connect"]
     bundle, _ = load_experiment_package_payload(docs)
     result = select(bundle)
-    assert [s["step_id"] for s in result["steps"]] == ["connect", "configure"]
+    assert [s["step_id"] for s in result["steps"]] == ["identify", "connect", "configure"]
     assert "completed" not in str(result)
 
 
@@ -182,6 +182,12 @@ def test_http_guidance_snapshot_survives_feedback_and_all_ai_modes(mode):
         assert materials and any(m["status"] == "available" for m in materials)
         assert all(m["package_version"] == dht11_package_version() for m in materials)
         assert all(m["is_test_data"] for m in materials)
+        for material in materials:
+            if material["status"] == "available":
+                assert material["steps"][0]["step_id"] == "identify"
+                assert "dht11.protocol_evidence" in [
+                    c["concept_id"] for c in material["concepts"]
+                ]
         request = {"request_id": str(uuid4()), "action": "unresolved"}
         path = f"/api/v1/student/diagnoses/{workflow['diagnosis_result_id']}/feedback"
         for _ in range(2):
@@ -209,7 +215,8 @@ def test_new_release_does_not_rewrite_guidance_and_revocation_stops_display():
         with env.sessions() as db:
             old = db.get(ExperimentVersion, env.versions[env.package])
             docs = deepcopy(old.package_content)
-            docs["metadata.yaml"]["package"]["version"] = "2.0.6"
+            major, minor, patch = old.version.split(".")
+            docs["metadata.yaml"]["package"]["version"] = f"{major}.{minor}.{int(patch) + 1}"
             docs["knowledge/concepts.yaml"]["concepts"][0]["description"] = "新版资料不能覆盖旧诊断"
             actor = db.scalar(select(User).where(User.username == "synthetic-teacher"))
             _, new = import_experiment_package(db, actor, docs, is_test_data=True)

@@ -1,0 +1,4051 @@
+{
+  "dht11_temperature_humidity": {
+    "raw": {
+      "documents": {
+        "metadata.yaml": {
+          "schema_version": "1.0",
+          "experiment": {
+            "code": "dht11_temperature_humidity",
+            "name": "DHT11 温湿度实验",
+            "category": "sensor",
+            "locale": "zh-CN"
+          },
+          "package": {
+            "version": "2.0.5",
+            "status": "draft"
+          },
+          "compatibility": {
+            "engine": ">=2.1,<3.0",
+            "platforms": [
+              "esp32"
+            ]
+          },
+          "maintainer": {
+            "organization": "芯鉴知微项目组",
+            "author": "项目组（资料未验证，非教师审核）"
+          }
+        },
+        "hardware.yaml": {
+          "hardware": {
+            "family": "esp32",
+            "board_model": "esp32-devkitc-v4-wroom-32e",
+            "components": [
+              {
+                "id": "dht11",
+                "kind": "temperature_humidity_sensor",
+                "model": "dht11",
+                "metadata": {
+                  "verification_status": "pending_hardware",
+                  "source_type": "project_design",
+                  "is_test_data": true,
+                  "package_form": "bare_4pin",
+                  "supply_voltage_v": 3.3,
+                  "external_pullup_ohm": 4700
+                }
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "id": "dht11_gpio",
+              "type": "gpio",
+              "component_ids": [
+                "dht11"
+              ],
+              "pins": {
+                "data": 4
+              },
+              "parameters": {
+                "mode": "input_with_external_pullup",
+                "minimum_interval_ms": 2000,
+                "configured_sample_interval_ms": 3000,
+                "verification_status": "pending_hardware"
+              }
+            }
+          ],
+          "connections": [
+            {
+              "component": "dht11",
+              "signal": "DATA",
+              "target": "GPIO4"
+            }
+          ],
+          "evidence_mapping": [
+            {
+              "source": {
+                "type": "device_error_code",
+                "value": "DHT11_READ_FAILED"
+              },
+              "evidence_type": "sensor.read_failed"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "temperature"
+              },
+              "evidence_type": "observation.temperature"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "humidity"
+              },
+              "evidence_type": "observation.humidity"
+            }
+          ],
+          "normalization": {
+            "adapter": "mapping",
+            "mappings": [
+              {
+                "id": "dht11-read-failed",
+                "match": {
+                  "error_code": "DHT11_READ_FAILED"
+                },
+                "output": "event",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "event_type": "sensor.read_failed",
+                "timestamp_field": "timestamp",
+                "default_status": "error"
+              },
+              {
+                "id": "dht11-temperature",
+                "match": {
+                  "sensor": "dht11",
+                  "metric": "temperature"
+                },
+                "output": "observation",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "metric": "temperature",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              },
+              {
+                "id": "dht11-humidity",
+                "match": {
+                  "sensor": "dht11",
+                  "metric": "humidity"
+                },
+                "output": "observation",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "metric": "humidity",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              }
+            ]
+          },
+          "required_parameters": {
+            "data_pin": 4,
+            "sensor_type": "DHT11",
+            "minimum_interval_ms": 2000,
+            "verification_status": "pending_hardware",
+            "notes": "采用 ESP32-DevKitC V4/WROOM-32E、四针裸 DHT11、3.3V、4.7kΩ 外部上拉、3 秒采样的项目设计候选；硬件购买和实测前仍不得升级为 verified。",
+            "consecutive_failure_threshold": null,
+            "consecutive_failure_status": "pending_hardware",
+            "truth_status": {
+              "final_gpio": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:interfaces.pins",
+                "required_confirmation": "实物型号、原理图和接线核验；当前 GPIO 仅是示例"
+              },
+              "heartbeat_period": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations",
+                "required_confirmation": "实测发送周期与课程容差；90 秒是当前监测时限，不是发送周期"
+              },
+              "reading_period_and_timeout": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations.required_observations",
+                "required_confirmation": "真实采样周期、时间戳与允许间隔；未确认前 maximum_age_seconds 留空"
+              },
+              "teacher_experience": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:teacherNotes",
+                "required_confirmation": "教师本人提供可追溯依据并审核；没有材料时保持 null"
+              },
+              "real_student_cases": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:facts",
+                "required_confirmation": "真实课堂记录、原始证据、实际修复动作和教师审核；不得把合成案例改名充当真实案例"
+              },
+              "teaching_acceptance": {
+                "status": "pending_course_confirmation",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml",
+                "required_confirmation": "课程指导书版次、验收要求、允许误差和观察时长"
+              },
+              "teaching_actions_and_escalation": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "teaching/hints.yaml; diagnosis/fault_tree.yaml:escalation",
+                "required_confirmation": "教师确认排查步骤、测量权限和提示升级门槛"
+              },
+              "fault_log_behavior": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:normalization.mappings",
+                "required_confirmation": "逐项真实故障注入及日志；DHT11_READ_FAILED 当前是示例契约"
+              },
+              "failure_threshold": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "diagnosis/rules.yaml:rules[0].conditions[0].value",
+                "required_confirmation": "窗口累计阈值 5 待实测校准；连续失败阈值保持 null，课程同时确认可接受误报"
+              },
+              "fault_distinguishability": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "diagnosis/fault_tree.yaml",
+                "required_confirmation": "对照不同故障的实测证据；同表现保留 unknown / need_verification"
+              }
+            }
+          },
+          "runtime_expectations": {
+            "verification_status": "pending_hardware",
+            "offline_after_seconds": 90,
+            "heartbeat_maximum_age_seconds": 90,
+            "required_observations": [
+              {
+                "component_id": "dht11",
+                "metric": "temperature",
+                "maximum_age_seconds": null
+              },
+              {
+                "component_id": "dht11",
+                "metric": "humidity",
+                "maximum_age_seconds": null
+              }
+            ]
+          }
+        },
+        "diagnosis/rules.yaml": {
+          "version": "2.0.5",
+          "rules": [
+            {
+              "id": "dht11-read-failed-v2",
+              "error_type": "SENSOR_READ_FAILED",
+              "priority": 95,
+              "summary": "DHT11 在诊断窗口内累计读取失败达到配置阈值（非连续失败）",
+              "conditions": [
+                {
+                  "fact": "failure_count_in_window",
+                  "operator": "gte",
+                  "value": 5,
+                  "params": {
+                    "event_type": "sensor.read_failed",
+                    "component_id": "dht11"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "diagnosis/fault_tree.yaml": {
+          "version": "2.0.5",
+          "trees": [
+            {
+              "id": "dht11-read-failure-v2",
+              "title": "DHT11 窗口累计读取失败",
+              "status": "placeholder",
+              "continuity_window_seconds": 3600,
+              "trigger": [
+                {
+                  "fact": "diagnosis_error_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "weight": 20,
+                  "description": "规则确认窗口累计失败达到配置阈值，根因未验证",
+                  "params": {
+                    "error_type": "SENSOR_READ_FAILED"
+                  }
+                }
+              ],
+              "escalation": [
+                {
+                  "level": 1,
+                  "min_failure_count": 1,
+                  "min_duration_seconds": 0
+                },
+                {
+                  "level": 2,
+                  "min_failure_count": 3,
+                  "min_duration_seconds": 300
+                },
+                {
+                  "level": 3,
+                  "min_failure_count": 6,
+                  "min_duration_seconds": 900
+                },
+                {
+                  "level": 4,
+                  "min_failure_count": 10,
+                  "min_duration_seconds": 1800
+                }
+              ],
+              "causes": [
+                {
+                  "id": "wiring.data_pin_mismatch",
+                  "title": "数据线接错或接触不良",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "先观察传感器供电和数据线是否松动。",
+                    "2": "断电后按接线表核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                    "3": "用万用表确认供电，再只运行最小读取程序。",
+                    "4": "保留接线照片和日志，请教师协助检查。"
+                  }
+                },
+                {
+                  "id": "software.gpio_mismatch",
+                  "title": "程序中的 GPIO 或传感器类型配置错误",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "检查代码里的传感器引脚。",
+                    "2": "确认代码使用 GPIO4 且类型为 DHT11。",
+                    "3": "核对上电等待、单总线初始化和 3 秒采样间隔；DHT11 请求不得短于 2 秒。",
+                    "4": "提交代码片段和失败日志，请教师复核。"
+                  }
+                },
+                {
+                  "id": "hardware.sensor_failure",
+                  "title": "传感器本体异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "暂时不要直接判定传感器损坏。",
+                    "2": "先完成接线和软件配置核对。",
+                    "3": "使用已知正常的同型号传感器做对照测试。",
+                    "4": "由教师确认后再更换器件。"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "knowledge/concepts.yaml": {
+          "concepts": [
+            {
+              "concept_id": "dht11.minimum_interval",
+              "description": "Aosong DHT11 要求两次请求至少间隔 2 秒；本项目固件配置为 3 秒采样作为安全工程默认。硬件实测前，该配置仍不等于已验证的课堂周期。",
+              "references": [
+                "hardware.yaml",
+                "teaching/steps.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.single_bus",
+              "description": "四针裸 DHT11 使用单总线 DATA；本项目候选接线为 3.3V、GND、DATA→GPIO4、4.7kΩ 外部上拉，NC 不接。购买的具体模块仍需按实物引脚图复核。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.failure_counts",
+              "description": "failure_count_in_window 是窗口累计失败数；consecutive_failure_count 当前未知，不能从累计次数推导。阈值 5 只是当前规则配置，须用真实序列校准。",
+              "references": [
+                "diagnosis/rules.yaml",
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.protocol_evidence",
+              "description": "心跳、温度/湿度读数和读取失败日志是不同类型的设备记录；平台收到记录不等于已经独立测量或确认了物理状态。DHT11 读数对应前一次转换，固件会保留这一时间语义。",
+              "references": [
+                "docs/device-protocol.md",
+                "hardware.yaml"
+              ]
+            }
+          ]
+        },
+        "knowledge/cases.yaml": {
+          "cases": [
+            {
+              "id": "dht11.sensor-read-failed.test-data.v2_0_2",
+              "experimentType": "dht11_temperature_humidity",
+              "errorType": "SENSOR_READ_FAILED",
+              "symptom": "测试数据：窗口内累计出现读取失败事件，不能推断连续失败、无读数或具体根因。",
+              "normalState": {
+                "requirements": [
+                  "心跳在配置时限内",
+                  "温度和湿度均有效且按已配置周期到达",
+                  "无异常规则命中"
+                ],
+                "verification_status": "unverified"
+              },
+              "evidence": [
+                {
+                  "evidenceType": "sensor.read_failed",
+                  "description": "窗口内累计出现标准读取失败事件，不代表连续失败"
+                }
+              ],
+              "possibleCauses": [
+                "wiring.data_pin_mismatch",
+                "software.gpio_mismatch",
+                "hardware.sensor_failure"
+              ],
+              "solutionSteps": [
+                "断电后核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                "核对代码中的 GPIO、DHT11 类型和采样间隔。",
+                "仍失败时用已知正常传感器做对照测试。"
+              ],
+              "teacherNotes": null,
+              "rootCauseValue": null,
+              "rootCauseStatus": "unknown",
+              "confirmedBy": null,
+              "confirmedAt": null,
+              "sourceType": "test_data",
+              "factsLocked": false,
+              "qualityCheckPassed": false,
+              "reviewStatus": "draft",
+              "sourceRef": "experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml",
+              "version": "2.0.5",
+              "isTestData": true,
+              "facts": {
+                "verification_status": "unverified",
+                "hardware_status": "pending_hardware",
+                "source_type": "test_data",
+                "note": "合成示例，不是真实教师经验或学生案例。",
+                "teacher_status": "pending_teacher",
+                "student_case_status": "pending_teacher",
+                "course_status": "pending_course_confirmation"
+              }
+            }
+          ]
+        },
+        "teaching/steps.yaml": {
+          "steps": [
+            {
+              "step_id": "connect",
+              "title": "按接线表连接 DHT11",
+              "expected_state": "按四针裸 DHT11 引脚图连接 3.3V、GND、DATA→GPIO4，DATA 外接 4.7kΩ 上拉，NC 不接；购买后仍需以实物引脚图复核。"
+            },
+            {
+              "step_id": "configure",
+              "title": "配置代码",
+              "expected_state": "使用统一固件配置和设备协议 V1；固件以 3 秒采样、至少 2 秒 DHT11 请求间隔、测试标记和会话 ID 运行。"
+            },
+            {
+              "step_id": "observe",
+              "title": "观察串口数据",
+              "expected_state": "只有真实驱动返回有效读数时才记录温度和湿度；没有读数时保持 unknown，不生成合成值。"
+            },
+            {
+              "step_id": "identify",
+              "title": "回看设备身份和实验版本",
+              "expected_state": "设备 ID、固件版本、实验包版本和测试标记可追溯；这些信息不代表硬件已经正常。"
+            }
+          ],
+          "expected_behaviors": [],
+          "bindings": [
+            {
+              "tree_id": "dht11-read-failure-v2",
+              "cause_id": "wiring.data_pin_mismatch",
+              "component_id": "dht11",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "dht11.single_bus"
+              ],
+              "step_ids": [
+                "connect"
+              ]
+            },
+            {
+              "tree_id": "dht11-read-failure-v2",
+              "cause_id": "software.gpio_mismatch",
+              "component_id": "dht11",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "dht11.minimum_interval"
+              ],
+              "step_ids": [
+                "configure"
+              ]
+            },
+            {
+              "tree_id": "dht11-read-failure-v2",
+              "cause_id": "hardware.sensor_failure",
+              "component_id": "dht11",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "dht11.failure_counts",
+                "dht11.single_bus"
+              ],
+              "step_ids": [
+                "observe"
+              ]
+            }
+          ]
+        },
+        "teaching/hints.yaml": {
+          "hints": [
+            {
+              "cause_id": "wiring.data_pin_mismatch",
+              "levels": {
+                "1": "检查连线是否松动。",
+                "2": "断电后逐项核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                "3": "通电测量 VCC-GND，再运行最小读取程序并保留连续日志。",
+                "4": "保留现场并请求教师帮助。"
+              }
+            },
+            {
+              "cause_id": "software.gpio_mismatch",
+              "levels": {
+                "1": "检查代码引脚。",
+                "2": "核对 GPIO4 和 DHT11 类型。",
+                "3": "核对上电等待、单总线初始化和 3 秒采样间隔。",
+                "4": "提交代码请教师复核。"
+              }
+            },
+            {
+              "cause_id": "hardware.sensor_failure",
+              "levels": {
+                "1": "先不要判定器件损坏。",
+                "2": "排除接线和配置。",
+                "3": "做同型号器件对照测试。",
+                "4": "由教师确认更换。"
+              }
+            }
+          ]
+        },
+        "tests/normal_cases.yaml": {
+          "cases": [
+            {
+              "name": "零累计失败仅表示该异常未命中",
+              "facts": {
+                "failure_count_in_window": 0
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            },
+            {
+              "name": "低于阈值的累计失败仍不触发异常",
+              "facts": {
+                "failure_count_in_window": 4
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            }
+          ]
+        },
+        "tests/fault_cases.yaml": {
+          "cases": [
+            {
+              "name": "窗口累计失败触发读取异常",
+              "facts": {
+                "failure_count_in_window": 5
+              },
+              "expected": {
+                "error_type": "SENSOR_READ_FAILED",
+                "candidate_causes": [
+                  "wiring.data_pin_mismatch",
+                  "software.gpio_mismatch",
+                  "hardware.sensor_failure"
+                ]
+              }
+            },
+            {
+              "name": "更高累计失败仍不等于连续失败",
+              "facts": {
+                "failure_count_in_window": 20
+              },
+              "expected": {
+                "error_type": "SENSOR_READ_FAILED",
+                "candidate_causes": [
+                  "wiring.data_pin_mismatch",
+                  "software.gpio_mismatch",
+                  "hardware.sensor_failure"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "package_hash": "cb54ca8d9698cfb959e0590d072c2011f425913e8762291aa389d0ea574a85f5",
+      "manifest": {
+        "schema_version": "1.0",
+        "files": [
+          {
+            "path": "metadata.yaml",
+            "sha256": "cc7e2041346c0cbd1cb61b3cdfd07156198750e8760bce64e38f538d5050669f"
+          },
+          {
+            "path": "hardware.yaml",
+            "sha256": "62b8cc4294e63a8a68769834d114b2f0627a8cecbe23bd4f560640f991b6262a"
+          },
+          {
+            "path": "diagnosis/rules.yaml",
+            "sha256": "ce25cefcc28b91bef1783f4f7362582c271dfeb52935ad4154dc5d131ca994cb"
+          },
+          {
+            "path": "diagnosis/fault_tree.yaml",
+            "sha256": "faaa8881bfc900bebfd68b47819d129c9b0bf39b79b164c6bbc44d3a2eafddf4"
+          },
+          {
+            "path": "knowledge/concepts.yaml",
+            "sha256": "3dc59af84c309b97bbdc574ff9fcbe76eb9796492c012f7b172405292167b2ea"
+          },
+          {
+            "path": "knowledge/cases.yaml",
+            "sha256": "07170fbea07fecc948340da33548c472daa8376a47a89d0207e3451c9aaab386"
+          },
+          {
+            "path": "teaching/steps.yaml",
+            "sha256": "276482086458c3d27dfb3cf58136658c2e60ff6016ed2acd4dabf7457c75676f"
+          },
+          {
+            "path": "teaching/hints.yaml",
+            "sha256": "978916bd061570041909401bf871fc76ffb1cdf29d8ba0917f1fd81d7d70640b"
+          },
+          {
+            "path": "tests/normal_cases.yaml",
+            "sha256": "42da5448df3eceee00198b1311d07f6dacbf8a71fc2ceefb7c93af07f9d81231"
+          },
+          {
+            "path": "tests/fault_cases.yaml",
+            "sha256": "89686fee21433edc8a228aa0645082e033361c9b85692e9d3a42167b5cc14bef"
+          }
+        ],
+        "package_hash": "cb54ca8d9698cfb959e0590d072c2011f425913e8762291aa389d0ea574a85f5"
+      }
+    },
+    "canonical": {
+      "documents": {
+        "metadata.yaml": {
+          "schema_version": "1.0",
+          "experiment": {
+            "code": "dht11_temperature_humidity",
+            "name": "DHT11 温湿度实验",
+            "category": "sensor",
+            "locale": "zh-CN"
+          },
+          "package": {
+            "version": "2.0.5",
+            "status": "draft"
+          },
+          "compatibility": {
+            "engine": ">=2.1,<3.0",
+            "platforms": [
+              "esp32"
+            ]
+          },
+          "maintainer": {
+            "organization": "芯鉴知微项目组",
+            "author": "项目组（资料未验证，非教师审核）"
+          }
+        },
+        "hardware.yaml": {
+          "hardware": {
+            "family": "esp32",
+            "board_model": "esp32-devkitc-v4-wroom-32e",
+            "components": [
+              {
+                "id": "dht11",
+                "kind": "temperature_humidity_sensor",
+                "model": "dht11",
+                "required": true,
+                "metadata": {
+                  "verification_status": "pending_hardware",
+                  "source_type": "project_design",
+                  "is_test_data": true,
+                  "package_form": "bare_4pin",
+                  "supply_voltage_v": 3.3,
+                  "external_pullup_ohm": 4700
+                }
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "id": "dht11_gpio",
+              "type": "gpio",
+              "component_ids": [
+                "dht11"
+              ],
+              "pins": {
+                "data": 4
+              },
+              "parameters": {
+                "mode": "input_with_external_pullup",
+                "minimum_interval_ms": 2000,
+                "configured_sample_interval_ms": 3000,
+                "verification_status": "pending_hardware"
+              }
+            }
+          ],
+          "connections": [
+            {
+              "component": "dht11",
+              "signal": "DATA",
+              "target": "GPIO4"
+            }
+          ],
+          "evidence_mapping": [
+            {
+              "source": {
+                "type": "device_error_code",
+                "value": "DHT11_READ_FAILED"
+              },
+              "evidence_type": "sensor.read_failed"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "temperature"
+              },
+              "evidence_type": "observation.temperature"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "humidity"
+              },
+              "evidence_type": "observation.humidity"
+            }
+          ],
+          "normalization": {
+            "adapter": "mapping",
+            "mappings": [
+              {
+                "id": "dht11-read-failed",
+                "match": {
+                  "error_code": "DHT11_READ_FAILED"
+                },
+                "output": "event",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "metric": null,
+                "metric_field": null,
+                "value_field": null,
+                "status_field": null,
+                "default_status": "error",
+                "event_type": "sensor.read_failed",
+                "event_type_field": null,
+                "timestamp_field": "timestamp"
+              },
+              {
+                "id": "dht11-temperature",
+                "match": {
+                  "sensor": "dht11",
+                  "metric": "temperature"
+                },
+                "output": "observation",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "metric": "temperature",
+                "metric_field": null,
+                "value_field": "value",
+                "status_field": null,
+                "default_status": "normal",
+                "event_type": null,
+                "event_type_field": null,
+                "timestamp_field": "timestamp"
+              },
+              {
+                "id": "dht11-humidity",
+                "match": {
+                  "sensor": "dht11",
+                  "metric": "humidity"
+                },
+                "output": "observation",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "metric": "humidity",
+                "metric_field": null,
+                "value_field": "value",
+                "status_field": null,
+                "default_status": "normal",
+                "event_type": null,
+                "event_type_field": null,
+                "timestamp_field": "timestamp"
+              }
+            ]
+          },
+          "required_parameters": {
+            "data_pin": 4,
+            "sensor_type": "DHT11",
+            "minimum_interval_ms": 2000,
+            "verification_status": "pending_hardware",
+            "notes": "采用 ESP32-DevKitC V4/WROOM-32E、四针裸 DHT11、3.3V、4.7kΩ 外部上拉、3 秒采样的项目设计候选；硬件购买和实测前仍不得升级为 verified。",
+            "consecutive_failure_threshold": null,
+            "consecutive_failure_status": "pending_hardware",
+            "truth_status": {
+              "final_gpio": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:interfaces.pins",
+                "required_confirmation": "实物型号、原理图和接线核验；当前 GPIO 仅是示例"
+              },
+              "heartbeat_period": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations",
+                "required_confirmation": "实测发送周期与课程容差；90 秒是当前监测时限，不是发送周期"
+              },
+              "reading_period_and_timeout": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations.required_observations",
+                "required_confirmation": "真实采样周期、时间戳与允许间隔；未确认前 maximum_age_seconds 留空"
+              },
+              "teacher_experience": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:teacherNotes",
+                "required_confirmation": "教师本人提供可追溯依据并审核；没有材料时保持 null"
+              },
+              "real_student_cases": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:facts",
+                "required_confirmation": "真实课堂记录、原始证据、实际修复动作和教师审核；不得把合成案例改名充当真实案例"
+              },
+              "teaching_acceptance": {
+                "status": "pending_course_confirmation",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml",
+                "required_confirmation": "课程指导书版次、验收要求、允许误差和观察时长"
+              },
+              "teaching_actions_and_escalation": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "teaching/hints.yaml; diagnosis/fault_tree.yaml:escalation",
+                "required_confirmation": "教师确认排查步骤、测量权限和提示升级门槛"
+              },
+              "fault_log_behavior": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:normalization.mappings",
+                "required_confirmation": "逐项真实故障注入及日志；DHT11_READ_FAILED 当前是示例契约"
+              },
+              "failure_threshold": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "diagnosis/rules.yaml:rules[0].conditions[0].value",
+                "required_confirmation": "窗口累计阈值 5 待实测校准；连续失败阈值保持 null，课程同时确认可接受误报"
+              },
+              "fault_distinguishability": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "diagnosis/fault_tree.yaml",
+                "required_confirmation": "对照不同故障的实测证据；同表现保留 unknown / need_verification"
+              }
+            }
+          },
+          "runtime_expectations": {
+            "verification_status": "pending_hardware",
+            "offline_after_seconds": 90.0,
+            "heartbeat_maximum_age_seconds": 90.0,
+            "required_observations": [
+              {
+                "component_id": "dht11",
+                "metric": "temperature",
+                "maximum_age_seconds": null,
+                "allowed_values": null,
+                "unit": null
+              },
+              {
+                "component_id": "dht11",
+                "metric": "humidity",
+                "maximum_age_seconds": null,
+                "allowed_values": null,
+                "unit": null
+              }
+            ]
+          }
+        },
+        "diagnosis/rules.yaml": {
+          "version": "2.0.5",
+          "rules": [
+            {
+              "id": "dht11-read-failed-v2",
+              "error_type": "SENSOR_READ_FAILED",
+              "priority": 95,
+              "enabled": true,
+              "summary": "DHT11 在诊断窗口内累计读取失败达到配置阈值（非连续失败）",
+              "conditions": [
+                {
+                  "fact": "failure_count_in_window",
+                  "operator": "gte",
+                  "value": 5,
+                  "params": {
+                    "event_type": "sensor.read_failed",
+                    "component_id": "dht11"
+                  }
+                }
+              ],
+              "source_id": "legacy",
+              "source_path": null,
+              "source_version": "1",
+              "scope": {
+                "kind": "common",
+                "keys": []
+              }
+            }
+          ]
+        },
+        "diagnosis/fault_tree.yaml": {
+          "version": "2.0.5",
+          "trees": [
+            {
+              "id": "dht11-read-failure-v2",
+              "title": "DHT11 窗口累计读取失败",
+              "status": "placeholder",
+              "enabled": true,
+              "continuity_window_seconds": 3600,
+              "trigger": [
+                {
+                  "fact": "diagnosis_error_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "weight": 20,
+                  "description": "规则确认窗口累计失败达到配置阈值，根因未验证",
+                  "params": {
+                    "error_type": "SENSOR_READ_FAILED"
+                  }
+                }
+              ],
+              "causes": [
+                {
+                  "id": "wiring.data_pin_mismatch",
+                  "title": "数据线接错或接触不良",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "先观察传感器供电和数据线是否松动。",
+                    "2": "断电后按接线表核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                    "3": "用万用表确认供电，再只运行最小读取程序。",
+                    "4": "保留接线照片和日志，请教师协助检查。"
+                  }
+                },
+                {
+                  "id": "software.gpio_mismatch",
+                  "title": "程序中的 GPIO 或传感器类型配置错误",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "检查代码里的传感器引脚。",
+                    "2": "确认代码使用 GPIO4 且类型为 DHT11。",
+                    "3": "核对上电等待、单总线初始化和 3 秒采样间隔；DHT11 请求不得短于 2 秒。",
+                    "4": "提交代码片段和失败日志，请教师复核。"
+                  }
+                },
+                {
+                  "id": "hardware.sensor_failure",
+                  "title": "传感器本体异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "暂时不要直接判定传感器损坏。",
+                    "2": "先完成接线和软件配置核对。",
+                    "3": "使用已知正常的同型号传感器做对照测试。",
+                    "4": "由教师确认后再更换器件。"
+                  }
+                }
+              ],
+              "escalation": [
+                {
+                  "level": 1,
+                  "min_failure_count": 1,
+                  "min_duration_seconds": 0
+                },
+                {
+                  "level": 2,
+                  "min_failure_count": 3,
+                  "min_duration_seconds": 300
+                },
+                {
+                  "level": 3,
+                  "min_failure_count": 6,
+                  "min_duration_seconds": 900
+                },
+                {
+                  "level": 4,
+                  "min_failure_count": 10,
+                  "min_duration_seconds": 1800
+                }
+              ],
+              "source_id": "legacy",
+              "source_path": null,
+              "source_version": "1",
+              "scope": {
+                "kind": "common",
+                "keys": []
+              }
+            }
+          ]
+        },
+        "knowledge/concepts.yaml": {
+          "concepts": [
+            {
+              "concept_id": "dht11.minimum_interval",
+              "description": "Aosong DHT11 要求两次请求至少间隔 2 秒；本项目固件配置为 3 秒采样作为安全工程默认。硬件实测前，该配置仍不等于已验证的课堂周期。",
+              "references": [
+                "hardware.yaml",
+                "teaching/steps.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.single_bus",
+              "description": "四针裸 DHT11 使用单总线 DATA；本项目候选接线为 3.3V、GND、DATA→GPIO4、4.7kΩ 外部上拉，NC 不接。购买的具体模块仍需按实物引脚图复核。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.failure_counts",
+              "description": "failure_count_in_window 是窗口累计失败数；consecutive_failure_count 当前未知，不能从累计次数推导。阈值 5 只是当前规则配置，须用真实序列校准。",
+              "references": [
+                "diagnosis/rules.yaml",
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.protocol_evidence",
+              "description": "心跳、温度/湿度读数和读取失败日志是不同类型的设备记录；平台收到记录不等于已经独立测量或确认了物理状态。DHT11 读数对应前一次转换，固件会保留这一时间语义。",
+              "references": [
+                "docs/device-protocol.md",
+                "hardware.yaml"
+              ]
+            }
+          ]
+        },
+        "knowledge/cases.yaml": {
+          "cases": [
+            {
+              "id": "dht11.sensor-read-failed.test-data.v2_0_2",
+              "experimentType": "dht11_temperature_humidity",
+              "errorType": "SENSOR_READ_FAILED",
+              "symptom": "测试数据：窗口内累计出现读取失败事件，不能推断连续失败、无读数或具体根因。",
+              "normalState": {
+                "requirements": [
+                  "心跳在配置时限内",
+                  "温度和湿度均有效且按已配置周期到达",
+                  "无异常规则命中"
+                ],
+                "verification_status": "unverified"
+              },
+              "evidence": [
+                {
+                  "evidenceType": "sensor.read_failed",
+                  "description": "窗口内累计出现标准读取失败事件，不代表连续失败"
+                }
+              ],
+              "possibleCauses": [
+                "wiring.data_pin_mismatch",
+                "software.gpio_mismatch",
+                "hardware.sensor_failure"
+              ],
+              "solutionSteps": [
+                "断电后核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                "核对代码中的 GPIO、DHT11 类型和采样间隔。",
+                "仍失败时用已知正常传感器做对照测试。"
+              ],
+              "teacherNotes": null,
+              "facts": {
+                "verification_status": "unverified",
+                "hardware_status": "pending_hardware",
+                "source_type": "test_data",
+                "note": "合成示例，不是真实教师经验或学生案例。",
+                "teacher_status": "pending_teacher",
+                "student_case_status": "pending_teacher",
+                "course_status": "pending_course_confirmation"
+              },
+              "rootCauseValue": null,
+              "rootCauseStatus": "unknown",
+              "confirmedBy": null,
+              "confirmedAt": null,
+              "solutionRecord": {},
+              "aiGeneratedFields": {},
+              "sourceType": "test_data",
+              "factsLocked": false,
+              "qualityCheckPassed": false,
+              "reviewStatus": "draft",
+              "sourceRef": "experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml",
+              "version": "2.0.5",
+              "isTestData": true
+            }
+          ]
+        },
+        "teaching/steps.yaml": {
+          "steps": [
+            {
+              "step_id": "connect",
+              "title": "按接线表连接 DHT11",
+              "expected_state": "按四针裸 DHT11 引脚图连接 3.3V、GND、DATA→GPIO4，DATA 外接 4.7kΩ 上拉，NC 不接；购买后仍需以实物引脚图复核。",
+              "prerequisite_step_ids": []
+            },
+            {
+              "step_id": "configure",
+              "title": "配置代码",
+              "expected_state": "使用统一固件配置和设备协议 V1；固件以 3 秒采样、至少 2 秒 DHT11 请求间隔、测试标记和会话 ID 运行。",
+              "prerequisite_step_ids": []
+            },
+            {
+              "step_id": "observe",
+              "title": "观察串口数据",
+              "expected_state": "只有真实驱动返回有效读数时才记录温度和湿度；没有读数时保持 unknown，不生成合成值。",
+              "prerequisite_step_ids": []
+            },
+            {
+              "step_id": "identify",
+              "title": "回看设备身份和实验版本",
+              "expected_state": "设备 ID、固件版本、实验包版本和测试标记可追溯；这些信息不代表硬件已经正常。",
+              "prerequisite_step_ids": []
+            }
+          ],
+          "expected_behaviors": [],
+          "bindings": [
+            {
+              "tree_id": "dht11-read-failure-v2",
+              "cause_id": "wiring.data_pin_mismatch",
+              "component_id": "dht11",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "dht11.single_bus"
+              ],
+              "step_ids": [
+                "connect"
+              ]
+            },
+            {
+              "tree_id": "dht11-read-failure-v2",
+              "cause_id": "software.gpio_mismatch",
+              "component_id": "dht11",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "dht11.minimum_interval"
+              ],
+              "step_ids": [
+                "configure"
+              ]
+            },
+            {
+              "tree_id": "dht11-read-failure-v2",
+              "cause_id": "hardware.sensor_failure",
+              "component_id": "dht11",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "dht11.failure_counts",
+                "dht11.single_bus"
+              ],
+              "step_ids": [
+                "observe"
+              ]
+            }
+          ]
+        },
+        "teaching/hints.yaml": {
+          "hints": [
+            {
+              "cause_id": "wiring.data_pin_mismatch",
+              "levels": {
+                "1": "检查连线是否松动。",
+                "2": "断电后逐项核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                "3": "通电测量 VCC-GND，再运行最小读取程序并保留连续日志。",
+                "4": "保留现场并请求教师帮助。"
+              }
+            },
+            {
+              "cause_id": "software.gpio_mismatch",
+              "levels": {
+                "1": "检查代码引脚。",
+                "2": "核对 GPIO4 和 DHT11 类型。",
+                "3": "核对上电等待、单总线初始化和 3 秒采样间隔。",
+                "4": "提交代码请教师复核。"
+              }
+            },
+            {
+              "cause_id": "hardware.sensor_failure",
+              "levels": {
+                "1": "先不要判定器件损坏。",
+                "2": "排除接线和配置。",
+                "3": "做同型号器件对照测试。",
+                "4": "由教师确认更换。"
+              }
+            }
+          ]
+        },
+        "tests/normal_cases.yaml": {
+          "cases": [
+            {
+              "name": "零累计失败仅表示该异常未命中",
+              "facts": {
+                "failure_count_in_window": 0
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            },
+            {
+              "name": "低于阈值的累计失败仍不触发异常",
+              "facts": {
+                "failure_count_in_window": 4
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            }
+          ]
+        },
+        "tests/fault_cases.yaml": {
+          "cases": [
+            {
+              "name": "窗口累计失败触发读取异常",
+              "facts": {
+                "failure_count_in_window": 5
+              },
+              "expected": {
+                "error_type": "SENSOR_READ_FAILED",
+                "candidate_causes": [
+                  "wiring.data_pin_mismatch",
+                  "software.gpio_mismatch",
+                  "hardware.sensor_failure"
+                ]
+              }
+            },
+            {
+              "name": "更高累计失败仍不等于连续失败",
+              "facts": {
+                "failure_count_in_window": 20
+              },
+              "expected": {
+                "error_type": "SENSOR_READ_FAILED",
+                "candidate_causes": [
+                  "wiring.data_pin_mismatch",
+                  "software.gpio_mismatch",
+                  "hardware.sensor_failure"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "package_hash": "ada002d4e37887d6cc4339f29259b549855892055de121be1ed1fc06049d9a20",
+      "manifest": {
+        "schema_version": "1.0",
+        "files": [
+          {
+            "path": "metadata.yaml",
+            "sha256": "cc7e2041346c0cbd1cb61b3cdfd07156198750e8760bce64e38f538d5050669f"
+          },
+          {
+            "path": "hardware.yaml",
+            "sha256": "e9caa369b3c728355a21232c6861639f8874f587a3f4350f633fc8d4745fe0d2"
+          },
+          {
+            "path": "diagnosis/rules.yaml",
+            "sha256": "053f100f09af54157e0b8ad1a86076962bd4f237043f146af61287db4698fa99"
+          },
+          {
+            "path": "diagnosis/fault_tree.yaml",
+            "sha256": "f99eb5011fba9e9fbff737430a320ee9d93539710c48c7e1828e3fcea5cafeec"
+          },
+          {
+            "path": "knowledge/concepts.yaml",
+            "sha256": "3dc59af84c309b97bbdc574ff9fcbe76eb9796492c012f7b172405292167b2ea"
+          },
+          {
+            "path": "knowledge/cases.yaml",
+            "sha256": "5fd582ace49cfd6bb1f8bca505006a0aa3633b14bda5c9b3a8dfccc58e45d24a"
+          },
+          {
+            "path": "teaching/steps.yaml",
+            "sha256": "6bac3f96afc504428610133f69b5d52fd713184d052f2e8be06ed3cf5db55bed"
+          },
+          {
+            "path": "teaching/hints.yaml",
+            "sha256": "978916bd061570041909401bf871fc76ffb1cdf29d8ba0917f1fd81d7d70640b"
+          },
+          {
+            "path": "tests/normal_cases.yaml",
+            "sha256": "42da5448df3eceee00198b1311d07f6dacbf8a71fc2ceefb7c93af07f9d81231"
+          },
+          {
+            "path": "tests/fault_cases.yaml",
+            "sha256": "89686fee21433edc8a228aa0645082e033361c9b85692e9d3a42167b5cc14bef"
+          }
+        ],
+        "package_hash": "ada002d4e37887d6cc4339f29259b549855892055de121be1ed1fc06049d9a20"
+      }
+    },
+    "missing_optional": {
+      "documents": {
+        "metadata.yaml": {
+          "schema_version": "1.0",
+          "experiment": {
+            "code": "dht11_temperature_humidity",
+            "name": "DHT11 温湿度实验",
+            "category": "sensor",
+            "locale": "zh-CN"
+          },
+          "package": {
+            "version": "2.0.5",
+            "status": "draft"
+          },
+          "compatibility": {
+            "engine": ">=2.1,<3.0",
+            "platforms": [
+              "esp32"
+            ]
+          },
+          "maintainer": {
+            "organization": "芯鉴知微项目组",
+            "author": "项目组（资料未验证，非教师审核）"
+          }
+        },
+        "hardware.yaml": {
+          "hardware": {
+            "family": "esp32",
+            "board_model": "esp32-devkitc-v4-wroom-32e",
+            "components": [
+              {
+                "id": "dht11",
+                "kind": "temperature_humidity_sensor",
+                "model": "dht11",
+                "metadata": {
+                  "verification_status": "pending_hardware",
+                  "source_type": "project_design",
+                  "is_test_data": true,
+                  "package_form": "bare_4pin",
+                  "supply_voltage_v": 3.3,
+                  "external_pullup_ohm": 4700
+                }
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "id": "dht11_gpio",
+              "type": "gpio",
+              "component_ids": [
+                "dht11"
+              ],
+              "pins": {
+                "data": 4
+              },
+              "parameters": {
+                "mode": "input_with_external_pullup",
+                "minimum_interval_ms": 2000,
+                "configured_sample_interval_ms": 3000,
+                "verification_status": "pending_hardware"
+              }
+            }
+          ],
+          "connections": [
+            {
+              "component": "dht11",
+              "signal": "DATA",
+              "target": "GPIO4"
+            }
+          ],
+          "evidence_mapping": [
+            {
+              "source": {
+                "type": "device_error_code",
+                "value": "DHT11_READ_FAILED"
+              },
+              "evidence_type": "sensor.read_failed"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "temperature"
+              },
+              "evidence_type": "observation.temperature"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "humidity"
+              },
+              "evidence_type": "observation.humidity"
+            }
+          ],
+          "normalization": {
+            "adapter": "mapping",
+            "mappings": [
+              {
+                "id": "dht11-read-failed",
+                "match": {
+                  "error_code": "DHT11_READ_FAILED"
+                },
+                "output": "event",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "event_type": "sensor.read_failed",
+                "timestamp_field": "timestamp",
+                "default_status": "error"
+              },
+              {
+                "id": "dht11-temperature",
+                "match": {
+                  "sensor": "dht11",
+                  "metric": "temperature"
+                },
+                "output": "observation",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "metric": "temperature",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              },
+              {
+                "id": "dht11-humidity",
+                "match": {
+                  "sensor": "dht11",
+                  "metric": "humidity"
+                },
+                "output": "observation",
+                "component_id": "dht11",
+                "interface_id": "dht11_gpio",
+                "metric": "humidity",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              }
+            ]
+          },
+          "required_parameters": {
+            "data_pin": 4,
+            "sensor_type": "DHT11",
+            "minimum_interval_ms": 2000,
+            "verification_status": "pending_hardware",
+            "notes": "采用 ESP32-DevKitC V4/WROOM-32E、四针裸 DHT11、3.3V、4.7kΩ 外部上拉、3 秒采样的项目设计候选；硬件购买和实测前仍不得升级为 verified。",
+            "consecutive_failure_threshold": null,
+            "consecutive_failure_status": "pending_hardware",
+            "truth_status": {
+              "final_gpio": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:interfaces.pins",
+                "required_confirmation": "实物型号、原理图和接线核验；当前 GPIO 仅是示例"
+              },
+              "heartbeat_period": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations",
+                "required_confirmation": "实测发送周期与课程容差；90 秒是当前监测时限，不是发送周期"
+              },
+              "reading_period_and_timeout": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations.required_observations",
+                "required_confirmation": "真实采样周期、时间戳与允许间隔；未确认前 maximum_age_seconds 留空"
+              },
+              "teacher_experience": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:teacherNotes",
+                "required_confirmation": "教师本人提供可追溯依据并审核；没有材料时保持 null"
+              },
+              "real_student_cases": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:facts",
+                "required_confirmation": "真实课堂记录、原始证据、实际修复动作和教师审核；不得把合成案例改名充当真实案例"
+              },
+              "teaching_acceptance": {
+                "status": "pending_course_confirmation",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml",
+                "required_confirmation": "课程指导书版次、验收要求、允许误差和观察时长"
+              },
+              "teaching_actions_and_escalation": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "teaching/hints.yaml; diagnosis/fault_tree.yaml:escalation",
+                "required_confirmation": "教师确认排查步骤、测量权限和提示升级门槛"
+              },
+              "fault_log_behavior": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:normalization.mappings",
+                "required_confirmation": "逐项真实故障注入及日志；DHT11_READ_FAILED 当前是示例契约"
+              },
+              "failure_threshold": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "diagnosis/rules.yaml:rules[0].conditions[0].value",
+                "required_confirmation": "窗口累计阈值 5 待实测校准；连续失败阈值保持 null，课程同时确认可接受误报"
+              },
+              "fault_distinguishability": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "diagnosis/fault_tree.yaml",
+                "required_confirmation": "对照不同故障的实测证据；同表现保留 unknown / need_verification"
+              }
+            }
+          },
+          "runtime_expectations": {
+            "verification_status": "pending_hardware",
+            "offline_after_seconds": 90,
+            "heartbeat_maximum_age_seconds": 90,
+            "required_observations": [
+              {
+                "component_id": "dht11",
+                "metric": "temperature",
+                "maximum_age_seconds": null
+              },
+              {
+                "component_id": "dht11",
+                "metric": "humidity",
+                "maximum_age_seconds": null
+              }
+            ]
+          }
+        },
+        "diagnosis/rules.yaml": {
+          "version": "2.0.5",
+          "rules": [
+            {
+              "id": "dht11-read-failed-v2",
+              "error_type": "SENSOR_READ_FAILED",
+              "priority": 95,
+              "summary": "DHT11 在诊断窗口内累计读取失败达到配置阈值（非连续失败）",
+              "conditions": [
+                {
+                  "fact": "failure_count_in_window",
+                  "operator": "gte",
+                  "value": 5,
+                  "params": {
+                    "event_type": "sensor.read_failed",
+                    "component_id": "dht11"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "diagnosis/fault_tree.yaml": {
+          "version": "2.0.5",
+          "trees": [
+            {
+              "id": "dht11-read-failure-v2",
+              "title": "DHT11 窗口累计读取失败",
+              "status": "placeholder",
+              "continuity_window_seconds": 3600,
+              "trigger": [
+                {
+                  "fact": "diagnosis_error_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "weight": 20,
+                  "description": "规则确认窗口累计失败达到配置阈值，根因未验证",
+                  "params": {
+                    "error_type": "SENSOR_READ_FAILED"
+                  }
+                }
+              ],
+              "escalation": [
+                {
+                  "level": 1,
+                  "min_failure_count": 1,
+                  "min_duration_seconds": 0
+                },
+                {
+                  "level": 2,
+                  "min_failure_count": 3,
+                  "min_duration_seconds": 300
+                },
+                {
+                  "level": 3,
+                  "min_failure_count": 6,
+                  "min_duration_seconds": 900
+                },
+                {
+                  "level": 4,
+                  "min_failure_count": 10,
+                  "min_duration_seconds": 1800
+                }
+              ],
+              "causes": [
+                {
+                  "id": "wiring.data_pin_mismatch",
+                  "title": "数据线接错或接触不良",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "先观察传感器供电和数据线是否松动。",
+                    "2": "断电后按接线表核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                    "3": "用万用表确认供电，再只运行最小读取程序。",
+                    "4": "保留接线照片和日志，请教师协助检查。"
+                  }
+                },
+                {
+                  "id": "software.gpio_mismatch",
+                  "title": "程序中的 GPIO 或传感器类型配置错误",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "检查代码里的传感器引脚。",
+                    "2": "确认代码使用 GPIO4 且类型为 DHT11。",
+                    "3": "核对上电等待、单总线初始化和 3 秒采样间隔；DHT11 请求不得短于 2 秒。",
+                    "4": "提交代码片段和失败日志，请教师复核。"
+                  }
+                },
+                {
+                  "id": "hardware.sensor_failure",
+                  "title": "传感器本体异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "SENSOR_READ_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "暂时不要直接判定传感器损坏。",
+                    "2": "先完成接线和软件配置核对。",
+                    "3": "使用已知正常的同型号传感器做对照测试。",
+                    "4": "由教师确认后再更换器件。"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "knowledge/concepts.yaml": {
+          "concepts": [
+            {
+              "concept_id": "dht11.minimum_interval",
+              "description": "Aosong DHT11 要求两次请求至少间隔 2 秒；本项目固件配置为 3 秒采样作为安全工程默认。硬件实测前，该配置仍不等于已验证的课堂周期。",
+              "references": [
+                "hardware.yaml",
+                "teaching/steps.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.single_bus",
+              "description": "四针裸 DHT11 使用单总线 DATA；本项目候选接线为 3.3V、GND、DATA→GPIO4、4.7kΩ 外部上拉，NC 不接。购买的具体模块仍需按实物引脚图复核。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.failure_counts",
+              "description": "failure_count_in_window 是窗口累计失败数；consecutive_failure_count 当前未知，不能从累计次数推导。阈值 5 只是当前规则配置，须用真实序列校准。",
+              "references": [
+                "diagnosis/rules.yaml",
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "dht11.protocol_evidence",
+              "description": "心跳、温度/湿度读数和读取失败日志是不同类型的设备记录；平台收到记录不等于已经独立测量或确认了物理状态。DHT11 读数对应前一次转换，固件会保留这一时间语义。",
+              "references": [
+                "docs/device-protocol.md",
+                "hardware.yaml"
+              ]
+            }
+          ]
+        },
+        "knowledge/cases.yaml": {
+          "cases": [
+            {
+              "id": "dht11.sensor-read-failed.test-data.v2_0_2",
+              "experimentType": "dht11_temperature_humidity",
+              "errorType": "SENSOR_READ_FAILED",
+              "symptom": "测试数据：窗口内累计出现读取失败事件，不能推断连续失败、无读数或具体根因。",
+              "normalState": {
+                "requirements": [
+                  "心跳在配置时限内",
+                  "温度和湿度均有效且按已配置周期到达",
+                  "无异常规则命中"
+                ],
+                "verification_status": "unverified"
+              },
+              "evidence": [
+                {
+                  "evidenceType": "sensor.read_failed",
+                  "description": "窗口内累计出现标准读取失败事件，不代表连续失败"
+                }
+              ],
+              "possibleCauses": [
+                "wiring.data_pin_mismatch",
+                "software.gpio_mismatch",
+                "hardware.sensor_failure"
+              ],
+              "solutionSteps": [
+                "断电后核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                "核对代码中的 GPIO、DHT11 类型和采样间隔。",
+                "仍失败时用已知正常传感器做对照测试。"
+              ],
+              "teacherNotes": null,
+              "rootCauseValue": null,
+              "rootCauseStatus": "unknown",
+              "confirmedBy": null,
+              "confirmedAt": null,
+              "sourceType": "test_data",
+              "factsLocked": false,
+              "qualityCheckPassed": false,
+              "reviewStatus": "draft",
+              "sourceRef": "experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml",
+              "version": "2.0.5",
+              "isTestData": true,
+              "facts": {
+                "verification_status": "unverified",
+                "hardware_status": "pending_hardware",
+                "source_type": "test_data",
+                "note": "合成示例，不是真实教师经验或学生案例。",
+                "teacher_status": "pending_teacher",
+                "student_case_status": "pending_teacher",
+                "course_status": "pending_course_confirmation"
+              }
+            }
+          ]
+        },
+        "teaching/steps.yaml": {
+          "steps": [
+            {
+              "step_id": "connect",
+              "title": "按接线表连接 DHT11",
+              "expected_state": "按四针裸 DHT11 引脚图连接 3.3V、GND、DATA→GPIO4，DATA 外接 4.7kΩ 上拉，NC 不接；购买后仍需以实物引脚图复核。"
+            },
+            {
+              "step_id": "configure",
+              "title": "配置代码",
+              "expected_state": "使用统一固件配置和设备协议 V1；固件以 3 秒采样、至少 2 秒 DHT11 请求间隔、测试标记和会话 ID 运行。"
+            },
+            {
+              "step_id": "observe",
+              "title": "观察串口数据",
+              "expected_state": "只有真实驱动返回有效读数时才记录温度和湿度；没有读数时保持 unknown，不生成合成值。"
+            },
+            {
+              "step_id": "identify",
+              "title": "回看设备身份和实验版本",
+              "expected_state": "设备 ID、固件版本、实验包版本和测试标记可追溯；这些信息不代表硬件已经正常。"
+            }
+          ],
+          "expected_behaviors": []
+        },
+        "teaching/hints.yaml": {
+          "hints": [
+            {
+              "cause_id": "wiring.data_pin_mismatch",
+              "levels": {
+                "1": "检查连线是否松动。",
+                "2": "断电后逐项核对 3.3V、GND、DATA→GPIO4 和 4.7kΩ 外部上拉。",
+                "3": "通电测量 VCC-GND，再运行最小读取程序并保留连续日志。",
+                "4": "保留现场并请求教师帮助。"
+              }
+            },
+            {
+              "cause_id": "software.gpio_mismatch",
+              "levels": {
+                "1": "检查代码引脚。",
+                "2": "核对 GPIO4 和 DHT11 类型。",
+                "3": "核对上电等待、单总线初始化和 3 秒采样间隔。",
+                "4": "提交代码请教师复核。"
+              }
+            },
+            {
+              "cause_id": "hardware.sensor_failure",
+              "levels": {
+                "1": "先不要判定器件损坏。",
+                "2": "排除接线和配置。",
+                "3": "做同型号器件对照测试。",
+                "4": "由教师确认更换。"
+              }
+            }
+          ]
+        },
+        "tests/normal_cases.yaml": {
+          "cases": [
+            {
+              "name": "零累计失败仅表示该异常未命中",
+              "facts": {
+                "failure_count_in_window": 0
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            },
+            {
+              "name": "低于阈值的累计失败仍不触发异常",
+              "facts": {
+                "failure_count_in_window": 4
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            }
+          ]
+        },
+        "tests/fault_cases.yaml": {
+          "cases": [
+            {
+              "name": "窗口累计失败触发读取异常",
+              "facts": {
+                "failure_count_in_window": 5
+              },
+              "expected": {
+                "error_type": "SENSOR_READ_FAILED",
+                "candidate_causes": [
+                  "wiring.data_pin_mismatch",
+                  "software.gpio_mismatch",
+                  "hardware.sensor_failure"
+                ]
+              }
+            },
+            {
+              "name": "更高累计失败仍不等于连续失败",
+              "facts": {
+                "failure_count_in_window": 20
+              },
+              "expected": {
+                "error_type": "SENSOR_READ_FAILED",
+                "candidate_causes": [
+                  "wiring.data_pin_mismatch",
+                  "software.gpio_mismatch",
+                  "hardware.sensor_failure"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "package_hash": "8489df1abd3ebce2a80b0d51eea0ae78c91048f509d42f9302232a8750aeccdb",
+      "manifest": {
+        "schema_version": "1.0",
+        "files": [
+          {
+            "path": "metadata.yaml",
+            "sha256": "cc7e2041346c0cbd1cb61b3cdfd07156198750e8760bce64e38f538d5050669f"
+          },
+          {
+            "path": "hardware.yaml",
+            "sha256": "62b8cc4294e63a8a68769834d114b2f0627a8cecbe23bd4f560640f991b6262a"
+          },
+          {
+            "path": "diagnosis/rules.yaml",
+            "sha256": "ce25cefcc28b91bef1783f4f7362582c271dfeb52935ad4154dc5d131ca994cb"
+          },
+          {
+            "path": "diagnosis/fault_tree.yaml",
+            "sha256": "faaa8881bfc900bebfd68b47819d129c9b0bf39b79b164c6bbc44d3a2eafddf4"
+          },
+          {
+            "path": "knowledge/concepts.yaml",
+            "sha256": "3dc59af84c309b97bbdc574ff9fcbe76eb9796492c012f7b172405292167b2ea"
+          },
+          {
+            "path": "knowledge/cases.yaml",
+            "sha256": "07170fbea07fecc948340da33548c472daa8376a47a89d0207e3451c9aaab386"
+          },
+          {
+            "path": "teaching/steps.yaml",
+            "sha256": "8fbac1fd399689bc9fe1400ac9a051d26c3bc2d1abfeddd1a51bbf24984a8735"
+          },
+          {
+            "path": "teaching/hints.yaml",
+            "sha256": "978916bd061570041909401bf871fc76ffb1cdf29d8ba0917f1fd81d7d70640b"
+          },
+          {
+            "path": "tests/normal_cases.yaml",
+            "sha256": "42da5448df3eceee00198b1311d07f6dacbf8a71fc2ceefb7c93af07f9d81231"
+          },
+          {
+            "path": "tests/fault_cases.yaml",
+            "sha256": "89686fee21433edc8a228aa0645082e033361c9b85692e9d3a42167b5cc14bef"
+          }
+        ],
+        "package_hash": "8489df1abd3ebce2a80b0d51eea0ae78c91048f509d42f9302232a8750aeccdb"
+      }
+    }
+  },
+  "gpio_led_output": {
+    "raw": {
+      "documents": {
+        "metadata.yaml": {
+          "schema_version": "1.0",
+          "experiment": {
+            "code": "gpio_led_output",
+            "name": "LED 数字输出实验",
+            "category": "actuator",
+            "locale": "zh-CN"
+          },
+          "package": {
+            "version": "2.0.3",
+            "status": "draft"
+          },
+          "compatibility": {
+            "engine": ">=2.1,<3.0",
+            "platforms": [
+              "esp32"
+            ]
+          },
+          "maintainer": {
+            "organization": "芯鉴知微项目组",
+            "author": "项目组（资料未验证，非教师审核）"
+          }
+        },
+        "hardware.yaml": {
+          "hardware": {
+            "family": "esp32",
+            "board_model": "esp32-devkit",
+            "components": [
+              {
+                "id": "status_led",
+                "kind": "digital_output",
+                "model": "led",
+                "metadata": {
+                  "verification_status": "pending_hardware",
+                  "source_type": "project_design",
+                  "is_test_data": true
+                }
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "id": "led_gpio",
+              "type": "gpio",
+              "component_ids": [
+                "status_led"
+              ],
+              "pins": {
+                "output": 2
+              },
+              "parameters": {
+                "mode": "output",
+                "active_level": 1,
+                "verification_status": "pending_hardware"
+              }
+            }
+          ],
+          "connections": [
+            {
+              "component": "status_led",
+              "signal": "ANODE",
+              "target": "GPIO2"
+            }
+          ],
+          "evidence_mapping": [
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "level"
+              },
+              "evidence_type": "observation.level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "gpio_command_level"
+              },
+              "evidence_type": "observation.gpio_command_level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "gpio_actual_level"
+              },
+              "evidence_type": "observation.gpio_actual_level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "led_physically_on"
+              },
+              "evidence_type": "observation.led_physically_on"
+            }
+          ],
+          "normalization": {
+            "adapter": "mapping",
+            "mappings": [
+              {
+                "id": "gpio-level-sample",
+                "match": {
+                  "pin": 2,
+                  "metric": null
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "level",
+                "value_field": "level",
+                "timestamp_field": "timestamp",
+                "default_status": "unknown"
+              },
+              {
+                "id": "gpio-command-level",
+                "match": {
+                  "metric": "gpio_command_level"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "gpio_command_level",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              },
+              {
+                "id": "gpio-actual-level",
+                "match": {
+                  "metric": "gpio_actual_level"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "gpio_actual_level",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              },
+              {
+                "id": "led-physically-on",
+                "match": {
+                  "metric": "led_physically_on"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "led_physically_on",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              }
+            ]
+          },
+          "required_parameters": {
+            "output_pin": 2,
+            "active_level": 1,
+            "verification_status": "pending_hardware",
+            "notes": "引脚、电路、采样参数为未验证示例；不得当作正式接线或教师经验。",
+            "consecutive_failure_threshold": null,
+            "consecutive_failure_status": "pending_hardware",
+            "level_source": "pending_hardware",
+            "LED_PHYSICALLY_ON": "pending_hardware",
+            "truth_status": {
+              "final_gpio": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:interfaces.pins",
+                "required_confirmation": "实物型号、原理图和接线核验；当前 GPIO 仅是示例"
+              },
+              "heartbeat_period": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations",
+                "required_confirmation": "实测发送周期与课程容差；90 秒是当前监测时限，不是发送周期"
+              },
+              "reading_period_and_timeout": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations.required_observations",
+                "required_confirmation": "真实采样周期、时间戳与允许间隔；未确认前 maximum_age_seconds 留空"
+              },
+              "teacher_experience": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:teacherNotes",
+                "required_confirmation": "教师本人提供可追溯依据并审核；没有材料时保持 null"
+              },
+              "real_student_cases": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:facts",
+                "required_confirmation": "真实课堂记录、原始证据、实际修复动作和教师审核；不得把合成案例改名充当真实案例"
+              },
+              "teaching_acceptance": {
+                "status": "pending_course_confirmation",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml",
+                "required_confirmation": "课程指导书版次、验收要求、允许误差和观察时长"
+              },
+              "teaching_actions_and_escalation": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "teaching/hints.yaml; diagnosis/fault_tree.yaml:escalation",
+                "required_confirmation": "教师确认排查步骤、测量权限和提示升级门槛"
+              },
+              "level_source": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:normalization",
+                "required_confirmation": "确认固件变量、引脚采样或仪器来源；不能仅凭来源声明完成硬件验证"
+              },
+              "physical_light": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "knowledge/concepts.yaml:led.physically_on",
+                "required_confirmation": "独立人工/光学观测及采集记录；没有证据时保持 unknown"
+              },
+              "command_response_window": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml:expected_behaviors[0].within_seconds",
+                "required_confirmation": "实测命令与电气观测的响应时延；窗口目前留空"
+              }
+            }
+          },
+          "runtime_expectations": {
+            "verification_status": "pending_hardware",
+            "offline_after_seconds": 90,
+            "heartbeat_maximum_age_seconds": 90,
+            "required_observations": [
+              {
+                "component_id": "status_led",
+                "metric": "gpio_command_level",
+                "maximum_age_seconds": null,
+                "allowed_values": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "component_id": "status_led",
+                "metric": "gpio_actual_level",
+                "maximum_age_seconds": null,
+                "allowed_values": [
+                  0,
+                  1
+                ]
+              }
+            ]
+          }
+        },
+        "diagnosis/rules.yaml": {
+          "version": "2.0.3",
+          "rules": [
+            {
+              "id": "led-output-expectation-v2",
+              "error_type": "GPIO_EXPECTATION_FAILED",
+              "priority": 90,
+              "summary": "有来源与命令关联的 GPIO 电气观测和命令目标不一致（不判断发光）",
+              "conditions": [
+                {
+                  "fact": "expected_behavior_violation_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "params": {
+                    "behavior_id": "led_output_high"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "diagnosis/fault_tree.yaml": {
+          "version": "2.0.3",
+          "trees": [
+            {
+              "id": "led-output-failure-v2",
+              "title": "GPIO 命令与电气观测不一致",
+              "status": "placeholder",
+              "continuity_window_seconds": 3600,
+              "trigger": [
+                {
+                  "fact": "diagnosis_error_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "weight": 25,
+                  "description": "规则只确认 GPIO 电气观测与命令不一致，不确认 LED 发光状态",
+                  "params": {
+                    "error_type": "GPIO_EXPECTATION_FAILED"
+                  }
+                }
+              ],
+              "escalation": [
+                {
+                  "level": 1,
+                  "min_failure_count": 1,
+                  "min_duration_seconds": 0
+                },
+                {
+                  "level": 2,
+                  "min_failure_count": 3,
+                  "min_duration_seconds": 300
+                },
+                {
+                  "level": 3,
+                  "min_failure_count": 6,
+                  "min_duration_seconds": 900
+                },
+                {
+                  "level": 4,
+                  "min_failure_count": 10,
+                  "min_duration_seconds": 1800
+                }
+              ],
+              "causes": [
+                {
+                  "id": "software.output_configuration",
+                  "title": "GPIO 编号、模式或有效电平配置不一致",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "先检查程序使用的 GPIO 编号。",
+                    "2": "核对 示例 GPIO2（pending_hardware）、OUTPUT 模式和有效电平（pending_hardware）。",
+                    "3": "用最小亮灭程序记录 GPIO 的实际高低电平。",
+                    "4": "提交代码和电平记录，请教师协助。"
+                  }
+                },
+                {
+                  "id": "wiring.led_polarity",
+                  "title": "LED 极性、限流电阻或公共地连接异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "检查 LED 和电阻的连接。",
+                    "2": "断电后核对 LED 极性与公共地。",
+                    "3": "逐段测量输出回路并记录结果。",
+                    "4": "停止反复通电并请求教师检查。"
+                  }
+                },
+                {
+                  "id": "hardware.led_failure",
+                  "title": "LED 器件异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "暂不直接认定 LED 损坏。",
+                    "2": "先排除 GPIO 配置和极性问题。",
+                    "3": "用已知正常 LED 做对照测试。",
+                    "4": "由教师确认后更换器件。"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "knowledge/concepts.yaml": {
+          "concepts": [
+            {
+              "concept_id": "led.polarity",
+              "description": "LED 有极性，必须与限流电阻和公共地组成正确回路。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.output_level",
+              "description": "GPIO 必须配置为输出，且有效电平需与实验板电路一致。",
+              "references": [
+                "hardware.yaml",
+                "teaching/steps.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.command_high",
+              "description": "GPIO_COMMAND_HIGH：observation.gpio_command_level=1 仅是设备报告的 HIGH 命令；要求 measurement_source=command。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.actual_level_high",
+              "description": "GPIO_ACTUAL_LEVEL_HIGH：observation.gpio_actual_level=1 是设备报告的电气测量；要求 measurement_source=electrical_measurement，实际采集方法 pending_hardware。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "led.physically_on",
+              "description": "LED_PHYSICALLY_ON：observation.led_physically_on=1 需要 optical_observation 来源；目前没有光学检测，保持 pending_hardware。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.unverified_level",
+              "description": "observation.level 的真实来源未知，level=1 不能推出上述任一已确认物理状态，更不能写成 LED 已亮。",
+              "references": [
+                "hardware.yaml"
+              ]
+            }
+          ]
+        },
+        "knowledge/cases.yaml": {
+          "cases": [
+            {
+              "id": "led.output-failed.test-data.v2_0_2",
+              "experimentType": "gpio_led_output",
+              "errorType": "GPIO_EXPECTATION_FAILED",
+              "symptom": "测试数据：同一命令关联的电气观测与目标值不一致；没有 LED 发光观测。",
+              "normalState": {
+                "requirements": [
+                  "心跳正常",
+                  "命令与电气观测按已配置周期到达且字段有效",
+                  "无异常规则命中"
+                ],
+                "LED_PHYSICALLY_ON": "unknown / pending_hardware"
+              },
+              "evidence": [
+                {
+                  "evidenceType": "observation.gpio_command_level",
+                  "description": "有来源声明的命令目标值"
+                },
+                {
+                  "evidenceType": "observation.gpio_actual_level",
+                  "description": "有电气测量来源声明的引脚观测，不代表发光"
+                }
+              ],
+              "possibleCauses": [
+                "software.output_configuration",
+                "wiring.led_polarity",
+                "hardware.led_failure"
+              ],
+              "solutionSteps": [
+                "核对 示例 GPIO2（pending_hardware）、输出模式与有效电平。",
+                "断电后检查 LED 极性、限流电阻和公共地。",
+                "用最小亮灭程序做对照测试。"
+              ],
+              "teacherNotes": null,
+              "rootCauseValue": null,
+              "rootCauseStatus": "unknown",
+              "confirmedBy": null,
+              "confirmedAt": null,
+              "sourceType": "test_data",
+              "factsLocked": false,
+              "qualityCheckPassed": false,
+              "reviewStatus": "draft",
+              "sourceRef": "experiment_packages/gpio_led_output/knowledge/cases.yaml",
+              "version": "2.0.3",
+              "isTestData": true,
+              "facts": {
+                "verification_status": "unverified",
+                "hardware_status": "pending_hardware",
+                "source_type": "test_data",
+                "note": "合成示例，不是真实教师经验或学生案例。",
+                "teacher_status": "pending_teacher",
+                "student_case_status": "pending_teacher",
+                "course_status": "pending_course_confirmation"
+              }
+            }
+          ]
+        },
+        "teaching/steps.yaml": {
+          "steps": [
+            {
+              "step_id": "connect",
+              "title": "连接 LED 回路",
+              "expected_state": "LED 极性、电阻和公共地连接正确"
+            },
+            {
+              "step_id": "configure",
+              "title": "配置 示例 GPIO2（pending_hardware）",
+              "expected_state": "引脚为输出模式且有效电平待硬件确认"
+            },
+            {
+              "step_id": "observe",
+              "title": "执行亮灭程序",
+              "expected_state": "记录独立人工或光学观察；没有此证据时实际发光状态为 unknown"
+            }
+          ],
+          "expected_behaviors": [
+            {
+              "id": "led_output_high",
+              "description": "同一命令下电气观测与命令值一致；不代表 LED 实际发光",
+              "kind": "state_matches_command",
+              "component_id": "status_led",
+              "interface_id": "led_gpio",
+              "metric": "gpio_actual_level",
+              "command_metric": "gpio_command_level",
+              "within_seconds": null
+            }
+          ],
+          "bindings": [
+            {
+              "tree_id": "led-output-failure-v2",
+              "cause_id": "software.output_configuration",
+              "component_id": "status_led",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "gpio.output_level",
+                "gpio.command_high"
+              ],
+              "step_ids": [
+                "configure"
+              ]
+            },
+            {
+              "tree_id": "led-output-failure-v2",
+              "cause_id": "wiring.led_polarity",
+              "component_id": "status_led",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "led.polarity"
+              ],
+              "step_ids": [
+                "connect"
+              ]
+            },
+            {
+              "tree_id": "led-output-failure-v2",
+              "cause_id": "hardware.led_failure",
+              "component_id": "status_led",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "gpio.actual_level_high",
+                "led.physically_on",
+                "gpio.unverified_level"
+              ],
+              "step_ids": [
+                "observe"
+              ]
+            }
+          ]
+        },
+        "teaching/hints.yaml": {
+          "hints": [
+            {
+              "cause_id": "software.output_configuration",
+              "levels": {
+                "1": "检查程序引脚。",
+                "2": "核对 示例 GPIO2（pending_hardware） 和输出模式。",
+                "3": "运行最小亮灭程序。",
+                "4": "提交代码和电平记录。"
+              }
+            },
+            {
+              "cause_id": "wiring.led_polarity",
+              "levels": {
+                "1": "检查 LED 回路。",
+                "2": "断电核对极性和公共地。",
+                "3": "逐段测量回路。",
+                "4": "停止通电并请求教师检查。"
+              }
+            },
+            {
+              "cause_id": "hardware.led_failure",
+              "levels": {
+                "1": "暂不判定器件损坏。",
+                "2": "先排除配置和接线。",
+                "3": "做已知正常器件对照。",
+                "4": "由教师确认更换。"
+              }
+            }
+          ]
+        },
+        "tests/normal_cases.yaml": {
+          "cases": [
+            {
+              "name": "零预期违背仅表示该规则未命中，不代表正常",
+              "facts": {
+                "expected_behavior_violation_count:led_output_high": 0
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            }
+          ]
+        },
+        "tests/fault_cases.yaml": {
+          "cases": [
+            {
+              "name": "输出状态不一致时触发异常",
+              "facts": {
+                "expected_behavior_violation_count:led_output_high": 1
+              },
+              "expected": {
+                "error_type": "GPIO_EXPECTATION_FAILED",
+                "candidate_causes": [
+                  "software.output_configuration",
+                  "wiring.led_polarity"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "package_hash": "c99c5c569b22b91b0485d0906ac6aaf0a1d746804466abcef997d11c2524b643",
+      "manifest": {
+        "schema_version": "1.0",
+        "files": [
+          {
+            "path": "metadata.yaml",
+            "sha256": "6006320c84cb77114b001e29f4d0479b110fd473849f215e6d128df2f6853346"
+          },
+          {
+            "path": "hardware.yaml",
+            "sha256": "452fd873d1ce5540e7cf63991ce56b68d68456673029325efb90547d86f69093"
+          },
+          {
+            "path": "diagnosis/rules.yaml",
+            "sha256": "7eeb6f5b28d6be4ca99e88cfe6a17426e61b9e5eb3abeaca6689b638c3a75286"
+          },
+          {
+            "path": "diagnosis/fault_tree.yaml",
+            "sha256": "9500a407c5cb184e13fbfe5a2fcef1bf681f4d6ea0ea04e05d84be9b93dc2269"
+          },
+          {
+            "path": "knowledge/concepts.yaml",
+            "sha256": "9e6187bf34f8064f6df271e289a639492a9607cde6f6a88ad97ed362299a6048"
+          },
+          {
+            "path": "knowledge/cases.yaml",
+            "sha256": "f01399092a12b4108a5ea9ca57d523a7fdff7dd6f64033727baeb92299964d05"
+          },
+          {
+            "path": "teaching/steps.yaml",
+            "sha256": "7c5f421cd5ad3768992933996ca19de9be9ce501196a21e1f55e28d7a6aca95d"
+          },
+          {
+            "path": "teaching/hints.yaml",
+            "sha256": "98f7d844f4c3659202e72753eb016f3a560f047f8b590486314ea57c68aa3322"
+          },
+          {
+            "path": "tests/normal_cases.yaml",
+            "sha256": "c392e09b9ab9a3ef1a5da092d198d94d7ccb24be6c28925b35aa7d287a922832"
+          },
+          {
+            "path": "tests/fault_cases.yaml",
+            "sha256": "30505ed5876de5414c7b3d060b7c947337aa6feb1a5cff89f6dc36c973b40395"
+          }
+        ],
+        "package_hash": "c99c5c569b22b91b0485d0906ac6aaf0a1d746804466abcef997d11c2524b643"
+      }
+    },
+    "canonical": {
+      "documents": {
+        "metadata.yaml": {
+          "schema_version": "1.0",
+          "experiment": {
+            "code": "gpio_led_output",
+            "name": "LED 数字输出实验",
+            "category": "actuator",
+            "locale": "zh-CN"
+          },
+          "package": {
+            "version": "2.0.3",
+            "status": "draft"
+          },
+          "compatibility": {
+            "engine": ">=2.1,<3.0",
+            "platforms": [
+              "esp32"
+            ]
+          },
+          "maintainer": {
+            "organization": "芯鉴知微项目组",
+            "author": "项目组（资料未验证，非教师审核）"
+          }
+        },
+        "hardware.yaml": {
+          "hardware": {
+            "family": "esp32",
+            "board_model": "esp32-devkit",
+            "components": [
+              {
+                "id": "status_led",
+                "kind": "digital_output",
+                "model": "led",
+                "required": true,
+                "metadata": {
+                  "verification_status": "pending_hardware",
+                  "source_type": "project_design",
+                  "is_test_data": true
+                }
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "id": "led_gpio",
+              "type": "gpio",
+              "component_ids": [
+                "status_led"
+              ],
+              "pins": {
+                "output": 2
+              },
+              "parameters": {
+                "mode": "output",
+                "active_level": 1,
+                "verification_status": "pending_hardware"
+              }
+            }
+          ],
+          "connections": [
+            {
+              "component": "status_led",
+              "signal": "ANODE",
+              "target": "GPIO2"
+            }
+          ],
+          "evidence_mapping": [
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "level"
+              },
+              "evidence_type": "observation.level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "gpio_command_level"
+              },
+              "evidence_type": "observation.gpio_command_level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "gpio_actual_level"
+              },
+              "evidence_type": "observation.gpio_actual_level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "led_physically_on"
+              },
+              "evidence_type": "observation.led_physically_on"
+            }
+          ],
+          "normalization": {
+            "adapter": "mapping",
+            "mappings": [
+              {
+                "id": "gpio-level-sample",
+                "match": {
+                  "pin": 2,
+                  "metric": null
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "level",
+                "metric_field": null,
+                "value_field": "level",
+                "status_field": null,
+                "default_status": "unknown",
+                "event_type": null,
+                "event_type_field": null,
+                "timestamp_field": "timestamp"
+              },
+              {
+                "id": "gpio-command-level",
+                "match": {
+                  "metric": "gpio_command_level"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "gpio_command_level",
+                "metric_field": null,
+                "value_field": "value",
+                "status_field": null,
+                "default_status": "normal",
+                "event_type": null,
+                "event_type_field": null,
+                "timestamp_field": "timestamp"
+              },
+              {
+                "id": "gpio-actual-level",
+                "match": {
+                  "metric": "gpio_actual_level"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "gpio_actual_level",
+                "metric_field": null,
+                "value_field": "value",
+                "status_field": null,
+                "default_status": "normal",
+                "event_type": null,
+                "event_type_field": null,
+                "timestamp_field": "timestamp"
+              },
+              {
+                "id": "led-physically-on",
+                "match": {
+                  "metric": "led_physically_on"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "led_physically_on",
+                "metric_field": null,
+                "value_field": "value",
+                "status_field": null,
+                "default_status": "normal",
+                "event_type": null,
+                "event_type_field": null,
+                "timestamp_field": "timestamp"
+              }
+            ]
+          },
+          "required_parameters": {
+            "output_pin": 2,
+            "active_level": 1,
+            "verification_status": "pending_hardware",
+            "notes": "引脚、电路、采样参数为未验证示例；不得当作正式接线或教师经验。",
+            "consecutive_failure_threshold": null,
+            "consecutive_failure_status": "pending_hardware",
+            "level_source": "pending_hardware",
+            "LED_PHYSICALLY_ON": "pending_hardware",
+            "truth_status": {
+              "final_gpio": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:interfaces.pins",
+                "required_confirmation": "实物型号、原理图和接线核验；当前 GPIO 仅是示例"
+              },
+              "heartbeat_period": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations",
+                "required_confirmation": "实测发送周期与课程容差；90 秒是当前监测时限，不是发送周期"
+              },
+              "reading_period_and_timeout": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations.required_observations",
+                "required_confirmation": "真实采样周期、时间戳与允许间隔；未确认前 maximum_age_seconds 留空"
+              },
+              "teacher_experience": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:teacherNotes",
+                "required_confirmation": "教师本人提供可追溯依据并审核；没有材料时保持 null"
+              },
+              "real_student_cases": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:facts",
+                "required_confirmation": "真实课堂记录、原始证据、实际修复动作和教师审核；不得把合成案例改名充当真实案例"
+              },
+              "teaching_acceptance": {
+                "status": "pending_course_confirmation",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml",
+                "required_confirmation": "课程指导书版次、验收要求、允许误差和观察时长"
+              },
+              "teaching_actions_and_escalation": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "teaching/hints.yaml; diagnosis/fault_tree.yaml:escalation",
+                "required_confirmation": "教师确认排查步骤、测量权限和提示升级门槛"
+              },
+              "level_source": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:normalization",
+                "required_confirmation": "确认固件变量、引脚采样或仪器来源；不能仅凭来源声明完成硬件验证"
+              },
+              "physical_light": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "knowledge/concepts.yaml:led.physically_on",
+                "required_confirmation": "独立人工/光学观测及采集记录；没有证据时保持 unknown"
+              },
+              "command_response_window": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml:expected_behaviors[0].within_seconds",
+                "required_confirmation": "实测命令与电气观测的响应时延；窗口目前留空"
+              }
+            }
+          },
+          "runtime_expectations": {
+            "verification_status": "pending_hardware",
+            "offline_after_seconds": 90.0,
+            "heartbeat_maximum_age_seconds": 90.0,
+            "required_observations": [
+              {
+                "component_id": "status_led",
+                "metric": "gpio_command_level",
+                "maximum_age_seconds": null,
+                "allowed_values": [
+                  0.0,
+                  1.0
+                ],
+                "unit": null
+              },
+              {
+                "component_id": "status_led",
+                "metric": "gpio_actual_level",
+                "maximum_age_seconds": null,
+                "allowed_values": [
+                  0.0,
+                  1.0
+                ],
+                "unit": null
+              }
+            ]
+          }
+        },
+        "diagnosis/rules.yaml": {
+          "version": "2.0.3",
+          "rules": [
+            {
+              "id": "led-output-expectation-v2",
+              "error_type": "GPIO_EXPECTATION_FAILED",
+              "priority": 90,
+              "enabled": true,
+              "summary": "有来源与命令关联的 GPIO 电气观测和命令目标不一致（不判断发光）",
+              "conditions": [
+                {
+                  "fact": "expected_behavior_violation_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "params": {
+                    "behavior_id": "led_output_high"
+                  }
+                }
+              ],
+              "source_id": "legacy",
+              "source_path": null,
+              "source_version": "1",
+              "scope": {
+                "kind": "common",
+                "keys": []
+              }
+            }
+          ]
+        },
+        "diagnosis/fault_tree.yaml": {
+          "version": "2.0.3",
+          "trees": [
+            {
+              "id": "led-output-failure-v2",
+              "title": "GPIO 命令与电气观测不一致",
+              "status": "placeholder",
+              "enabled": true,
+              "continuity_window_seconds": 3600,
+              "trigger": [
+                {
+                  "fact": "diagnosis_error_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "weight": 25,
+                  "description": "规则只确认 GPIO 电气观测与命令不一致，不确认 LED 发光状态",
+                  "params": {
+                    "error_type": "GPIO_EXPECTATION_FAILED"
+                  }
+                }
+              ],
+              "causes": [
+                {
+                  "id": "software.output_configuration",
+                  "title": "GPIO 编号、模式或有效电平配置不一致",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "先检查程序使用的 GPIO 编号。",
+                    "2": "核对 示例 GPIO2（pending_hardware）、OUTPUT 模式和有效电平（pending_hardware）。",
+                    "3": "用最小亮灭程序记录 GPIO 的实际高低电平。",
+                    "4": "提交代码和电平记录，请教师协助。"
+                  }
+                },
+                {
+                  "id": "wiring.led_polarity",
+                  "title": "LED 极性、限流电阻或公共地连接异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "检查 LED 和电阻的连接。",
+                    "2": "断电后核对 LED 极性与公共地。",
+                    "3": "逐段测量输出回路并记录结果。",
+                    "4": "停止反复通电并请求教师检查。"
+                  }
+                },
+                {
+                  "id": "hardware.led_failure",
+                  "title": "LED 器件异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "暂不直接认定 LED 损坏。",
+                    "2": "先排除 GPIO 配置和极性问题。",
+                    "3": "用已知正常 LED 做对照测试。",
+                    "4": "由教师确认后更换器件。"
+                  }
+                }
+              ],
+              "escalation": [
+                {
+                  "level": 1,
+                  "min_failure_count": 1,
+                  "min_duration_seconds": 0
+                },
+                {
+                  "level": 2,
+                  "min_failure_count": 3,
+                  "min_duration_seconds": 300
+                },
+                {
+                  "level": 3,
+                  "min_failure_count": 6,
+                  "min_duration_seconds": 900
+                },
+                {
+                  "level": 4,
+                  "min_failure_count": 10,
+                  "min_duration_seconds": 1800
+                }
+              ],
+              "source_id": "legacy",
+              "source_path": null,
+              "source_version": "1",
+              "scope": {
+                "kind": "common",
+                "keys": []
+              }
+            }
+          ]
+        },
+        "knowledge/concepts.yaml": {
+          "concepts": [
+            {
+              "concept_id": "led.polarity",
+              "description": "LED 有极性，必须与限流电阻和公共地组成正确回路。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.output_level",
+              "description": "GPIO 必须配置为输出，且有效电平需与实验板电路一致。",
+              "references": [
+                "hardware.yaml",
+                "teaching/steps.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.command_high",
+              "description": "GPIO_COMMAND_HIGH：observation.gpio_command_level=1 仅是设备报告的 HIGH 命令；要求 measurement_source=command。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.actual_level_high",
+              "description": "GPIO_ACTUAL_LEVEL_HIGH：observation.gpio_actual_level=1 是设备报告的电气测量；要求 measurement_source=electrical_measurement，实际采集方法 pending_hardware。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "led.physically_on",
+              "description": "LED_PHYSICALLY_ON：observation.led_physically_on=1 需要 optical_observation 来源；目前没有光学检测，保持 pending_hardware。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.unverified_level",
+              "description": "observation.level 的真实来源未知，level=1 不能推出上述任一已确认物理状态，更不能写成 LED 已亮。",
+              "references": [
+                "hardware.yaml"
+              ]
+            }
+          ]
+        },
+        "knowledge/cases.yaml": {
+          "cases": [
+            {
+              "id": "led.output-failed.test-data.v2_0_2",
+              "experimentType": "gpio_led_output",
+              "errorType": "GPIO_EXPECTATION_FAILED",
+              "symptom": "测试数据：同一命令关联的电气观测与目标值不一致；没有 LED 发光观测。",
+              "normalState": {
+                "requirements": [
+                  "心跳正常",
+                  "命令与电气观测按已配置周期到达且字段有效",
+                  "无异常规则命中"
+                ],
+                "LED_PHYSICALLY_ON": "unknown / pending_hardware"
+              },
+              "evidence": [
+                {
+                  "evidenceType": "observation.gpio_command_level",
+                  "description": "有来源声明的命令目标值"
+                },
+                {
+                  "evidenceType": "observation.gpio_actual_level",
+                  "description": "有电气测量来源声明的引脚观测，不代表发光"
+                }
+              ],
+              "possibleCauses": [
+                "software.output_configuration",
+                "wiring.led_polarity",
+                "hardware.led_failure"
+              ],
+              "solutionSteps": [
+                "核对 示例 GPIO2（pending_hardware）、输出模式与有效电平。",
+                "断电后检查 LED 极性、限流电阻和公共地。",
+                "用最小亮灭程序做对照测试。"
+              ],
+              "teacherNotes": null,
+              "facts": {
+                "verification_status": "unverified",
+                "hardware_status": "pending_hardware",
+                "source_type": "test_data",
+                "note": "合成示例，不是真实教师经验或学生案例。",
+                "teacher_status": "pending_teacher",
+                "student_case_status": "pending_teacher",
+                "course_status": "pending_course_confirmation"
+              },
+              "rootCauseValue": null,
+              "rootCauseStatus": "unknown",
+              "confirmedBy": null,
+              "confirmedAt": null,
+              "solutionRecord": {},
+              "aiGeneratedFields": {},
+              "sourceType": "test_data",
+              "factsLocked": false,
+              "qualityCheckPassed": false,
+              "reviewStatus": "draft",
+              "sourceRef": "experiment_packages/gpio_led_output/knowledge/cases.yaml",
+              "version": "2.0.3",
+              "isTestData": true
+            }
+          ]
+        },
+        "teaching/steps.yaml": {
+          "steps": [
+            {
+              "step_id": "connect",
+              "title": "连接 LED 回路",
+              "expected_state": "LED 极性、电阻和公共地连接正确",
+              "prerequisite_step_ids": []
+            },
+            {
+              "step_id": "configure",
+              "title": "配置 示例 GPIO2（pending_hardware）",
+              "expected_state": "引脚为输出模式且有效电平待硬件确认",
+              "prerequisite_step_ids": []
+            },
+            {
+              "step_id": "observe",
+              "title": "执行亮灭程序",
+              "expected_state": "记录独立人工或光学观察；没有此证据时实际发光状态为 unknown",
+              "prerequisite_step_ids": []
+            }
+          ],
+          "expected_behaviors": [
+            {
+              "id": "led_output_high",
+              "description": "同一命令下电气观测与命令值一致；不代表 LED 实际发光",
+              "kind": "state_matches_command",
+              "component_id": "status_led",
+              "interface_id": "led_gpio",
+              "metric": "gpio_actual_level",
+              "expected": null,
+              "command_metric": "gpio_command_level",
+              "minimum": null,
+              "maximum": null,
+              "event_type": null,
+              "within_seconds": null
+            }
+          ],
+          "bindings": [
+            {
+              "tree_id": "led-output-failure-v2",
+              "cause_id": "software.output_configuration",
+              "component_id": "status_led",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "gpio.output_level",
+                "gpio.command_high"
+              ],
+              "step_ids": [
+                "configure"
+              ]
+            },
+            {
+              "tree_id": "led-output-failure-v2",
+              "cause_id": "wiring.led_polarity",
+              "component_id": "status_led",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "led.polarity"
+              ],
+              "step_ids": [
+                "connect"
+              ]
+            },
+            {
+              "tree_id": "led-output-failure-v2",
+              "cause_id": "hardware.led_failure",
+              "component_id": "status_led",
+              "levels": [
+                1,
+                2,
+                3,
+                4
+              ],
+              "concept_ids": [
+                "gpio.actual_level_high",
+                "led.physically_on",
+                "gpio.unverified_level"
+              ],
+              "step_ids": [
+                "observe"
+              ]
+            }
+          ]
+        },
+        "teaching/hints.yaml": {
+          "hints": [
+            {
+              "cause_id": "software.output_configuration",
+              "levels": {
+                "1": "检查程序引脚。",
+                "2": "核对 示例 GPIO2（pending_hardware） 和输出模式。",
+                "3": "运行最小亮灭程序。",
+                "4": "提交代码和电平记录。"
+              }
+            },
+            {
+              "cause_id": "wiring.led_polarity",
+              "levels": {
+                "1": "检查 LED 回路。",
+                "2": "断电核对极性和公共地。",
+                "3": "逐段测量回路。",
+                "4": "停止通电并请求教师检查。"
+              }
+            },
+            {
+              "cause_id": "hardware.led_failure",
+              "levels": {
+                "1": "暂不判定器件损坏。",
+                "2": "先排除配置和接线。",
+                "3": "做已知正常器件对照。",
+                "4": "由教师确认更换。"
+              }
+            }
+          ]
+        },
+        "tests/normal_cases.yaml": {
+          "cases": [
+            {
+              "name": "零预期违背仅表示该规则未命中，不代表正常",
+              "facts": {
+                "expected_behavior_violation_count:led_output_high": 0
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            }
+          ]
+        },
+        "tests/fault_cases.yaml": {
+          "cases": [
+            {
+              "name": "输出状态不一致时触发异常",
+              "facts": {
+                "expected_behavior_violation_count:led_output_high": 1
+              },
+              "expected": {
+                "error_type": "GPIO_EXPECTATION_FAILED",
+                "candidate_causes": [
+                  "software.output_configuration",
+                  "wiring.led_polarity"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "package_hash": "c29fe9ae7086a5e822830bfa2bf7d569b8fa14aa2beded01271aed1e790de9ec",
+      "manifest": {
+        "schema_version": "1.0",
+        "files": [
+          {
+            "path": "metadata.yaml",
+            "sha256": "6006320c84cb77114b001e29f4d0479b110fd473849f215e6d128df2f6853346"
+          },
+          {
+            "path": "hardware.yaml",
+            "sha256": "5faa6d27e2ce0e273760d37321204bbb51ab8b43b9fbf5a799127235747327fd"
+          },
+          {
+            "path": "diagnosis/rules.yaml",
+            "sha256": "4d99d5e655acfaeb69a9cc2af20a8168a19d7c8fb29d6f541aba10a61d5144d9"
+          },
+          {
+            "path": "diagnosis/fault_tree.yaml",
+            "sha256": "24dee4361209c144425c2599a97defa7c9f7510be57305e9efa061510a2b931d"
+          },
+          {
+            "path": "knowledge/concepts.yaml",
+            "sha256": "9e6187bf34f8064f6df271e289a639492a9607cde6f6a88ad97ed362299a6048"
+          },
+          {
+            "path": "knowledge/cases.yaml",
+            "sha256": "515bb2dfcf126b583b864c43fcc8fab237e562805715b2c7530ba9b17588c527"
+          },
+          {
+            "path": "teaching/steps.yaml",
+            "sha256": "ce02d8f0ddbff665cc41b485869c143c2285027d38651dd304f95d8ee28e71f6"
+          },
+          {
+            "path": "teaching/hints.yaml",
+            "sha256": "98f7d844f4c3659202e72753eb016f3a560f047f8b590486314ea57c68aa3322"
+          },
+          {
+            "path": "tests/normal_cases.yaml",
+            "sha256": "c392e09b9ab9a3ef1a5da092d198d94d7ccb24be6c28925b35aa7d287a922832"
+          },
+          {
+            "path": "tests/fault_cases.yaml",
+            "sha256": "30505ed5876de5414c7b3d060b7c947337aa6feb1a5cff89f6dc36c973b40395"
+          }
+        ],
+        "package_hash": "c29fe9ae7086a5e822830bfa2bf7d569b8fa14aa2beded01271aed1e790de9ec"
+      }
+    },
+    "missing_optional": {
+      "documents": {
+        "metadata.yaml": {
+          "schema_version": "1.0",
+          "experiment": {
+            "code": "gpio_led_output",
+            "name": "LED 数字输出实验",
+            "category": "actuator",
+            "locale": "zh-CN"
+          },
+          "package": {
+            "version": "2.0.3",
+            "status": "draft"
+          },
+          "compatibility": {
+            "engine": ">=2.1,<3.0",
+            "platforms": [
+              "esp32"
+            ]
+          },
+          "maintainer": {
+            "organization": "芯鉴知微项目组",
+            "author": "项目组（资料未验证，非教师审核）"
+          }
+        },
+        "hardware.yaml": {
+          "hardware": {
+            "family": "esp32",
+            "board_model": "esp32-devkit",
+            "components": [
+              {
+                "id": "status_led",
+                "kind": "digital_output",
+                "model": "led",
+                "metadata": {
+                  "verification_status": "pending_hardware",
+                  "source_type": "project_design",
+                  "is_test_data": true
+                }
+              }
+            ]
+          },
+          "interfaces": [
+            {
+              "id": "led_gpio",
+              "type": "gpio",
+              "component_ids": [
+                "status_led"
+              ],
+              "pins": {
+                "output": 2
+              },
+              "parameters": {
+                "mode": "output",
+                "active_level": 1,
+                "verification_status": "pending_hardware"
+              }
+            }
+          ],
+          "connections": [
+            {
+              "component": "status_led",
+              "signal": "ANODE",
+              "target": "GPIO2"
+            }
+          ],
+          "evidence_mapping": [
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "level"
+              },
+              "evidence_type": "observation.level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "gpio_command_level"
+              },
+              "evidence_type": "observation.gpio_command_level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "gpio_actual_level"
+              },
+              "evidence_type": "observation.gpio_actual_level"
+            },
+            {
+              "source": {
+                "type": "sensor_reading",
+                "value": "led_physically_on"
+              },
+              "evidence_type": "observation.led_physically_on"
+            }
+          ],
+          "normalization": {
+            "adapter": "mapping",
+            "mappings": [
+              {
+                "id": "gpio-level-sample",
+                "match": {
+                  "pin": 2,
+                  "metric": null
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "level",
+                "value_field": "level",
+                "timestamp_field": "timestamp",
+                "default_status": "unknown"
+              },
+              {
+                "id": "gpio-command-level",
+                "match": {
+                  "metric": "gpio_command_level"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "gpio_command_level",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              },
+              {
+                "id": "gpio-actual-level",
+                "match": {
+                  "metric": "gpio_actual_level"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "gpio_actual_level",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              },
+              {
+                "id": "led-physically-on",
+                "match": {
+                  "metric": "led_physically_on"
+                },
+                "output": "observation",
+                "component_id": "status_led",
+                "interface_id": "led_gpio",
+                "metric": "led_physically_on",
+                "value_field": "value",
+                "timestamp_field": "timestamp",
+                "default_status": "normal"
+              }
+            ]
+          },
+          "required_parameters": {
+            "output_pin": 2,
+            "active_level": 1,
+            "verification_status": "pending_hardware",
+            "notes": "引脚、电路、采样参数为未验证示例；不得当作正式接线或教师经验。",
+            "consecutive_failure_threshold": null,
+            "consecutive_failure_status": "pending_hardware",
+            "level_source": "pending_hardware",
+            "LED_PHYSICALLY_ON": "pending_hardware",
+            "truth_status": {
+              "final_gpio": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:interfaces.pins",
+                "required_confirmation": "实物型号、原理图和接线核验；当前 GPIO 仅是示例"
+              },
+              "heartbeat_period": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations",
+                "required_confirmation": "实测发送周期与课程容差；90 秒是当前监测时限，不是发送周期"
+              },
+              "reading_period_and_timeout": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:runtime_expectations.required_observations",
+                "required_confirmation": "真实采样周期、时间戳与允许间隔；未确认前 maximum_age_seconds 留空"
+              },
+              "teacher_experience": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:teacherNotes",
+                "required_confirmation": "教师本人提供可追溯依据并审核；没有材料时保持 null"
+              },
+              "real_student_cases": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "knowledge/cases.yaml:facts",
+                "required_confirmation": "真实课堂记录、原始证据、实际修复动作和教师审核；不得把合成案例改名充当真实案例"
+              },
+              "teaching_acceptance": {
+                "status": "pending_course_confirmation",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml",
+                "required_confirmation": "课程指导书版次、验收要求、允许误差和观察时长"
+              },
+              "teaching_actions_and_escalation": {
+                "status": "pending_teacher",
+                "source_type": "project_design",
+                "source_ref": "teaching/hints.yaml; diagnosis/fault_tree.yaml:escalation",
+                "required_confirmation": "教师确认排查步骤、测量权限和提示升级门槛"
+              },
+              "level_source": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "hardware.yaml:normalization",
+                "required_confirmation": "确认固件变量、引脚采样或仪器来源；不能仅凭来源声明完成硬件验证"
+              },
+              "physical_light": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "knowledge/concepts.yaml:led.physically_on",
+                "required_confirmation": "独立人工/光学观测及采集记录；没有证据时保持 unknown"
+              },
+              "command_response_window": {
+                "status": "pending_hardware",
+                "source_type": "project_design",
+                "source_ref": "teaching/steps.yaml:expected_behaviors[0].within_seconds",
+                "required_confirmation": "实测命令与电气观测的响应时延；窗口目前留空"
+              }
+            }
+          },
+          "runtime_expectations": {
+            "verification_status": "pending_hardware",
+            "offline_after_seconds": 90,
+            "heartbeat_maximum_age_seconds": 90,
+            "required_observations": [
+              {
+                "component_id": "status_led",
+                "metric": "gpio_command_level",
+                "maximum_age_seconds": null,
+                "allowed_values": [
+                  0,
+                  1
+                ]
+              },
+              {
+                "component_id": "status_led",
+                "metric": "gpio_actual_level",
+                "maximum_age_seconds": null,
+                "allowed_values": [
+                  0,
+                  1
+                ]
+              }
+            ]
+          }
+        },
+        "diagnosis/rules.yaml": {
+          "version": "2.0.3",
+          "rules": [
+            {
+              "id": "led-output-expectation-v2",
+              "error_type": "GPIO_EXPECTATION_FAILED",
+              "priority": 90,
+              "summary": "有来源与命令关联的 GPIO 电气观测和命令目标不一致（不判断发光）",
+              "conditions": [
+                {
+                  "fact": "expected_behavior_violation_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "params": {
+                    "behavior_id": "led_output_high"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "diagnosis/fault_tree.yaml": {
+          "version": "2.0.3",
+          "trees": [
+            {
+              "id": "led-output-failure-v2",
+              "title": "GPIO 命令与电气观测不一致",
+              "status": "placeholder",
+              "continuity_window_seconds": 3600,
+              "trigger": [
+                {
+                  "fact": "diagnosis_error_count",
+                  "operator": "gte",
+                  "value": 1,
+                  "weight": 25,
+                  "description": "规则只确认 GPIO 电气观测与命令不一致，不确认 LED 发光状态",
+                  "params": {
+                    "error_type": "GPIO_EXPECTATION_FAILED"
+                  }
+                }
+              ],
+              "escalation": [
+                {
+                  "level": 1,
+                  "min_failure_count": 1,
+                  "min_duration_seconds": 0
+                },
+                {
+                  "level": 2,
+                  "min_failure_count": 3,
+                  "min_duration_seconds": 300
+                },
+                {
+                  "level": 3,
+                  "min_failure_count": 6,
+                  "min_duration_seconds": 900
+                },
+                {
+                  "level": 4,
+                  "min_failure_count": 10,
+                  "min_duration_seconds": 1800
+                }
+              ],
+              "causes": [
+                {
+                  "id": "software.output_configuration",
+                  "title": "GPIO 编号、模式或有效电平配置不一致",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "先检查程序使用的 GPIO 编号。",
+                    "2": "核对 示例 GPIO2（pending_hardware）、OUTPUT 模式和有效电平（pending_hardware）。",
+                    "3": "用最小亮灭程序记录 GPIO 的实际高低电平。",
+                    "4": "提交代码和电平记录，请教师协助。"
+                  }
+                },
+                {
+                  "id": "wiring.led_polarity",
+                  "title": "LED 极性、限流电阻或公共地连接异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "检查 LED 和电阻的连接。",
+                    "2": "断电后核对 LED 极性与公共地。",
+                    "3": "逐段测量输出回路并记录结果。",
+                    "4": "停止反复通电并请求教师检查。"
+                  }
+                },
+                {
+                  "id": "hardware.led_failure",
+                  "title": "LED 器件异常",
+                  "evidence": [
+                    {
+                      "fact": "diagnosis_error_count",
+                      "operator": "gte",
+                      "value": 1,
+                      "weight": 20,
+                      "description": "仅支持存在异常，不区分根因；unknown / need_verification",
+                      "params": {
+                        "error_type": "GPIO_EXPECTATION_FAILED"
+                      }
+                    }
+                  ],
+                  "hints": {
+                    "1": "暂不直接认定 LED 损坏。",
+                    "2": "先排除 GPIO 配置和极性问题。",
+                    "3": "用已知正常 LED 做对照测试。",
+                    "4": "由教师确认后更换器件。"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "knowledge/concepts.yaml": {
+          "concepts": [
+            {
+              "concept_id": "led.polarity",
+              "description": "LED 有极性，必须与限流电阻和公共地组成正确回路。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.output_level",
+              "description": "GPIO 必须配置为输出，且有效电平需与实验板电路一致。",
+              "references": [
+                "hardware.yaml",
+                "teaching/steps.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.command_high",
+              "description": "GPIO_COMMAND_HIGH：observation.gpio_command_level=1 仅是设备报告的 HIGH 命令；要求 measurement_source=command。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.actual_level_high",
+              "description": "GPIO_ACTUAL_LEVEL_HIGH：observation.gpio_actual_level=1 是设备报告的电气测量；要求 measurement_source=electrical_measurement，实际采集方法 pending_hardware。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "led.physically_on",
+              "description": "LED_PHYSICALLY_ON：observation.led_physically_on=1 需要 optical_observation 来源；目前没有光学检测，保持 pending_hardware。",
+              "references": [
+                "hardware.yaml"
+              ]
+            },
+            {
+              "concept_id": "gpio.unverified_level",
+              "description": "observation.level 的真实来源未知，level=1 不能推出上述任一已确认物理状态，更不能写成 LED 已亮。",
+              "references": [
+                "hardware.yaml"
+              ]
+            }
+          ]
+        },
+        "knowledge/cases.yaml": {
+          "cases": [
+            {
+              "id": "led.output-failed.test-data.v2_0_2",
+              "experimentType": "gpio_led_output",
+              "errorType": "GPIO_EXPECTATION_FAILED",
+              "symptom": "测试数据：同一命令关联的电气观测与目标值不一致；没有 LED 发光观测。",
+              "normalState": {
+                "requirements": [
+                  "心跳正常",
+                  "命令与电气观测按已配置周期到达且字段有效",
+                  "无异常规则命中"
+                ],
+                "LED_PHYSICALLY_ON": "unknown / pending_hardware"
+              },
+              "evidence": [
+                {
+                  "evidenceType": "observation.gpio_command_level",
+                  "description": "有来源声明的命令目标值"
+                },
+                {
+                  "evidenceType": "observation.gpio_actual_level",
+                  "description": "有电气测量来源声明的引脚观测，不代表发光"
+                }
+              ],
+              "possibleCauses": [
+                "software.output_configuration",
+                "wiring.led_polarity",
+                "hardware.led_failure"
+              ],
+              "solutionSteps": [
+                "核对 示例 GPIO2（pending_hardware）、输出模式与有效电平。",
+                "断电后检查 LED 极性、限流电阻和公共地。",
+                "用最小亮灭程序做对照测试。"
+              ],
+              "teacherNotes": null,
+              "rootCauseValue": null,
+              "rootCauseStatus": "unknown",
+              "confirmedBy": null,
+              "confirmedAt": null,
+              "sourceType": "test_data",
+              "factsLocked": false,
+              "qualityCheckPassed": false,
+              "reviewStatus": "draft",
+              "sourceRef": "experiment_packages/gpio_led_output/knowledge/cases.yaml",
+              "version": "2.0.3",
+              "isTestData": true,
+              "facts": {
+                "verification_status": "unverified",
+                "hardware_status": "pending_hardware",
+                "source_type": "test_data",
+                "note": "合成示例，不是真实教师经验或学生案例。",
+                "teacher_status": "pending_teacher",
+                "student_case_status": "pending_teacher",
+                "course_status": "pending_course_confirmation"
+              }
+            }
+          ]
+        },
+        "teaching/steps.yaml": {
+          "steps": [
+            {
+              "step_id": "connect",
+              "title": "连接 LED 回路",
+              "expected_state": "LED 极性、电阻和公共地连接正确"
+            },
+            {
+              "step_id": "configure",
+              "title": "配置 示例 GPIO2（pending_hardware）",
+              "expected_state": "引脚为输出模式且有效电平待硬件确认"
+            },
+            {
+              "step_id": "observe",
+              "title": "执行亮灭程序",
+              "expected_state": "记录独立人工或光学观察；没有此证据时实际发光状态为 unknown"
+            }
+          ],
+          "expected_behaviors": [
+            {
+              "id": "led_output_high",
+              "description": "同一命令下电气观测与命令值一致；不代表 LED 实际发光",
+              "kind": "state_matches_command",
+              "component_id": "status_led",
+              "interface_id": "led_gpio",
+              "metric": "gpio_actual_level",
+              "command_metric": "gpio_command_level",
+              "within_seconds": null
+            }
+          ]
+        },
+        "teaching/hints.yaml": {
+          "hints": [
+            {
+              "cause_id": "software.output_configuration",
+              "levels": {
+                "1": "检查程序引脚。",
+                "2": "核对 示例 GPIO2（pending_hardware） 和输出模式。",
+                "3": "运行最小亮灭程序。",
+                "4": "提交代码和电平记录。"
+              }
+            },
+            {
+              "cause_id": "wiring.led_polarity",
+              "levels": {
+                "1": "检查 LED 回路。",
+                "2": "断电核对极性和公共地。",
+                "3": "逐段测量回路。",
+                "4": "停止通电并请求教师检查。"
+              }
+            },
+            {
+              "cause_id": "hardware.led_failure",
+              "levels": {
+                "1": "暂不判定器件损坏。",
+                "2": "先排除配置和接线。",
+                "3": "做已知正常器件对照。",
+                "4": "由教师确认更换。"
+              }
+            }
+          ]
+        },
+        "tests/normal_cases.yaml": {
+          "cases": [
+            {
+              "name": "零预期违背仅表示该规则未命中，不代表正常",
+              "facts": {
+                "expected_behavior_violation_count:led_output_high": 0
+              },
+              "expected": {
+                "error_type": null,
+                "candidate_causes": []
+              }
+            }
+          ]
+        },
+        "tests/fault_cases.yaml": {
+          "cases": [
+            {
+              "name": "输出状态不一致时触发异常",
+              "facts": {
+                "expected_behavior_violation_count:led_output_high": 1
+              },
+              "expected": {
+                "error_type": "GPIO_EXPECTATION_FAILED",
+                "candidate_causes": [
+                  "software.output_configuration",
+                  "wiring.led_polarity"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "package_hash": "93b566a43ba342b2b464e72146bb9e2c19dc46f640b3617463269b7da40b1efa",
+      "manifest": {
+        "schema_version": "1.0",
+        "files": [
+          {
+            "path": "metadata.yaml",
+            "sha256": "6006320c84cb77114b001e29f4d0479b110fd473849f215e6d128df2f6853346"
+          },
+          {
+            "path": "hardware.yaml",
+            "sha256": "452fd873d1ce5540e7cf63991ce56b68d68456673029325efb90547d86f69093"
+          },
+          {
+            "path": "diagnosis/rules.yaml",
+            "sha256": "7eeb6f5b28d6be4ca99e88cfe6a17426e61b9e5eb3abeaca6689b638c3a75286"
+          },
+          {
+            "path": "diagnosis/fault_tree.yaml",
+            "sha256": "9500a407c5cb184e13fbfe5a2fcef1bf681f4d6ea0ea04e05d84be9b93dc2269"
+          },
+          {
+            "path": "knowledge/concepts.yaml",
+            "sha256": "9e6187bf34f8064f6df271e289a639492a9607cde6f6a88ad97ed362299a6048"
+          },
+          {
+            "path": "knowledge/cases.yaml",
+            "sha256": "f01399092a12b4108a5ea9ca57d523a7fdff7dd6f64033727baeb92299964d05"
+          },
+          {
+            "path": "teaching/steps.yaml",
+            "sha256": "61573d3c2c9c60a0c698a03b96b282ea515d7d08320d3ea50a4991cbbadcaabd"
+          },
+          {
+            "path": "teaching/hints.yaml",
+            "sha256": "98f7d844f4c3659202e72753eb016f3a560f047f8b590486314ea57c68aa3322"
+          },
+          {
+            "path": "tests/normal_cases.yaml",
+            "sha256": "c392e09b9ab9a3ef1a5da092d198d94d7ccb24be6c28925b35aa7d287a922832"
+          },
+          {
+            "path": "tests/fault_cases.yaml",
+            "sha256": "30505ed5876de5414c7b3d060b7c947337aa6feb1a5cff89f6dc36c973b40395"
+          }
+        ],
+        "package_hash": "93b566a43ba342b2b464e72146bb9e2c19dc46f640b3617463269b7da40b1efa"
+      }
+    }
+  }
+}

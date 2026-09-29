@@ -801,14 +801,17 @@ def serialize_workflow(
 
     bound_db = object_session(workflow)
     teaching_ready = bound_db is not None and teaching_available(bound_db, workflow)
+    from app.services.current_advice import project_current_advice
     from app.services.memory import memory_context
 
     memories = memory_context(bound_db, workflow) if bound_db is not None else None
-    public_review_request = workflow.review_request
+    current_result, public_review_request = (
+        project_current_advice(bound_db, workflow) if teaching_ready else (None, None)
+    )
     if is_student:
         public_review_request = (
-            workflow.review_request
-            if (workflow.review_request or {}).get("kind") == "student_feedback"
+            public_review_request
+            if (public_review_request or {}).get("kind") == "student_feedback"
             else None
         )
     return DiagnosisWorkflowResponse(
@@ -836,7 +839,7 @@ def serialize_workflow(
         node_metrics=[] if is_student else workflow.node_metrics,
         retrieval_audit={} if is_student else workflow.retrieval_audit,
         resume_count=workflow.resume_count,
-        final_result=workflow.final_result if teaching_ready else None,
+        final_result=current_result,
         error_messages=workflow.error_messages,
         review_request=public_review_request if teaching_ready else None,
         teaching_available=teaching_ready,

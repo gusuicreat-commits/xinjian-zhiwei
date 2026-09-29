@@ -1,20 +1,47 @@
 concepts:
 - concept_id: dht11.minimum_interval
-  description: Aosong DHT11 要求两次请求至少间隔 2 秒；本项目固件配置为 3 秒采样作为安全工程默认。硬件实测前，该配置仍不等于已验证的课堂周期。
+  description: Aosong DHT11 V1.3_20170331 要求两次请求间隔严格大于 2 秒；本项目最小请求间隔及固件采样周期均采用 3 秒。硬件实测前，该配置仍不等于已验证的课堂周期。
   references:
   - hardware.yaml
   - teaching/steps.yaml
+  - docs/experiments/dht11-internal-lab.md
 - concept_id: dht11.single_bus
-  description: 四针裸 DHT11 使用单总线 DATA；本项目候选接线为 3.3V、GND、DATA→GPIO4、4.7kΩ 外部上拉，NC 不接。购买的具体模块仍需按实物引脚图复核。
+  description: 四针裸 DHT11 使用单总线 DATA；本项目已确定的接线设计为 3.3V、GND、DATA→GPIO4、4.7kΩ 外部上拉，NC
+    不接。购买的具体模块仍需按实物引脚图复核。
   references:
   - hardware.yaml
+  - docs/experiments/dht11-internal-lab.md
 - concept_id: dht11.failure_counts
-  description: failure_count_in_window 是窗口累计失败数；consecutive_failure_count 当前未知，不能从累计次数推导。阈值 5 只是当前规则配置，须用真实序列校准。
+  description: failure_count_in_window 是窗口累计失败数；consecutive_failure_count 当前未知，不能从累计次数推导。阈值
+    5 只是当前规则配置，须用真实序列校准。
   references:
   - diagnosis/rules.yaml
   - hardware.yaml
+  - docs/experiments/dht11-internal-lab.md
 - concept_id: dht11.protocol_evidence
   description: 心跳、温度/湿度读数和读取失败日志是不同类型的设备记录；平台收到记录不等于已经独立测量或确认了物理状态。DHT11 读数对应前一次转换，固件会保留这一时间语义。
+    首次有效帧只作预热，后续连续有效读取才发布温湿度；读取失败或缓存阻塞后需重新建立这一前次转换关系。串口 alive 标记不等于平台收到心跳。
   references:
   - docs/device-protocol.md
   - hardware.yaml
+  - docs/experiments/dht11-internal-lab.md
+- concept_id: dht11.power_and_pullup
+  description: GPIO4是板卡引脚功能名称，不是排针顺序的第4针。共同GND给供电和信号提供共同参考；DATA与3.3V之间的4.7kΩ上拉对应四针裸器件的项目接线设计。NC不连接，三针模块不能直接套用裸件脚号。断电核对实物方向与原厂图后再接线；配置表正确不证明实际接线正确。
+  references:
+  - hardware.yaml
+  - docs/experiments/dht11-internal-lab.md
+- concept_id: dht11.delivery_evidence
+  description: 串口JSON是待发送记录，服务器accepted回执才说明对应请求被接收；接收不证明传感器精度或真实根因。配好身份后，固件先保存单个冻结批次；离线或未确认时暂停新采样，不能把采样空白算成连续失败。LittleFS故障与重试预算耗尽时保存现场，不能靠格式化、反复重启或更换会话清除未决记录。
+  references:
+  - docs/device-protocol.md
+  - docs/experiments/dht11-internal-lab.md
+- concept_id: dht11.identity_scope
+  description: 设备标识、有效实验会话、固定资料包版本与本次记录必须对应。工作区草稿不是运行时已发布包，串口固件版本也不能代替服务器包版本。isTestData表示测试用途，不能单凭这个标记区分实物内部测试与合成练习，需另记录采集方式。
+  references:
+  - docs/experiment-package-design.md
+  - docs/experiments/dht11-internal-lab.md
+- concept_id: dht11.recovery_boundary
+  description: 重新检查分析当前会话已上传的新记录，不控制开发板采样；仍未解决继续原指导。无异常规则命中不等于硬件正常，当前尚未确认的数据新鲜度与课程判据不能通过补填数字来消除unknown。操作前后证据、版本和实际变化应对应，学生报告解决不独自证明物理恢复。
+  references:
+  - docs/development-guidelines.md
+  - docs/experiments/dht11-internal-lab.md

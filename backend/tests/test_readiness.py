@@ -66,6 +66,11 @@ def test_loadable_published_non_test_package_does_not_require_real_cases(api_con
         bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
         documents = package_documents(bundle)
         documents["knowledge/cases.yaml"]["cases"] = []
+        # This fixture intentionally has no cases; remove their declared units,
+        # rather than leaving dangling provenance selectors in the 1.1 package.
+        registry = documents["metadata.yaml"]["content_registry"]
+        registry["units"] = [unit for unit in registry["units"]
+                             if unit["target"]["entity_kind"] != "case"]
         experiment, version = import_experiment_package(db, db.query(User).first(), documents)
         experiment.is_test_data = False
         version.is_test_data = False

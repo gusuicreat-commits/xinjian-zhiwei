@@ -1,10 +1,10 @@
 {
   "dht11_temperature_humidity": {
-    "version": "2.0.5",
-    "sha256": "cb54ca8d9698cfb959e0590d072c2011f425913e8762291aa389d0ea574a85f5"
+    "version": "2.0.11",
+    "sha256": "629920faabf5897beffa5700e2daf8643c4feafe831b1d1a4808cf70233fc044"
   },
   "gpio_led_output": {
-    "version": "2.0.3",
-    "sha256": "c99c5c569b22b91b0485d0906ac6aaf0a1d746804466abcef997d11c2524b643"
+    "version": "2.0.4",
+    "sha256": "2422288cf688b0ca7492e3cbabf93535829046f7595b74e5c9e7e293f8f1f189"
   }
 }

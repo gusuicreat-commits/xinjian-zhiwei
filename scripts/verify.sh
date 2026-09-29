@@ -39,6 +39,8 @@ PYTHONPATH=backend "$backend_bin/pytest" backend/tests
 PYTHONPATH=simulator "$backend_bin/pytest" simulator/tests
 PYTHONPATH=backend "$backend_python" -m app.cli.run_synthetic_evaluation >/dev/null
 PYTHONPATH=backend "$backend_python" -m app.cli.run_context_evaluation
+PYTHONPATH=backend "$backend_python" -m app.cli.preview_package_context --strict \
+  --expectations backend/evaluation/package_context_expectations.json
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_experiment_packages
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_structured_knowledge
 PYTHONPATH=backend "$backend_python" -m app.cli.verify_v2_evidence_workflow
@@ -53,6 +55,7 @@ if ! command -v "$firmware_pio" >/dev/null 2>&1; then
   exit 2
 fi
 "$firmware_pio" run -d firmware/esp32_dht11
+"$firmware_pio" run -d firmware/esp32_dht11 -t buildfs
 "$backend_python" scripts/test_firmware_host.py
 
 (

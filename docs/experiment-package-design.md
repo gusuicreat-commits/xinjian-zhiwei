@@ -1,6 +1,8 @@
 # Experiment Package 与证据治理
 
-代码核对日期：2026-09-27。本文维护包结构、运行契约及语义边界；制作、来源登记与审核流程见[资料包内容规则](development-guidelines.md#package-content)，软件/硬件/教学验收状态见[项目真实性看板](project-truth-status.md)。
+代码核对日期：2026-09-28。本文维护包结构、运行契约及语义边界；制作、来源登记与审核流程见[资料包内容规则](development-guidelines.md#package-content)，软件/硬件/教学验收状态见[项目真实性看板](project-truth-status.md)。
+
+[资料包与上下文衔接方案](package-context-evolution-plan.md)的P0–P3已实施：案例条件传递、来源关联与调用预检。P4概念外发未实施，教学原文的边界保持下述约定。
 
 ## 目标
 
@@ -33,6 +35,20 @@ SHA-256。Manifest 不信任客户端传入值，由服务端重新计算。
 
 包只允许数据，不允许 Python 插件、脚本路径或任意表达式。规则和故障树只能使用系统
 已注册的事实、比较运算符和字段结构。Pydantic 使用 `extra=forbid`，未知字段直接拒绝。
+
+## 格式1.1、来源登记与案例条件
+
+引擎兼容契约为`2.2.0`。加载器按`metadata.schema_version`分派`1.0/1.1`；1.0使用冻结的模型和序列化规则，旧库存文档直接参与hash校验，不插入1.1默认值。十文件与Manifest算法不变。1.1要求引擎范围覆盖当前引擎；新格式包不能交给只支持1.0的旧程序。
+
+1.1新增`metadata.content_registry`，其`sources/units/value_owners`只登记来源与已有内容的位置。来源有版本、位置、定位、可取得状态和可空hash；单元有固定工件/实体/字段选择器、陈述性质、`source_refs/derived_from/depends_on`，不另存一份摘要。概念/步骤的必要条件归单元登记，案例条件只归`solutionRecord.confirmation_material`，禁止重复填。作者不能在登记内自授审核状态。运行不会读取登记中的URL或任意文件。
+
+选择器只接受后端白名单的工件、实体与字段，检查不存在、重复、循环和越界引用；`value_owners`检查声明的重复结构化值及单位。自然语言数字是否正确仍需审阅。服务器在报告生成`package_version_id + package_hash + unit_id + unit_hash`，不将hash写回被哈希内容。预检未提供可信来源快照时标`unverifiable`；提供时精确比hash，`verified_identity`只表示身份匹配，不表示来源真实或教师批准。
+
+案例限制正文唯一入口是`solutionRecord.confirmation_material.applicability_limits`，非空且最多2000字符。可选`applicability_conditions`使用`version: 1`，`conditions`为非空列表；仅允许`experiment_code/package_version/component_id`和`operator: in`，精确AND匹配，不执行表达式。后两字段须同时声明实验代码。条件来自固定诊断版本和单一明确组件范围，缺失/歧义为unknown。1.0拒绝隐藏该新字段；全局案例通过审批Schema写入，无需数据库迁移。
+
+匹配在top-k前过滤无效/缺少限制及不匹配/unknown条件，保留原审核、测试与实验边界；未声明结构条件为`text_only`，不能冒充已验证。模型案例投影`case-applicability-v1`含完整限制和代码检查结果，与案例整条选取或省略。详细模型、重放合同见[AI设计](ai-diagnosis-design.md)。
+
+全局案例停用只将同ID或明确`derived_from`的改名包副本列为影响候选，不自动撤销固定包；无来源链的历史覆盖保持未知。离线预检命令及退出码见[测试指南](evaluation.md#package-context-preview)，不会导入、发布或连接Provider。
 
 ## 校验和发布
 
@@ -80,8 +96,8 @@ draft → pending → approved → published → superseded/revoked
 
 ## 当前示例与校验入口
 
-当前完整包为 `dht11_temperature_humidity@2.0.5` 和
-`gpio_led_output@2.0.3`。DHT11 工作区版本 2.0.5 仍是测试草稿；两包用于证明同一套加载、规则、故障树和证据链可以处理不同实验。
+当前完整包为 `dht11_temperature_humidity@2.0.10` 和
+`gpio_led_output@2.0.4`。DHT11 工作区版本 2.0.10 仍是测试草稿；两包用于证明同一套加载、规则、故障树和证据链可以处理不同实验。
 
 两个包及其案例均为合成测试资料，并明确标记测试数据；没有真实硬件和教师审核时不能作为
 正式实验知识发布。`metadata.compatibility.engine` 在导入、发布检查和运行装载时执行版本范围校验。
@@ -184,3 +200,7 @@ LED 旧 level 映射用 `match.metric: null` 与显式 command/electrical/optica
 - The Carpentries：[内容组织](https://carpentries.github.io/lesson-development-training/lesson-content.html)、[试教与维护](https://carpentries.github.io/lesson-development-training/instructor/operations.html)用于明确目标、练习和教学反馈。
 - Wokwi：[电路结构](https://docs.wokwi.com/diagram-format)、[自动化场景](https://docs.wokwi.com/wokwi-ci/automation-scenarios)用于记录可复现场景；仿真不能证明真实供电、接触和器件状态，也不要求采用其接口。
 - Zephyr：[样例规范](https://docs.zephyrproject.org/latest/samples/sample_definition_and_criteria.html)用于写清硬件要求、运行方法及预期输出；可运行样例不能代替异常与恢复测试。
+
+## DHT11 2.0.7内容修订
+
+项目`minimum_interval_ms`与配置周期均为3000ms；厂商V1.3的严格大于2秒限制由原始手册定位解释，不把2000ms当允许的等值边界。`identify`是connect/configure/observe的先行参考，`protocol_evidence`在三个读取失败原因分支的四级提示中可选取；只影响新指导参考快照。来源新增厂商附件与对应固件源码hash，旧基线保留为内容沿革；硬件/教师/课程分别待确认。LED 2.0.4内容未变。

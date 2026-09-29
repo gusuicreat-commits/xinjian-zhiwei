@@ -4,7 +4,7 @@
 
 面向高校嵌入式与物联网实验课程，收集开发板状态、日志和读数，提供规则诊断、排查指导、学生反馈与教师处置。后端使用 FastAPI/PostgreSQL，前端使用 Vue 3，LangGraph 编排固定诊断流程。
 
-目前具备 V2 软件框架，正在准备实物验证。DHT11 资料包是 **`2.0.5` 测试草稿**，ESP32 固件已编译，尚未完成硬件和课堂验收。
+目前具备 V2 软件框架，正在准备实物验证。DHT11 资料包是 **`2.0.11` 测试草稿**，ESP32 固件已编译，尚未完成硬件和课堂验收。
 
 ## 能做什么
 
@@ -18,7 +18,7 @@
 
 | 当前范围 | 说明 |
 | --- | --- |
-| 实验资料 | DHT11 温湿度 `2.0.5` 与 GPIO LED `2.0.3`，均为测试草稿。包内保存硬件配置、规则、故障树、知识、步骤和测试样例，运行绑定发布快照。 |
+| 实验资料 | DHT11 温湿度 `2.0.11` 与 GPIO LED `2.0.4`，均为测试草稿。包内保存硬件配置、规则、故障树、知识、步骤和测试样例，运行绑定发布快照。 |
 | AI 辅助 | 默认关闭；开启后辅助候选排序与中文解释，失败时保留确定性诊断。当前不使用 RAG、向量检索或自由规划 Agent。 |
 | 已知边界 | “仍未解决”继续原指导；“重新检查”分析已上传数据，不控制硬件采样。资料包更新不会改写历史判断。 |
 
@@ -50,4 +50,4 @@ docker compose exec backend python -m app.cli.seed_demo --prefix demo-local-
 
 - 开发前读[开发入口](AGENTS.md)和[开发准则](docs/development-guidelines.md)，按[文档索引](docs/README.md)定位模块契约。
 - 开发验证入口为 `scripts/verify.sh`，需要 Python 3.10+ 及对应依赖；可用 `BACKEND_PYTHON=/path/to/python scripts/verify.sh` 指定环境。命令和覆盖范围见[测试与评测](docs/evaluation.md)。
-- 下一步优先补齐实物和课程证据：核对候选器件、接线和程序，按[硬件验证计划](docs/hardware-validation-plan.md)做正常—单因素故障—恢复对照，由教师确认教学动作和验收判据。
+- 当前按[内部技术目标和到货清单](docs/experiments/dht11-arrival-checklist.md)先完成首轮DHT11实物功能与证据链，再按[硬件验证计划](docs/hardware-validation-plan.md)扩展对照；教师课程判据仍单独确认。

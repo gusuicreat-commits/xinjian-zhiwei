@@ -1,0 +1,12 @@
+{
+  "dht11_temperature_humidity": {
+    "raw": "79f9dfc70e1f355d499135825633182b3ca2ba7bef212ee6fa7e7d6b32f0fc40",
+    "canonical": "79f9dfc70e1f355d499135825633182b3ca2ba7bef212ee6fa7e7d6b32f0fc40",
+    "missing_optional": "e19cc23448b81382a80e56ed22f1a1e83d5e4ce2bf239055cec03fbcd8f7fcac"
+  },
+  "gpio_led_output": {
+    "raw": "3cc15b255e71db31abb87e1b97cfe9ce64046de143c6dd67c7cc03a01798c2bf",
+    "canonical": "3cc15b255e71db31abb87e1b97cfe9ce64046de143c6dd67c7cc03a01798c2bf",
+    "missing_optional": "c0fa53c4cd28c1f052490280d62768fb38350114e0db0f06673b2f64d1424659"
+  }
+}

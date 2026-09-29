@@ -1,16 +1,690 @@
-schema_version: '1.0'
+schema_version: '1.1'
 experiment:
   code: dht11_temperature_humidity
   name: DHT11 温湿度实验
   category: sensor
   locale: zh-CN
 package:
-  version: 2.0.5
+  version: 2.0.11
   status: draft
 compatibility:
-  engine: '>=2.1,<3.0'
+  engine: '>=2.2,<3.0'
   platforms:
   - esp32
 maintainer:
   organization: 芯鉴知微项目组
   author: 项目组（资料未验证，非教师审核）
+content_registry:
+  sources:
+  - source_id: baseline.hardware
+    kind: project_design
+    revision: 6eba821
+    location: backend/experiment_packages/dht11_temperature_humidity/hardware.yaml
+    locator: 完整文件，基线中的测试草稿
+    availability: available
+    sha256: 59d57456194333f7eab700ebdb7cd88f81221609880cb14fad3be03988fb795c
+  - source_id: baseline.diagnosis.rules
+    kind: project_design
+    revision: 6eba821
+    location: backend/experiment_packages/dht11_temperature_humidity/diagnosis/rules.yaml
+    locator: 完整文件，基线中的测试草稿
+    availability: available
+    sha256: df45259616b3b53205dc3bc2b71e8494a0616bb8167fc88abbf36b3214bce2a2
+  - source_id: baseline.diagnosis.fault_tree
+    kind: project_design
+    revision: 6eba821
+    location: backend/experiment_packages/dht11_temperature_humidity/diagnosis/fault_tree.yaml
+    locator: 完整文件，基线中的测试草稿
+    availability: available
+    sha256: b0df93d047d0718ee381b5d41f49113e90667f4ce0e7c5ad06b60f6238bb6b72
+  - source_id: baseline.knowledge.concepts
+    kind: project_design
+    revision: 6eba821
+    location: backend/experiment_packages/dht11_temperature_humidity/knowledge/concepts.yaml
+    locator: 完整文件，基线中的测试草稿
+    availability: available
+    sha256: 31db2bcd254245857bffc02d2770e2311c4e93b89992ae06136c317149222a63
+  - source_id: baseline.knowledge.cases
+    kind: project_design
+    revision: 6eba821
+    location: backend/experiment_packages/dht11_temperature_humidity/knowledge/cases.yaml
+    locator: 完整文件，基线中的测试草稿
+    availability: available
+    sha256: 7241a4d688ab6eeb242eeaf32239e2c3f7b4a4bef741c5a32be547b05b114661
+  - source_id: baseline.teaching.steps
+    kind: project_design
+    revision: 6eba821
+    location: backend/experiment_packages/dht11_temperature_humidity/teaching/steps.yaml
+    locator: 完整文件，基线中的测试草稿
+    availability: available
+    sha256: 7f58c8b6ac91bdc4e71aeebb601141300a6c702940dbd992174695ee08d4f11e
+  - source_id: aosong-dht11-v1.3
+    kind: vendor_document
+    revision: V1.3_20170331
+    location: https://www.aosong.com/userfiles/files/media/DHT11-V1_3%E8%AF%B4%E6%98%8E%E4%B9%A6%EF%BC%88%E8%AF%A6%E7%BB%86%E7%89%88%EF%BC%89.pdf
+    locator: PDF第2页引脚；第3页表1-3；第4页典型电路；第5页数据示例；第6页前次测量说明
+    availability: available
+    sha256: 1702de1e17328b98275d381404d27592b3f8da274b27df30b6caf42e6d3b0f16
+  - source_id: esp-idf-board-platformio-7.0.1
+    kind: code
+    revision: v7.0.1
+    location: https://raw.githubusercontent.com/platformio/platform-espressif32/v7.0.1/platform.json
+    locator: 'platform.json: packages/framework-arduinoespressif32'
+    availability: available
+    sha256: cfd206f4dabb664c5485124d5d9049e19abdcd807e144cf4e615205f96b0ae01
+  - source_id: espressif-devkitc-user-guide
+    kind: vendor_document
+    revision: 2026-09-22 archived snapshot
+    location: https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32/esp32-devkitc/user_guide.html
+    locator: 'ESP32-DevKitC V4 User Guide: board/module variants and header block
+      pin descriptions'
+    availability: available
+    sha256: 0a9c01dcff30d31c6ff51294c22650b44bfe9cec4a633d59b73667f6d18572e5
+  - source_id: arduinojson-7.4.2
+    kind: code
+    revision: v7.4.2
+    location: https://raw.githubusercontent.com/bblanchon/ArduinoJson/v7.4.2/library.json
+    locator: 'library.json: version'
+    availability: available
+    sha256: 39309b243592657a63225549850c911d48edeb7659179e8be69605c923861585
+  - source_id: firmware.config
+    kind: code
+    revision: firmware-0.2.5
+    location: firmware/esp32_dht11/include/firmware_config.h
+    locator: XJ_DHT11_DATA_GPIO / XJ_SAMPLE_INTERVAL_MS
+    availability: available
+    sha256: d7f3ae704e83d72d9fd8e1d692c7ef49762db5e6a67f0181a709a767daa61d9f
+  - source_id: firmware.reader
+    kind: code
+    revision: firmware-0.2.5
+    location: firmware/esp32_dht11/src/dht11_reader.cpp
+    locator: decodeDht11Frame / readDht11
+    availability: available
+    sha256: 201d17dd208ba5e6ee13a4ac500b33098bd0ee0cdf33e25d77c624f1ec4e1ac1
+  - source_id: firmware.main
+    kind: code
+    revision: firmware-0.2.5
+    location: firmware/esp32_dht11/src/main.cpp
+    locator: addReading / makeBatch / loop
+    availability: available
+    sha256: 965a11d72ae815ebd9f8665649c955c356e11f5b4c09b06a3758e14b1ae143aa
+  - source_id: firmware.build
+    kind: code
+    revision: firmware-0.2.5
+    location: firmware/esp32_dht11/platformio.ini
+    locator: env:esp32dev; platform/framework/lib_deps
+    availability: available
+    sha256: 08349a828abc9d9be4e99ce6b49ea0d303097c41b7f968663704d54e9b5b11dc
+  - source_id: pending.hardware
+    kind: experiment_record
+    revision: null
+    location: 待采购对应实物；接线、原始日志和独立测量尚未取得
+    locator: null
+    availability: pending
+    sha256: null
+  - source_id: pending.teacher
+    kind: course_material
+    revision: null
+    location: 待取得教师动作、案例与教学判据的确认材料
+    locator: null
+    availability: pending
+    sha256: null
+  - source_id: pending.course
+    kind: course_material
+    revision: null
+    location: 项目内部实验；正式课程指导书及课程验收标准尚未取得
+    locator: null
+    availability: pending
+    sha256: null
+  - source_id: internal.lab-guide
+    kind: internal_document
+    revision: internal-lab-v3-2026-09-29
+    location: docs/experiments/dht11-internal-lab.md
+    locator: 第1—10节
+    availability: available
+    sha256: 04b46f2de1f3fb5ff6819b81a0d9daa9b0833047ab05ffdc871563247dfe6d2b
+  - source_id: runtime.store
+    kind: code
+    revision: internal-lab-v1-2026-09-28
+    location: firmware/esp32_dht11/src/pending_store.cpp
+    locator: PendingStore::begin/save/load
+    availability: available
+    sha256: ce67477db47e6f82663508887f84b0eb90f97849ae902295c31720e35f8e7304
+  - source_id: contract.device
+    kind: internal_document
+    revision: internal-lab-v1-2026-09-28
+    location: docs/device-protocol.md
+    locator: 批次身份、时间质量与回执
+    availability: available
+    sha256: 62788e9ddee39adca9d1f135908f1ebc00679917151899dc08d04dd9e23ddcf4
+  - source_id: contract.health
+    kind: code
+    revision: internal-lab-v1-2026-09-28
+    location: backend/app/diagnosis/runtime_health.py
+    locator: 正常、周期与数据新鲜度评估
+    availability: available
+    sha256: f960f101395ac384a17f939584b5015b92625ef7e0e38aae5b3e59f3b9e9ad33
+  - source_id: internal.lab-preparation
+    kind: internal_document
+    revision: internal-lab-v2-2026-09-29
+    location: docs/experiments/internal-lab-preparation.md
+    locator: 第1—5节
+    availability: available
+    sha256: dbfd3a45873df1c36ffeddf462861005bf4a9db59de16486b2a44af7e4a2d7e1
+  - source_id: runtime.preparation
+    kind: code
+    revision: internal-lab-v2-2026-09-29
+    location: backend/app/services/internal_experiment_preparation.py
+    locator: inspect_preparation / apply_preparation
+    availability: available
+    sha256: a145fcb45dbe68c21f53be4235f71b24a56f5a739d02ae5155affc75c520865f
+  units:
+  - unit_id: interface.dht11_gpio
+    target:
+      artifact: hardware.yaml
+      entity_kind: interface
+      entity_id: dht11_gpio
+    statement_kind: project_configuration
+    source_refs:
+    - source_id: baseline.hardware
+      claim: dht11_gpio
+      locator: interfaces/dht11_gpio
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: aosong-dht11-v1.3
+      claim: 请求间隔严格大于2秒
+      locator: PDF第3页表3、第4页典型电路第3条
+    - source_id: firmware.config
+      claim: 项目GPIO4和3秒请求周期配置
+      locator: XJ_DHT11_DATA_GPIO / XJ_SAMPLE_INTERVAL_MS
+    - source_id: aosong-dht11-v1.3
+      claim: 裸器件引脚、3.3V短连线与4.7kΩ上拉的适用条件
+      locator: PDF第2页引脚，第3页表3，第4页典型电路第1、2条
+    - source_id: espressif-devkitc-user-guide
+      claim: 候选板卡与IO4引脚身份；并非厂商指定DHT11接线
+      locator: 'User Guide: ESP32-DevKitC V4 / Header Block'
+    derived_from: []
+    depends_on: []
+  - unit_id: rule.dht11-read-failed-v2
+    target:
+      artifact: diagnosis/rules.yaml
+      entity_kind: rule
+      entity_id: dht11-read-failed-v2
+    statement_kind: project_configuration
+    source_refs:
+    - source_id: baseline.diagnosis.rules
+      claim: dht11-read-failed-v2
+      locator: rules/dht11-read-failed-v2
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    derived_from: []
+    depends_on: []
+  - unit_id: fault_tree.dht11-read-failure-v2
+    target:
+      artifact: diagnosis/fault_tree.yaml
+      entity_kind: fault_tree
+      entity_id: dht11-read-failure-v2
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.diagnosis.fault_tree
+      claim: dht11-read-failure-v2
+      locator: trees/dht11-read-failure-v2
+    - source_id: pending.teacher
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    derived_from: []
+    depends_on: []
+  - unit_id: concept.dht11.minimum_interval
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: dht11.minimum_interval
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.knowledge.concepts
+      claim: dht11.minimum_interval
+      locator: concepts/dht11.minimum_interval
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: aosong-dht11-v1.3
+      claim: 请求间隔严格大于2秒
+      locator: PDF第3页表3、第4页典型电路第3条
+    - source_id: firmware.config
+      claim: 项目GPIO4和3秒请求周期配置
+      locator: XJ_DHT11_DATA_GPIO / XJ_SAMPLE_INTERVAL_MS
+    - source_id: internal.lab-guide
+      claim: 人员操作、记录和异常分流的对应说明
+      locator: 第2—8节
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅作为 dht11_temperature_humidity 当前测试草稿的教学参考；配置和预期不是实测结果，不能据此确认根因、硬件正常或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11
+  - unit_id: concept.dht11.single_bus
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: dht11.single_bus
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.knowledge.concepts
+      claim: dht11.single_bus
+      locator: concepts/dht11.single_bus
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: aosong-dht11-v1.3
+      claim: 裸器件引脚、3.3V短连线与4.7kΩ上拉的适用条件
+      locator: PDF第2页引脚，第3页表3，第4页典型电路第1、2条
+    - source_id: espressif-devkitc-user-guide
+      claim: 候选板卡与IO4引脚身份；并非厂商指定DHT11接线
+      locator: 'User Guide: ESP32-DevKitC V4 / Header Block'
+    - source_id: internal.lab-guide
+      claim: 人员操作、记录和异常分流的对应说明
+      locator: 第2—8节
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅作为 dht11_temperature_humidity 当前测试草稿的教学参考；配置和预期不是实测结果，不能据此确认根因、硬件正常或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11
+  - unit_id: concept.dht11.failure_counts
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: dht11.failure_counts
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.knowledge.concepts
+      claim: dht11.failure_counts
+      locator: concepts/dht11.failure_counts
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: internal.lab-guide
+      claim: 人员操作、记录和异常分流的对应说明
+      locator: 第2—8节
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅作为 dht11_temperature_humidity 当前测试草稿的教学参考；配置和预期不是实测结果，不能据此确认根因、硬件正常或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11
+  - unit_id: concept.dht11.protocol_evidence
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: dht11.protocol_evidence
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.knowledge.concepts
+      claim: dht11.protocol_evidence
+      locator: concepts/dht11.protocol_evidence
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: aosong-dht11-v1.3
+      claim: 前次测量语义和选定版本数据格式
+      locator: PDF第4页第3条，第5页数据示例，第6页注释
+    - source_id: firmware.reader
+      claim: 帧校验、符号、小数与量程处理
+      locator: decodeDht11Frame
+    - source_id: firmware.main
+      claim: 记录种类与前次转换时间元数据
+      locator: addReading / makeBatch / loop
+    - source_id: internal.lab-guide
+      claim: 人员操作、记录和异常分流的对应说明
+      locator: 第2—8节
+    derived_from: []
+    depends_on: []
+    applicability: &id001
+      limits_text: 仅作为 dht11_temperature_humidity 当前测试草稿的教学参考；配置和预期不是实测结果，不能据此确认根因、硬件正常或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11
+  - unit_id: case.dht11.sensor-read-failed.test-data.v2_0_2
+    target:
+      artifact: knowledge/cases.yaml
+      entity_kind: case
+      entity_id: dht11.sensor-read-failed.test-data.v2_0_2
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.knowledge.cases
+      claim: dht11.sensor-read-failed.test-data.v2_0_2
+      locator: cases/dht11.sensor-read-failed.test-data.v2_0_2
+    - source_id: pending.teacher
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    derived_from: []
+    depends_on: []
+  - unit_id: step.connect
+    target:
+      artifact: teaching/steps.yaml
+      entity_kind: step
+      entity_id: connect
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.teaching.steps
+      claim: connect
+      locator: steps/connect
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: pending.course
+      claim: 课程验收判据未确认
+      locator: 项目内部实验，非正式课程验收
+    - source_id: aosong-dht11-v1.3
+      claim: 裸器件引脚、3.3V短连线与4.7kΩ上拉的适用条件
+      locator: PDF第2页引脚，第3页表3，第4页典型电路第1、2条
+    - source_id: espressif-devkitc-user-guide
+      claim: 候选板卡与IO4引脚身份；并非厂商指定DHT11接线
+      locator: 'User Guide: ESP32-DevKitC V4 / Header Block'
+    - source_id: internal.lab-guide
+      claim: 人员操作、记录和异常分流的对应说明
+      locator: 第2—8节
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅作为 dht11_temperature_humidity 当前测试草稿的教学参考；配置和预期不是实测结果，不能据此确认根因、硬件正常或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11
+  - unit_id: step.configure
+    target:
+      artifact: teaching/steps.yaml
+      entity_kind: step
+      entity_id: configure
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.teaching.steps
+      claim: configure
+      locator: steps/configure
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: pending.course
+      claim: 课程验收判据未确认
+      locator: 项目内部实验，非正式课程验收
+    - source_id: aosong-dht11-v1.3
+      claim: 请求间隔严格大于2秒
+      locator: PDF第3页表3、第4页典型电路第3条
+    - source_id: firmware.config
+      claim: 项目GPIO4和3秒请求周期配置
+      locator: XJ_DHT11_DATA_GPIO / XJ_SAMPLE_INTERVAL_MS
+    - source_id: firmware.build
+      claim: 实际锁定板卡环境和依赖
+      locator: env:esp32dev
+    - source_id: esp-idf-board-platformio-7.0.1
+      claim: 框架依赖包声明
+      locator: packages/framework-arduinoespressif32
+    - source_id: arduinojson-7.4.2
+      claim: JSON库版本声明
+      locator: version
+    - source_id: internal.lab-guide
+      claim: 人员操作、记录和异常分流的对应说明
+      locator: 第2—8节
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅作为 dht11_temperature_humidity 当前测试草稿的教学参考；配置和预期不是实测结果，不能据此确认根因、硬件正常或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11
+  - unit_id: step.observe
+    target:
+      artifact: teaching/steps.yaml
+      entity_kind: step
+      entity_id: observe
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.teaching.steps
+      claim: observe
+      locator: steps/observe
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: pending.course
+      claim: 课程验收判据未确认
+      locator: 项目内部实验，非正式课程验收
+    - source_id: aosong-dht11-v1.3
+      claim: 前次测量语义和选定版本数据格式
+      locator: PDF第4页第3条，第5页数据示例，第6页注释
+    - source_id: firmware.reader
+      claim: 帧校验、符号、小数与量程处理
+      locator: decodeDht11Frame
+    - source_id: firmware.main
+      claim: 记录种类与前次转换时间元数据
+      locator: addReading / makeBatch / loop
+    - source_id: internal.lab-guide
+      claim: 人员操作、记录和异常分流的对应说明
+      locator: 第2—8节
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅作为 dht11_temperature_humidity 当前测试草稿的教学参考；配置和预期不是实测结果，不能据此确认根因、硬件正常或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11
+  - unit_id: step.identify
+    target:
+      artifact: teaching/steps.yaml
+      entity_kind: step
+      entity_id: identify
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: baseline.teaching.steps
+      claim: identify
+      locator: steps/identify
+    - source_id: pending.hardware
+      claim: 实物或教学适用性未确认
+      locator: 待验证，不作为实测或审核结果
+    - source_id: pending.course
+      claim: 课程验收判据未确认
+      locator: 项目内部实验，非正式课程验收
+    - source_id: firmware.build
+      claim: 实际锁定板卡环境和依赖
+      locator: env:esp32dev
+    - source_id: esp-idf-board-platformio-7.0.1
+      claim: 框架依赖包声明
+      locator: packages/framework-arduinoespressif32
+    - source_id: arduinojson-7.4.2
+      claim: JSON库版本声明
+      locator: version
+    - source_id: internal.lab-guide
+      claim: 人员操作、记录和异常分流的对应说明
+      locator: 第2—8节
+    - source_id: internal.lab-preparation
+      claim: 内部测试身份与任务准备流程；不代表实物或教师确认
+      locator: 第1—4节
+    - source_id: runtime.preparation
+      claim: 固定测试包、授权、重复执行与历史边界
+      locator: inspect_preparation / apply_preparation
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅作为 dht11_temperature_humidity 当前测试草稿的教学参考；配置和预期不是实测结果，不能据此确认根因、硬件正常或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - dht11_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - dht11
+  - unit_id: concept.dht11.power_and_pullup
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: dht11.power_and_pullup
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: aosong-dht11-v1.3
+      claim: 对应器件/软件约束；不证明实测
+      locator: PDF第2页引脚、第4页典型电路
+    - source_id: internal.lab-guide
+      claim: 本内部实验解释与操作边界
+      locator: 第2、5、6、7节
+    - source_id: pending.hardware
+      claim: 仍需实物核验
+      locator: 待验证
+    derived_from: []
+    depends_on: []
+    applicability: *id001
+  - unit_id: concept.dht11.delivery_evidence
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: dht11.delivery_evidence
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: runtime.store
+      claim: 对应器件/软件约束；不证明实测
+      locator: PendingStore::begin/save/load
+    - source_id: internal.lab-guide
+      claim: 本内部实验解释与操作边界
+      locator: 第2、5、6、7节
+    - source_id: pending.hardware
+      claim: 仍需实物核验
+      locator: 待验证
+    derived_from: []
+    depends_on: []
+    applicability: *id001
+  - unit_id: concept.dht11.identity_scope
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: dht11.identity_scope
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: contract.device
+      claim: 对应器件/软件约束；不证明实测
+      locator: 设备身份与实验会话
+    - source_id: internal.lab-guide
+      claim: 本内部实验解释与操作边界
+      locator: 第2、5、6、7节
+    - source_id: pending.hardware
+      claim: 仍需实物核验
+      locator: 待验证
+    - source_id: internal.lab-preparation
+      claim: 内部测试身份与任务准备流程；不代表实物或教师确认
+      locator: 第1—4节
+    - source_id: runtime.preparation
+      claim: 固定测试包、授权、重复执行与历史边界
+      locator: inspect_preparation / apply_preparation
+    derived_from: []
+    depends_on: []
+    applicability: *id001
+  - unit_id: concept.dht11.recovery_boundary
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: dht11.recovery_boundary
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: contract.health
+      claim: 对应器件/软件约束；不证明实测
+      locator: 正常与恢复所需观测
+    - source_id: internal.lab-guide
+      claim: 本内部实验解释与操作边界
+      locator: 第2、5、6、7节
+    - source_id: pending.hardware
+      claim: 仍需实物核验
+      locator: 待验证
+    derived_from: []
+    depends_on: []
+    applicability: *id001
+  value_owners:
+  - parameter_id: data_pin
+    owner:
+      target:
+        artifact: hardware.yaml
+        entity_kind: interface
+        entity_id: dht11_gpio
+        field: pins.data
+      unit: gpio
+    copies:
+    - target:
+        artifact: hardware.yaml
+        entity_kind: required_parameters
+        field: data_pin
+      unit: gpio
+  - parameter_id: minimum_interval_ms
+    owner:
+      target:
+        artifact: hardware.yaml
+        entity_kind: interface
+        entity_id: dht11_gpio
+        field: parameters.minimum_interval_ms
+      unit: ms
+    copies:
+    - target:
+        artifact: hardware.yaml
+        entity_kind: required_parameters
+        field: minimum_interval_ms
+      unit: ms

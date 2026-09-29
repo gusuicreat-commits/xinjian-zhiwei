@@ -6,6 +6,7 @@ from pydantic import Field, field_validator, model_validator
 
 from app.diagnosis.fault_tree_schemas import FaultTreeDefinition
 from app.diagnosis.schemas import DiagnosisRule, ExpectedBehavior, StrictModel
+from app.experiment_packages.registry import ContentRegistry
 from app.experiments.schemas import (
     HardwareDefinition,
     InterfaceDefinition,
@@ -43,6 +44,11 @@ class PackageMetadata(StrictModel):
     package: PackageRelease
     compatibility: PackageCompatibility
     maintainer: PackageMaintainer
+
+
+class PackageMetadataV11(PackageMetadata):
+    schema_version: Literal["1.1"] = "1.1"
+    content_registry: ContentRegistry
 
 
 class HardwareConnection(StrictModel):
@@ -205,7 +211,7 @@ class PackageManifest(StrictModel):
 
 
 class ExperimentPackageBundle(StrictModel):
-    metadata: PackageMetadata
+    metadata: PackageMetadata | PackageMetadataV11 = Field(discriminator="schema_version")
     hardware: PackageHardware
     rules: PackageRules
     fault_trees: PackageFaultTrees

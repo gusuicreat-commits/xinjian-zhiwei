@@ -21,6 +21,7 @@ from app.ai.context_contract import (
     CONTEXT_CONTRACT_VERSION,
     CONTEXT_POLICY_VERSION,
     ContextManifestV1,
+    current_context_policy,
 )
 from app.ai.context_sanitizer import (
     ProviderInputError,
@@ -44,6 +45,7 @@ from app.ai.schemas import (
 )
 from app.core.config import Settings
 from app.knowledge.matcher import match_knowledge_case_definitions, match_knowledge_cases
+from app.knowledge.projection import case_references
 from app.models.ai_call_record import AICallRecord
 from app.models.ai_explanation_cache import AIExplanationCache
 from app.models.device import Device
@@ -124,40 +126,7 @@ def _match_structured_knowledge(
         )
     else:
         cases = match_knowledge_cases(db, record, guidance, limit=settings.ai_knowledge_limit)
-    return [
-        AIKnowledgeReference(
-            chunk_id=item.case_id,
-            source_key=item.source_ref,
-            source_title=f"{item.experiment_type}: {item.symptom}",
-            source_type="structured_case",
-            source_uri=None,
-            source_version=item.version,
-            locator={"case_id": item.case_id},
-            content=json.dumps(
-                {
-                    "caseId": item.case_id,
-                    "experimentType": item.experiment_type,
-                    "errorType": item.error_type,
-                    "symptom": item.symptom,
-                    "normalState": item.normal_state,
-                    "evidence": item.evidence,
-                    "possibleCauses": item.possible_causes,
-                    "solutionSteps": item.solution_steps,
-                    "teacherNotes": item.teacher_notes,
-                    "rootCause": {
-                        "value": item.root_cause_value,
-                        "status": item.root_cause_status,
-                    },
-                },
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ),
-            similarity=item.match_score,
-            retrieval_scores={"structured_match": item.match_score},
-            is_test_data=item.is_test_data,
-        )
-        for item in cases
-    ]
+    return case_references(cases)
 
 
 def _validate_explanation(raw_content: str, payload: AIDiagnosisInput) -> AIStructuredExplanation:
@@ -441,6 +410,8 @@ def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanation
                 if content.startswith(("{", "[")):
                     json.loads(content)
             explanation = AIStructuredExplanation.model_validate(record.output_json)
+            if not current_context_policy(record.input_snapshot):
+                raise ValueError("historical output lacks applicability policy")
             if contract.get("version") != OUTPUT_CONTRACT_VERSION or any(
                 step not in contract.get("allowed_steps", []) for step in explanation.steps
             ):

@@ -31,6 +31,7 @@ def _safe_case_payload(reference: AIKnowledgeReference) -> dict[str, Any] | None
         "teacher_notes": sanitize_text(raw.get("teacherNotes"), max_chars=None),
         "root_cause": raw.get("rootCause") if isinstance(raw.get("rootCause"), dict) else {},
         "source_id": sanitize_text(reference.source_key, max_chars=None),
+        "applicability": raw.get("applicability") or {},
     }
 
 
@@ -68,6 +69,7 @@ def build_reasoning_knowledge_constraints(
                 "error_type": item["error_type"],
                 "possible_causes": item["possible_causes"],
                 "confirmed_root_cause": item["root_cause"] if item in confirmed else {},
+                "applicability": item["applicability"],
             }
             for item in cases
         ],

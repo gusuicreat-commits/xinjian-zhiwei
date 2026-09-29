@@ -19,14 +19,20 @@ Dht11Frame decodeDht11Frame(const uint8_t raw[5]) {
         frame.status = Dht11ReadStatus::Checksum;
         return frame;
     }
-    const bool negative = (raw[2] & 0x80U) != 0;
-    const float magnitude = static_cast<float>(raw[2] & 0x7fU) +
-                            static_cast<float>(raw[3] & 0x0fU) * 0.1f;
+    // Selected device contract: Aosong V1.3_20170331, PDF pp.3-5.
+    // Sign is bit 7 of the temperature DECIMAL byte; humidity decimal is zero.
+    const bool negative = (raw[3] & 0x80U) != 0;
+    const uint8_t decimal = raw[3] & 0x7fU;
+    if (raw[1] != 0 || decimal > 9) {
+        frame.status = Dht11ReadStatus::Protocol;
+        return frame;
+    }
+    const float magnitude = static_cast<float>(raw[2]) +
+                            static_cast<float>(decimal) * 0.1f;
     frame.temperature_c = negative ? -magnitude : magnitude;
-    frame.humidity_rh = static_cast<float>(raw[0]) +
-                        static_cast<float>(raw[1] & 0x0fU) * 0.1f;
-    if (frame.humidity_rh < 0.0f || frame.humidity_rh > 100.0f ||
-        frame.temperature_c < -40.0f || frame.temperature_c > 80.0f) {
+    frame.humidity_rh = static_cast<float>(raw[0]);
+    if (frame.humidity_rh < 5.0f || frame.humidity_rh > 95.0f ||
+        frame.temperature_c < -20.0f || frame.temperature_c > 60.0f) {
         frame.status = Dht11ReadStatus::Range;
         return frame;
     }

@@ -337,3 +337,15 @@ pending --formal_approver--> approved
 ## 上下文审计兼容
 
 本次上下文建设未新增HTTP端点或公开响应字段。内部 `AIDiagnosisInput` 的私有准备元数据不会出现在模型JSON或公开Schema中。`AICallRecord.input_snapshot.context_manifest` 仅为现有审计JSON附加键，含来源身份/版本/hash、准确输入及Prompt指纹、预算与省略原因。`provider_attempted` 表示客户端尝试，不证明服务商接收或模型利用；缓存命中submitted为空并记录cache_origin。旧记录无清单表示历史未知，不按新策略补写。
+
+### 资料包1.1与当前AI建议兼容
+
+现有包导入端点接受格式1.0/1.1；1.1来源登记是严格JSON字段，不新增任意文档读取端点。全局案例确认材料允许有限`applicability_conditions`，缺少有效文字限制的历史案例仍可授权查阅，但不会进入新AI增强。源撤回影响候选可通过明确derived_from关联改名包案例，不自动撤包。
+
+工作流当前读取、检查幂等返回和反馈后的读取共用只读建议投影。AI来源绑定冻结于相应快照`context_delivery.explanation_call_id`；旧策略或无绑定时返回确定性内容和`context_policy_status=legacy_enhancement_not_revalidated`，不改原回执或补调用。历史影响复核接口保留`usable_as_current_advice=false`，补充`historical_context_policy`。没有新增公共预检接口，预检仅为本地CLI。
+
+## 内部测试实验准备CLI
+
+维护者入口为`app.cli.prepare_internal_experiment`，提供plan/apply/status，操作见[准备说明](experiments/internal-lab-preparation.md)。没有新增HTTP接口；CLI显式选择测试PostgreSQL与已登录管理员令牌，调用共同初始化服务。包导入/状态流转仍由上述管理员接口负责，学生会话仍经原学生接口创建。初始化不绕过固定包、授权、测试标记或历史边界。
+
+对象和成功审计同事务提交；同前缀同操作者同包hash/设备性质可恢复原回执，变更或残缺对象拒绝接管。plan/status不写入、不发放凭据；终端输出只含对象ID和状态，秘密由交互或环境变量输入。具体运行限制与回归入口见开发准则BR-LAB-PREP。
