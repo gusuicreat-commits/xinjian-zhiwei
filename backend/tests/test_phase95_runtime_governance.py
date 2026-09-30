@@ -22,7 +22,8 @@ from app.schemas.knowledge import (
     KnowledgeSourceCreate,
     KnowledgeTextImportRequest,
 )
-from app.services.ai_diagnosis import explain_diagnosis, get_ai_status
+from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
+from app.services.ai_diagnosis import get_ai_status
 from app.services.hybrid_retrieval import hybrid_retrieve
 from app.services.knowledge import (
     KnowledgeServiceError,
@@ -362,6 +363,21 @@ def test_formal_knowledge_governance_and_rag_status_filter(
 ) -> None:
     settings = Settings(_env_file=None)
     with api_context["session_factory"]() as db:
+        from shared_write_authorization import authorize_write_fixture
+
+        from app.models import User
+
+        identities = {}
+        for role in ("knowledge_organizer", "formal_approver"):
+            reviewer = User(
+                username="phase95-" + role,
+                display_name="Synthetic reviewer",
+                password_hash="unused",
+                is_test_data=True,
+            )
+            db.add(reviewer)
+            authorize_write_fixture(db, reviewer, role)
+            identities[role] = reviewer._actor_context
         source = create_source(
             db,
             KnowledgeSourceCreate(
@@ -399,6 +415,7 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                     reviewer_role="formal_approver",
                     reviewer_ref="phase95-formal-approver",
                 ),
+                actor_context=identities["formal_approver"],
             )
         assert direct_approval.value.code == "INVALID_KNOWLEDGE_REVIEW_TRANSITION"
 
@@ -414,6 +431,9 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                     reviewer_role=role,
                     reviewer_ref=reviewer,
                 ),
+                actor_context=identities[
+                    "formal_approver" if role == "formal_approver" else "knowledge_organizer"
+                ],
             )
             current = db.get(KnowledgeDocument, document.id)
             assert current is not None

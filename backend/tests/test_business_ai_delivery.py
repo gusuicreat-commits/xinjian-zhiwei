@@ -52,7 +52,13 @@ def test_late_polish_is_discarded_but_actual_call_remains_charged(persisted_draf
 
     provider = ResolvingProvider()
     with pytest.raises(CaseDraftError) as caught:
-        generate_ai_assisted_polish(db, draft, Settings(ai_enabled=True), ai_client=provider)
+        generate_ai_assisted_polish(
+            db,
+            draft,
+            Settings(ai_enabled=True),
+            ai_client=provider,
+            actor_context=db.info["case_actor"],
+        )
     assert isinstance(caught.value.__cause__, AIQuotaDenied)
     assert caught.value.__cause__.code == "AI_RESULT_STALE"
     assert len(provider.prompts) == 1

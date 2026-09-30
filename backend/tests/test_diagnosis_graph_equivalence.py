@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
+from shared_student_authorization import demo_student_actor
 from sqlalchemy import select
 
 from app.ai import diagnosis_graph as graph_service
@@ -102,7 +103,7 @@ def test_graph_matches_legacy_diagnosis_for_every_golden_case(
                 lookback_seconds=60,
                 experiment_template=template,
             ),
-        )
+         student_actor=demo_student_actor(db, device))
 
         direct_facts = [item.model_dump(mode="json") for item in direct.matches]
         checkpoint = graph.get_state(

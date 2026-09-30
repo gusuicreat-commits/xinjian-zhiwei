@@ -5,10 +5,11 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.base import utc_now
-from app.models.classroom import User
+from app.models.classroom import Classroom, User
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.intervention import InterventionCase, InterventionEvent
 from app.services.diagnosis_episode import issue_links, lifecycle_lock
+from app.services.provenance import derive_test_flag
 
 TRANSITIONS = {
     ("open", "claim"): "claimed",
@@ -67,7 +68,11 @@ def ensure_intervention_case(
         class_id=class_id,
         status="open",
         version_no=1,
-        is_test_data=diagnosis.is_test_data,
+        is_test_data=derive_test_flag(
+            diagnosis.is_test_data,
+            getattr(db.get(User, actor_user_id), "is_test_data", None),
+            getattr(db.get(Classroom, class_id), "is_test_data", None),
+        ),
     )
     db.add(case)
     db.flush()
@@ -90,10 +95,16 @@ def ensure_intervention_case(
     return case
 
 
-def apply_action(db, case, actor, *, request_id=None, **kwargs):
+def apply_action(db, case, actor, *, request_id=None, recheck_access=None, **kwargs):
     diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
     with lifecycle_lock(db, diagnosis) if diagnosis is not None else nullcontext():
         db.refresh(case)
+        from app.services.auth import current_actor
+        from app.services.data_scope import authorize_teacher_class
+
+        actor = authorize_teacher_class(db, current_actor(actor), case.class_id)
+        if recheck_access is not None:
+            recheck_access()
         payload = {"case_id": case.id, **kwargs}
         if request_id:
             for event in db.scalars(
@@ -219,7 +230,14 @@ def public_resolution_summary(db: Session, case: InterventionCase) -> Optional[s
 
 
 def apply_problem_resolution(
-    db, case, actor, *, request_id, expected_revision, recovery_diagnosis_id=None
+    db,
+    case,
+    actor,
+    *,
+    request_id,
+    expected_revision,
+    recovery_diagnosis_id=None,
+    recheck_access=None,
 ):
     """Explicit teacher report; verified recovery additionally needs fresh rule evidence."""
     from app.models.diagnosis_episode import DiagnosisEpisode
@@ -233,6 +251,13 @@ def apply_problem_resolution(
         raise InterventionConflict("historical work order has no recorded problem target")
     diagnosis = db.get(DiagnosisResult, case.diagnosis_result_id)
     with lifecycle_lock(db, diagnosis):
+        db.refresh(case)
+        from app.services.auth import current_actor
+        from app.services.data_scope import authorize_teacher_class
+
+        actor = authorize_teacher_class(db, current_actor(actor), case.class_id)
+        if recheck_access is not None:
+            recheck_access()
         payload = {
             "case_id": case.id,
             "expected_revision": expected_revision,

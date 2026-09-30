@@ -204,17 +204,19 @@ def upsert_episode(
     diagnosis: DiagnosisResult,
     guidance: list[GuidanceHistory],
     settings: Settings,
+    *,
+    commit: bool = True,
 ) -> DiagnosisEpisode | None:
     with lifecycle_lock(db, diagnosis):
-        return _upsert_episode_locked(db, device, diagnosis, guidance, settings)
+        return _upsert_episode_locked(db, device, diagnosis, guidance, settings, commit=commit)
 
 
-def _upsert_episode_locked(db, device, diagnosis, guidance, settings):
+def _upsert_episode_locked(db, device, diagnosis, guidance, settings, *, commit=True):
     if diagnosis.episode_id is None and diagnosis.episode_evidence_revision is None:
         # NULL is a pre-lifecycle historical row. New inserts explicitly start at 0.
         return None
     if diagnosis.issue_model_version == 2:
-        return _upsert_issues(db, device, diagnosis, guidance)
+        return _upsert_issues(db, device, diagnosis, guidance, commit=commit)
     bound = db.get(DiagnosisEpisode, diagnosis.episode_id) if diagnosis.episode_id else None
     if bound is not None:
         db.refresh(bound)
@@ -228,7 +230,7 @@ def _upsert_episode_locked(db, device, diagnosis, guidance, settings):
             )
             if bound.current_hint_level == 4:
                 bound.status = "escalated"
-        db.commit()
+        db.commit() if commit else db.flush()
         return bound
     error_code = _primary_error(diagnosis)
     candidates = db.scalars(
@@ -252,7 +254,7 @@ def _upsert_episode_locked(db, device, diagnosis, guidance, settings):
                 finish_problem(
                     item, item.evidence_revision, "deterministic_recovery", recovery=diagnosis
                 )
-        db.commit()
+        db.commit() if commit else db.flush()
         return None
     previous = next((item for item in scoped if item.primary_error_code == error_code), None)
     historical = db.scalars(
@@ -272,7 +274,7 @@ def _upsert_episode_locked(db, device, diagnosis, guidance, settings):
         # Replaying evidence from a closed incident is not a new incident.
         diagnosis.episode_id = previous.id
         diagnosis.episode_evidence_revision = previous.evidence_revision
-        db.commit()
+        db.commit() if commit else db.flush()
         return previous
     cutoff = evaluated_at - timedelta(seconds=settings.diagnosis_episode_window_seconds)
     episode = (
@@ -324,7 +326,7 @@ def _upsert_episode_locked(db, device, diagnosis, guidance, settings):
         if incident_known.issubset(failure_evidence_keys(diagnosis, {error_code}))
         else None
     )
-    db.commit()
+    db.commit() if commit else db.flush()
     return episode
 
 
@@ -528,7 +530,7 @@ def _new_evidence_after(diagnosis, keys, cutoff):
     return False
 
 
-def _upsert_issues(db, device, diagnosis, guidance):
+def _upsert_issues(db, device, diagnosis, guidance, *, commit=True):
     existing = issue_links(db, diagnosis)
     if existing:
         for link in existing:
@@ -541,7 +543,7 @@ def _upsert_issues(db, device, diagnosis, guidance):
                 )
                 if episode.current_hint_level == 4:
                     episode.status = "escalated"
-        db.commit()
+        db.commit() if commit else db.flush()
         return episode_for_diagnosis(db, diagnosis)
     evaluated = _aware(diagnosis.evaluated_at)
     for key, group in sorted(_issue_groups(diagnosis).items()):
@@ -638,7 +640,7 @@ def _upsert_issues(db, device, diagnosis, guidance):
                 finish_problem(
                     episode, episode.evidence_revision, "deterministic_recovery", recovery=diagnosis
                 )
-    db.commit()
+    db.commit() if commit else db.flush()
     return episode_for_diagnosis(db, diagnosis)
 
 

@@ -1,3 +1,4 @@
+import { assertCommandRecoverable, commandOutcome, completeCommand } from './commandOutcome'
 import type {
   DeviceCredentials,
   FeedbackAction,
@@ -30,7 +31,7 @@ export function feedbackSessionScope(credentials: DeviceCredentials): string {
   return JSON.stringify([credentials.deviceId, credentials.experimentSessionId ?? null])
 }
 
-function storageKey(credentials: DeviceCredentials, diagnosisId: string): string {
+export function feedbackStorageKey(credentials: DeviceCredentials, diagnosisId: string): string {
   // A pending request belongs to one diagnosis and one experiment session. No token is saved.
   return `${STORAGE_PREFIX}${JSON.stringify([
     credentials.deviceId,
@@ -116,8 +117,9 @@ export function getOrCreateFeedbackRequest(
   if (!credentials.experimentSessionId) {
     throw new FeedbackRequestError('反馈需要实验会话，请重新登录。')
   }
-  const key = storageKey(credentials, diagnosisId)
+  const key = feedbackStorageKey(credentials, diagnosisId)
   try {
+    assertCommandRecoverable(`xinjian-feedback-command:${key}`)
     const raw = sessionStorage.getItem(key)
     if (raw) {
       const pending = parseRequest(raw)
@@ -152,7 +154,7 @@ export function completeFeedbackRequest(
   expected: StudentFeedbackCreate,
   authoritativeReceipt = false,
 ): void {
-  const key = storageKey(credentials, diagnosisId)
+  const key = feedbackStorageKey(credentials, diagnosisId)
   const raw = sessionStorage.getItem(key)
   // A late response must never erase another locally prepared request.
   if (
@@ -162,4 +164,43 @@ export function completeFeedbackRequest(
       : sameFeedbackPayload(parseRequest(raw), expected))
   )
     sessionStorage.removeItem(key)
+}
+
+export function recordFeedbackFailure(
+  credentials: DeviceCredentials,
+  diagnosisId: string,
+  payload: StudentFeedbackCreate,
+  error: unknown,
+): void {
+  const key = feedbackStorageKey(credentials, diagnosisId)
+  // Server recovery remains available when local storage is unavailable.
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return
+    const value = JSON.parse(raw)
+    if (value.request_id !== payload.request_id) return
+    const outcome = commandOutcome('sendFeedback', error)
+    if (outcome.uncertain)
+      sessionStorage.setItem(key, JSON.stringify({ ...value, outcome_unknown: true }))
+    else if (value.outcome_unknown)
+      sessionStorage.setItem(
+        `xinjian-feedback-command:${key}:recovery`,
+        JSON.stringify({ operation: 'sendFeedback', request_id: payload.request_id }),
+      )
+  } catch {
+    /* Existing server receipt recovery is authoritative. */
+  }
+}
+export function reconcileFeedbackBookmark(
+  credentials: DeviceCredentials,
+  diagnosisId: string,
+  requestId: string,
+): void {
+  const key = `xinjian-feedback-command:${feedbackStorageKey(credentials, diagnosisId)}`
+  try {
+    const raw = sessionStorage.getItem(`${key}:recovery`)
+    if (raw && JSON.parse(raw).request_id === requestId) completeCommand(key, requestId)
+  } catch {
+    /* No local bookkeeping is required for the server receipt. */
+  }
 }

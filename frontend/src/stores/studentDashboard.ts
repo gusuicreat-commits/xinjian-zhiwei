@@ -1,3 +1,5 @@
+import { useStudentSessionStore } from './studentSession'
+import { commandOutcome } from '@/api/commandOutcome'
 import { CheckRequestError, pendingCheck } from '@/api/diagnosisChecks'
 import axios from 'axios'
 import { defineStore } from 'pinia'
@@ -5,6 +7,8 @@ import { computed, ref, watch } from 'vue'
 
 import {
   completeFeedbackRequest,
+  recordFeedbackFailure,
+  reconcileFeedbackBookmark,
   FeedbackRequestError,
   feedbackSessionScope,
   getOrCreateFeedbackRequest,
@@ -56,6 +60,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   const workflowLoading = ref(false)
   const workflow = ref<DiagnosisWorkflow | null>(null)
   let activeSessionScope: string | null = null
+  let sessionEpoch = 0
   let loadSequence = 0
   let recoverySequence = 0
   let aiSequence = 0
@@ -154,6 +159,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       if (recovery.latest_applied) {
         const applied = recovery.latest_applied
         clearMatchingLocal(credentials, applied.diagnosis_result_id, applied, true)
+        reconcileFeedbackBookmark(credentials, applied.diagnosis_result_id, applied.request_id)
       }
       readLocalFeedback(credentials)
       feedbackRecoveryState.value = 'ready'
@@ -175,6 +181,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       dashboard.value = null
       workflow.value = null
       checkPending.value = false
+      sessionEpoch += 1
       activeSessionScope = scope
       recoverySequence += 1
       aiSequence += 1
@@ -242,26 +249,42 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     payload: StudentFeedbackCreate,
   ): Promise<boolean> {
     const scope = feedbackSessionScope(credentials)
+    const epoch = sessionEpoch
     try {
       const feedback = await withCappedRetry(() =>
         createDiagnosisFeedback(credentials, diagnosisId, payload),
       )
+      if (epoch !== sessionEpoch || activeSessionScope !== scope) return false
       clearMatchingLocal(credentials, diagnosisId, payload)
+      reconcileFeedbackBookmark(credentials, diagnosisId, payload.request_id)
       if (activeSessionScope === scope) {
         if (dashboard.value?.diagnosis?.id === diagnosisId) dashboard.value.feedback = feedback
         await load(credentials)
       }
       return true
     } catch (error) {
+      if (epoch !== sessionEpoch || activeSessionScope !== scope) return false
       if (error instanceof FeedbackRequestError) throw error
-      if (
-        axios.isAxiosError(error) &&
-        error.response &&
-        [400, 401, 403, 404, 422].includes(error.response.status)
-      ) {
+      recordFeedbackFailure(credentials, diagnosisId, payload, error)
+      if (!commandOutcome('sendFeedback', error).retainPayload) {
         clearMatchingLocal(credentials, diagnosisId, payload)
-        if (activeSessionScope === scope) await refreshFeedbackRecovery(credentials)
-        throw new FeedbackRequestError('反馈已被拒绝，未被接受；请检查实验会话并刷新诊断后再提交。')
+        if (activeSessionScope === scope) {
+          if (commandOutcome('sendFeedback', error).permission) {
+            clear()
+            const session = useStudentSessionStore()
+            if (
+              commandOutcome('sendFeedback', error).status === 401 &&
+              session.credentials?.accessToken === credentials.accessToken
+            )
+              session.logout()
+            state.value = 'error'
+            failureKind.value = classifyRequestFailure(error)
+            errorMessage.value = failureMessage(failureKind.value)
+          } else await refreshFeedbackRecovery(credentials)
+        }
+        throw new FeedbackRequestError(
+          '本次反馈已被拒绝；若此前结果未知，仍须核查原请求，请重新登录或刷新诊断。',
+        )
       }
       if (activeSessionScope === scope) await refreshFeedbackRecovery(credentials)
       if (axios.isAxiosError(error) && error.response?.status === 409) {
@@ -333,6 +356,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     if (readOnly.value) return false
     const scopedCredentials = { ...credentials }
     const scope = feedbackSessionScope(scopedCredentials)
+    const epoch = sessionEpoch
     if (activeSessionScope !== scope)
       throw new FeedbackRequestError('实验会话已变化，请刷新后再确认。')
     // Snapshot all original fields; recovery never generates a new request ID or rewrites a note.
@@ -340,7 +364,11 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
     const payload = { ...target.payload }
     feedbackLoading.value = true
     try {
-      if (!(await refreshFeedbackRecovery(scopedCredentials)) || activeSessionScope !== scope) {
+      if (
+        !(await refreshFeedbackRecovery(scopedCredentials)) ||
+        activeSessionScope !== scope ||
+        epoch !== sessionEpoch
+      ) {
         throw new FeedbackRequestError('反馈状态尚未确认，请重新查询后继续。')
       }
       const applied = feedbackRecovery.value?.latest_applied
@@ -360,7 +388,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
       }
       return await sendFeedback(scopedCredentials, diagnosisId, payload)
     } finally {
-      feedbackLoading.value = false
+      if (epoch === sessionEpoch) feedbackLoading.value = false
     }
   }
 
@@ -427,11 +455,13 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
   }
 
   function clear(): void {
+    sessionEpoch += 1
     activeSessionScope = null
     loadSequence += 1
     recoverySequence += 1
     aiSequence += 1
     workflowSequence += 1
+    feedbackLoading.value = false
     aiLoading.value = false
     workflowLoading.value = false
     feedbackRecoveryState.value = 'idle'

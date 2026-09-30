@@ -1,4 +1,11 @@
 import { isAxiosError } from 'axios'
+import {
+  assertCommandRecoverable,
+  recordCommandFailure,
+  commandOutcome,
+  completeCommand,
+  recoverSessionCommand,
+} from './commandOutcome'
 import { apiClient } from './client'
 import { newRequestId } from './feedbackRetry'
 
@@ -47,6 +54,15 @@ export async function releaseManagedSession(
   reason: string,
 ): Promise<void> {
   authorize(token, userId)
+  const commandKey = `${key(userId)}:${session.id}`
+  const identity = sessionStorage.getItem('xinjian-teacher-session')
+  const isCurrent = () => sessionStorage.getItem('xinjian-teacher-session') === identity
+  if (await recoverSessionCommand(commandKey, token, isCurrent)) {
+    authorize(token, userId)
+    return
+  }
+  authorize(token, userId)
+  assertCommandRecoverable(commandKey)
   const pending = pendingReleases(userId)
   let command = pending.find((item) => item.session.id === session.id)
   if (command && command.payload.reason !== reason.trim())
@@ -77,9 +93,12 @@ export async function releaseManagedSession(
       { headers: { Authorization: `Bearer ${token}` } },
     )
   } catch (error) {
-    if (isAxiosError(error) && [401, 403, 409, 422].includes(error.response?.status ?? 0)) remove()
+    recordCommandFailure(commandKey, 'releaseManagedSession', command.payload.request_id, error)
+    if (!commandOutcome('releaseManagedSession', error).retainPayload) remove()
     throw error
   }
+  authorize(token, userId)
+  completeCommand(commandKey, command.payload.request_id)
   remove()
 }
 

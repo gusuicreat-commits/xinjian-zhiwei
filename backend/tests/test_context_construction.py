@@ -224,7 +224,7 @@ def test_explanation_actual_requests_manifest_cache_and_retry(api_context, monke
     from test_ai_diagnosis import FakeAIClient, _create_diagnosis
 
     from app.models import AICallRecord, Device, DiagnosisResult, KnowledgeCase, MemoryUse
-    from app.services.ai_diagnosis import explain_diagnosis
+    from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
 
     diagnosis_id = _create_diagnosis(api_context)
     with api_context["session_factory"]() as db:
@@ -357,7 +357,7 @@ def test_required_oversize_explanation_has_zero_attempts(api_context):
     from test_ai_diagnosis import FakeAIClient, _create_diagnosis
 
     from app.models import AICallRecord, Device, DiagnosisResult
-    from app.services.ai_diagnosis import explain_diagnosis
+    from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
 
     diagnosis_id = _create_diagnosis(api_context)
     with api_context["session_factory"]() as db:

@@ -45,7 +45,8 @@ def test_outside_candidate_confirmation_is_preserved_pending_a_new_package(persi
     db.add(recovery)
     draft.status = "pending_review"
     db.commit()
-    actor = db.query(User).first()
+    actor = db.get(User, db.info["case_actor"].user_id)
+    actor._actor_context = db.info["case_actor"]
     case = approve_case_draft(
         db,
         draft,
@@ -60,6 +61,7 @@ def test_outside_candidate_confirmation_is_preserved_pending_a_new_package(persi
             "recovery_diagnosis_id": recovery.id,
             "applicability_limits": "仅限合成环境",
         },
+        actor_context=db.info["case_actor"],
     )
     assert case.review_status == "pending"
     assert case.solution_record["requires_new_package"]

@@ -3,6 +3,7 @@ from threading import Barrier
 from uuid import uuid4
 
 import pytest
+from shared_authorization import session_actor_fixture
 from sqlalchemy import MetaData, Table, select, text
 from sqlalchemy.orm import sessionmaker
 from test_device_protocol_v1 import _batch
@@ -71,7 +72,7 @@ def test_counter_upgrade_preserves_rows_and_ingests_full_large_batch(migration_d
     with pytest.raises(AssertionError, match="Cannot narrow protocol counters"):
         migrate("downgrade", "20260919_0031")
     with engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260927_0035"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260930_0036"
     migrate("check")
 
 
@@ -137,7 +138,7 @@ def test_release_competes_on_same_device_without_closing_new_session(migration_d
                 if which == 0 or competitor == "teacher"
                 else students[0 if competitor == "student" else 1]
             )
-            user = db.get(User, actor["id"])
+            user = session_actor_fixture(db, db.get(User, actor["id"]))
             gate.wait(timeout=10)
             try:
                 if which == 1 and competitor == "student":
@@ -179,7 +180,7 @@ def test_release_competes_on_same_device_without_closing_new_session(migration_d
             if outcomes[1] == "conflict":
                 start_session(
                     db,
-                    db.get(User, students[1]["id"]),
+                    session_actor_fixture(db, db.get(User, students[1]["id"])),
                     request_id=uuid4(),
                     device_key="handover",
                     assignment_id=task["id"],

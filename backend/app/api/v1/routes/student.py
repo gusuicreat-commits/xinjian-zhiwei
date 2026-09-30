@@ -213,6 +213,12 @@ def create_student_feedback(
     diagnosis = db.scalar(select(DiagnosisResult).where(DiagnosisResult.id == diagnosis_result_id))
     if diagnosis is None or diagnosis.device_id != device.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="diagnosis not found")
+    from app.api.dependencies import student_actor_context
+    from app.services.auth import AuthorizationDenied
+
+    identity = student_actor_context(
+        request, db, device, db.get(ExperimentSession, experiment_session_id)
+    )
     try:
         record = submit_student_feedback(
             db,
@@ -223,7 +229,11 @@ def create_student_feedback(
             getattr(request.app.state, "diagnosis_graph", None),
             settings,
             authorize=lambda: revalidate_student_access(request, db),
+            student_actor=identity,
         )
+    except AuthorizationDenied:
+        db.rollback()
+        raise
     except HTTPException:
         db.rollback()
         raise
@@ -268,3 +278,35 @@ def get_feedback_recovery(
         )
     except WorkflowScopeViolation as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/experiment-session-commands/{request_id}")
+def experiment_session_command_receipt(
+    request_id: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: DatabaseSession,
+):
+    """Positive recovery only: absence cannot establish a previous request failed."""
+    from app.models.classroom import ExperimentSessionCommand
+    from app.services.auth import authorize_actor, current_actor
+    from app.services.experiment_sessions import assert_session_management
+
+    command = db.scalar(
+        select(ExperimentSessionCommand).where(
+            ExperimentSessionCommand.actor_user_id == user.id,
+            ExperimentSessionCommand.request_id == request_id,
+        )
+    )
+    if command is None:
+        raise HTTPException(status_code=404, detail="command receipt not available")
+    session = db.get(ExperimentSession, command.session_id)
+    try:
+        if session and session.student_user_id == user.id:
+            authorize_actor(db, current_actor(user), "assignment.read")
+            assert_student_session_access(db, user, session, require_active=False)
+        else:
+            authorize_actor(db, current_actor(user), "assignment.manage")
+            assert_session_management(db, user, session)
+    except WorkflowScopeViolation as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"status": "applied", "request_id": command.request_id, "result": command.result_json}

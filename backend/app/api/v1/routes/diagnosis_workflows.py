@@ -20,7 +20,7 @@ from app.models.classroom import ExperimentAssignment, ExperimentSession, Teachi
 from app.models.device import Device
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_workflow import DiagnosisWorkflowReview, DiagnosisWorkflowRun
-from app.services.auth import user_access
+from app.services.auth import AuthorizationDenied, user_access
 from app.services.diagnosis_checks import latest_check, receipt, run_check
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
@@ -96,14 +96,21 @@ def start_diagnosis_workflow(
         raise HTTPException(status_code=403, detail="device id mismatch")
     try:
         experiment_session = resolve_experiment_session(db, device, experiment_session_id)
+        from app.api.dependencies import student_actor_context
+
+        identity = student_actor_context(request, db, device, experiment_session)
         workflow, command = run_check(
-            db, _graph(request), device, settings, payload, experiment_session
+            db, _graph(request), device, settings, payload, experiment_session,
+            student_actor=identity,
         )
     except WorkflowScopeViolation as exc:
         raise HTTPException(
             status_code=403,
             detail={"code": "DIAGNOSIS_SCOPE_DENIED", "message": str(exc)},
         ) from exc
+    except AuthorizationDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except WorkflowConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (ExperimentDefinitionLoadError, ExperimentPackageLoadError) as exc:
@@ -363,6 +370,9 @@ def review_diagnosis_workflow(
             settings,
             payload,
         )
+    except AuthorizationDenied as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except WorkflowConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:

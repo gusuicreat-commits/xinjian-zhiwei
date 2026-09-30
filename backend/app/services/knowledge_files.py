@@ -3,6 +3,7 @@ import binascii
 import csv
 import io
 import zipfile
+import zlib
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -26,6 +27,10 @@ def decode_and_extract(
             "UNSUPPORTED_KNOWLEDGE_FILE",
             "Supported file types are TXT, Markdown, CSV, DOCX and extractable PDF",
         )
+    if len(content_base64) > 4 * ((max_bytes + 2) // 3):
+        raise KnowledgeServiceError(
+            413, "KNOWLEDGE_FILE_TOO_LARGE", "Encoded file exceeds byte limit"
+        )
     try:
         raw = base64.b64decode(content_base64, validate=True)
     except (binascii.Error, ValueError) as error:
@@ -48,7 +53,21 @@ def decode_and_extract(
             return "\n".join(" | ".join(cell.strip() for cell in row) for row in rows), "csv-v1"
         if suffix == ".docx":
             with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-                document_xml = archive.read("word/document.xml")
+                info = archive.getinfo("word/document.xml")
+                if info.file_size > max_bytes:
+                    raise KnowledgeServiceError(
+                        413,
+                        "KNOWLEDGE_FILE_TOO_LARGE",
+                        "Expanded DOCX XML exceeds byte limit",
+                    )
+                with archive.open(info) as document:
+                    document_xml = document.read(max_bytes + 1)
+                if len(document_xml) > max_bytes:
+                    raise KnowledgeServiceError(
+                        413,
+                        "KNOWLEDGE_FILE_TOO_LARGE",
+                        "Expanded DOCX XML exceeds byte limit",
+                    )
             root = ElementTree.fromstring(document_xml)
             namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
             paragraphs = []
@@ -74,6 +93,9 @@ def decode_and_extract(
         csv.Error,
         KeyError,
         zipfile.BadZipFile,
+        NotImplementedError,
+        RuntimeError,
+        zlib.error,
         ElementTree.ParseError,
         PdfReadError,
     ) as error:

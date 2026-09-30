@@ -12,7 +12,7 @@ from app.models import (
     DiagnosisEpisode,
     DiagnosisResult,
 )
-from app.services.ai_diagnosis import explain_diagnosis
+from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
 from app.services.hybrid_retrieval import hybrid_retrieve
 from app.services.lightweight_diagnosis import decide_ai_policy, explanation_fingerprint
 

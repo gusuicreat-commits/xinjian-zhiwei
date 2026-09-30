@@ -1,6 +1,6 @@
 # 芯鉴知微数据库设计
 
-代码核对日期：2026-09-27。本文解释当前数据边界与关键约束；精确列定义见
+代码核对日期：2026-09-30。本文解释当前数据边界与关键约束；精确列定义见
 [`backend/app/models/`](../backend/app/models/)，迁移历史见
 [`backend/migrations/versions/`](../backend/migrations/versions/)。持续规则见
 [开发准则](development-guidelines.md)，目标环境状态见 [实现状态](implementation-status.md)。
@@ -8,7 +8,7 @@
 ## 1. 迁移与存储基线
 
 - 标准环境使用 PostgreSQL 16；历史初始迁移要求 `vector` 扩展，当前诊断不使用向量检索。
-- Alembic 代码 Head 为 `20260927_0035`。这是仓库结构版本，不代表运行数据库已升级。
+- Alembic 代码 Head 为 `20260930_0036`。这是仓库结构版本，不代表运行数据库已升级。
 - 容器入口 `app.startup` 先执行迁移再启动 API；手工迁移、备份与回滚按 [部署说明](deployment.md) 执行。
 - LangGraph checkpoint 表由 PostgreSQL saver 的 `setup()` 管理，不在 Alembic 中重复定义。
 - 结构变更与历史数据处理遵守[数据变更要求](development-guidelines.md#data-change)。
@@ -17,7 +17,7 @@
 
 | 分类 | 表及用途 |
 | --- | --- |
-| 账号与授权 | `users`、`roles`、`permissions`、`user_roles`、`role_permissions`、`auth_sessions`；账号、角色权限与可撤销会话 |
+| 账号与授权 | `users`、`roles`、`permissions`、`user_roles`、`role_permissions`、`auth_sessions`、`login_attempts`；账号、角色权限、可撤销会话与共享登录准入 |
 | 课堂 | `courses`、`classes`、`enrollments`、`teaching_assignments`、`experiment_assignments`、`device_bindings`；资格、授课范围、任务及当前设备绑定 |
 | 实验会话 | `experiment_sessions`、`experiment_session_commands`；固定学生—任务—设备—包版本，保存状态版本和操作回执 |
 | 设备采集 | `devices`、`ingestion_requests`、`legacy_ingestion_admissions`、`device_logs`、`sensor_readings`、`device_heartbeats`；设备身份、批次回执、旧入口准入计数、原始遥测和时间质量 |
@@ -139,6 +139,12 @@
 
 ## 上下文清单（无新迁移）
 
-复用 `ai_call_records.input_snapshot.context_manifest`，合同 `context-manifest-v1`、策略 `whole-unit-applicability-v1`、投影 `case-applicability-v1`；未新增表，schema head仍为 `20260927_0035`。MemoryUse的matched保留匹配快照，provided只记录真实尝试提交的来源子集，cited按有效引用、derived记录缓存派生；选择后不读取新版本冒充调用时来源。清单不存原始正文。旧 `(workflow_run_id, call_stage)` 唯一性与历史记录不变；旧记录不回填。
+复用 `ai_call_records.input_snapshot.context_manifest`，合同 `context-manifest-v1`、策略 `whole-unit-applicability-v1`、投影 `case-applicability-v1`；上下文功能本身未新增表；当前schema head因共享登录准入追加为 `20260930_0036`。MemoryUse的matched保留匹配快照，provided只记录真实尝试提交的来源子集，cited按有效引用、derived记录缓存派生；选择后不读取新版本冒充调用时来源。清单不存原始正文。旧 `(workflow_run_id, call_stage)` 唯一性与历史记录不变；旧记录不回填。
 
 资料包格式1.1的登记与案例条件复用现有包内容、solution_record JSON；P0–P3没有新迁移。当前建议读取检验策略清单，旧结果只读降级，不回填历史call、final_result、Checkpoint或幂等回执，不自动补模型调用。
+
+## 共享登录准入（0036）
+
+`login_attempts` 是有界、短期安全预留：UUID主键、`key_hash`（来源IP与用户名的SHA-256）、`status`（pending/failed）、带时区的 `expires_at`。联合键/到期索引支持查询，状态CHECK不含不稳定的数组隐式转换，保持pg_dump/restore严格结构校验一致。准入持有短暂PG事务锁，先清理最多500条到期记录，再核对每键额度和10000行总容量；密码校验在锁外。成功与AuthSession提交同事务，失败重置其窗口；存储中没有原始密码、用户名或IP。
+
+迁移不回填或修改原业务记录。存在未过期预留时拒绝降级，避免意外清空限流窗口。SQLite只供单进程测试/开发；多个正式worker须共用PostgreSQL。

@@ -4,6 +4,8 @@ from uuid import uuid4
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
+from shared_student_authorization import demo_student_actor
+from shared_write_authorization import authorize_write_fixture
 from sqlalchemy import func, select
 from test_diagnosis_workflow import _add_failure_log, _settings
 from test_experiment_packages import PACKAGE_ROOT, _admin_headers
@@ -59,9 +61,12 @@ def memory_task(api_context):
             device,
             _settings(),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
-        )
+         student_actor=demo_student_actor(db, device))
         diagnosis = db.get(DiagnosisResult, workflow.diagnosis_result_id)
-        actor = db.scalar(select(User).where(User.username == "experiment-package-admin"))
+        from app.services.auth import resolve_session
+
+        actor = resolve_session(db, headers["Authorization"].removeprefix("Bearer "))
+        authorize_write_fixture(db, actor, "formal_approver")
         case = KnowledgeCase(
             id="synthetic-reviewed-memory",
             experiment_type="dht11_temperature_humidity",
@@ -303,6 +308,7 @@ def test_memory_management_api_enforces_auth_and_plan_ownership(api_context, mem
 
 def test_package_configuration_is_not_measured_fact_and_revocation_is_separate(memory_task):
     db, actor, case, diagnosis, workflow, _ = memory_task
+    authorize_write_fixture(db, actor)
     bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
     experiment, version = import_experiment_package(
         db, actor, package_documents(bundle), is_test_data=True

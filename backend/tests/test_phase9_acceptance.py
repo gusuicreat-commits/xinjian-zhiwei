@@ -13,7 +13,7 @@ from app.ai.clients import (
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.models import AICallRecord, Device, DiagnosisEpisode, DiagnosisResult, User
-from app.services.ai_diagnosis import explain_diagnosis
+from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
 from app.services.rbac import assign_role, ensure_rbac_catalog
 
 

@@ -1,11 +1,14 @@
 import axios from 'axios'
 
-export type RequestFailureKind = 'offline' | 'backend' | 'unauthorized' | 'forbidden' | 'conflict' | 'unknown'
+export type RequestFailureKind =
+  'offline' | 'backend' | 'unauthorized' | 'forbidden' | 'conflict' | 'unknown'
 
 export function classifyRequestFailure(error: unknown): RequestFailureKind {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline'
   if (!axios.isAxiosError(error)) return 'unknown'
-  if (!error.response || error.code === 'ECONNABORTED') return 'backend'
+  if (!error.response) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline'
+    return 'backend'
+  }
   if (error.response.status === 401) return 'unauthorized'
   if (error.response.status === 403) return 'forbidden'
   if (error.response.status === 409) return 'conflict'

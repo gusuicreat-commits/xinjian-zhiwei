@@ -89,7 +89,7 @@ def test_ai_polish_can_change_wording_but_not_verified_facts(persisted_draft) ->
         "sourceIds": draft.source_ids,
     }
 
-    result = apply_ai_assisted_polish(db, draft, payload)
+    result = apply_ai_assisted_polish(db, draft, payload, actor_context=db.info["case_actor"])
 
     assert result.status == "quality_checked"
     assert result.polished_payload["symptom"] == payload["symptom"]
@@ -102,7 +102,7 @@ def test_ai_polish_cannot_change_verified_causes(persisted_draft) -> None:
     payload["possibleCauses"] = ["AI 新增的未知故障"]
 
     with pytest.raises(CaseDraftError, match="possibleCauses"):
-        apply_ai_assisted_polish(db, draft, payload)
+        apply_ai_assisted_polish(db, draft, payload, actor_context=db.info["case_actor"])
 
 
 @pytest.fixture
@@ -141,6 +141,19 @@ def persisted_draft(api_context):
         draft.source_ids = [feedback.id]
         db.add(draft)
         db.commit()
+        from shared_write_authorization import authorize_write_fixture
+
+        from app.models import User
+
+        reviewer = User(
+            username="case-reviewer",
+            display_name="Synthetic case reviewer",
+            password_hash="unused",
+            is_test_data=True,
+        )
+        db.add(reviewer)
+        authorize_write_fixture(db, reviewer, "formal_approver")
+        db.info["case_actor"] = reviewer._actor_context
         yield db, draft
 
 
@@ -152,6 +165,7 @@ def test_ai_polish_generates_only_expression_fields_and_saves_audit(persisted_dr
         draft,
         Settings(ai_enabled=True),
         ai_client=FakePolishClient(),  # type: ignore[arg-type]
+        actor_context=db.info["case_actor"],
     )
 
     assert result.polished_payload["evidence"] == draft.template_payload["evidence"]
@@ -181,7 +195,11 @@ def test_case_polish_enforces_budget_and_input_limit_before_provider(
     provider = FakePolishClient()
     with pytest.raises(CaseDraftError) as caught:
         generate_ai_assisted_polish(
-            db, draft, Settings(ai_enabled=True, **settings_values), ai_client=provider
+            db,
+            draft,
+            Settings(ai_enabled=True, **settings_values),
+            ai_client=provider,
+            actor_context=db.info["case_actor"],
         )
     assert isinstance(caught.value.__cause__, AIQuotaDenied)
     assert caught.value.__cause__.code == code
@@ -201,7 +219,13 @@ def test_case_polish_provider_receives_redacted_feedback_and_keeps_original(pers
     draft.fact_snapshot = {**draft.fact_snapshot, "teacher_private_note": "SYNTHETIC-PRIVATE-012"}
     db.commit()
     provider = FakePolishClient()
-    generate_ai_assisted_polish(db, draft, Settings(ai_enabled=True), ai_client=provider)
+    generate_ai_assisted_polish(
+        db,
+        draft,
+        Settings(ai_enabled=True),
+        ai_client=provider,
+        actor_context=db.info["case_actor"],
+    )
     assert len(provider.prompts) == 1
     for secret in (
         "SYNTHETIC-KEY-123",
@@ -240,7 +264,13 @@ def test_case_polish_rejects_missing_or_ambiguous_legacy_episode(persisted_draft
     db.commit()
     provider = FakePolishClient()
     with pytest.raises(CaseDraftError) as caught:
-        generate_ai_assisted_polish(db, draft, Settings(ai_enabled=True), ai_client=provider)
+        generate_ai_assisted_polish(
+            db,
+            draft,
+            Settings(ai_enabled=True),
+            ai_client=provider,
+            actor_context=db.info["case_actor"],
+        )
     assert isinstance(caught.value.__cause__, AIQuotaDenied)
     assert caught.value.__cause__.code == "EPISODE_SCOPE_UNRESOLVED"
     assert provider.prompts == []
@@ -261,7 +291,13 @@ def test_case_polish_redacts_short_name_and_untrusted_nested_reference(persisted
     draft.solution_record = {"student_note": "李明的读数已恢复"}
     db.commit()
     provider = FakePolishClient()
-    generate_ai_assisted_polish(db, draft, Settings(ai_enabled=True), ai_client=provider)
+    generate_ai_assisted_polish(
+        db,
+        draft,
+        Settings(ai_enabled=True),
+        ai_client=provider,
+        actor_context=db.info["case_actor"],
+    )
     assert len(provider.prompts) == 1
     assert "李明" not in provider.prompts[0]
     assert "SYNTHETIC-NESTED-SECRET" not in provider.prompts[0]
@@ -274,5 +310,11 @@ def test_case_polish_rejects_source_ids_not_bound_to_diagnosis(persisted_draft):
     db.commit()
     provider = FakePolishClient()
     with pytest.raises(CaseDraftError, match="source IDs"):
-        generate_ai_assisted_polish(db, draft, Settings(ai_enabled=True), ai_client=provider)
+        generate_ai_assisted_polish(
+            db,
+            draft,
+            Settings(ai_enabled=True),
+            ai_client=provider,
+            actor_context=db.info["case_actor"],
+        )
     assert provider.prompts == []

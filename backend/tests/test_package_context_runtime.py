@@ -3,6 +3,8 @@
 import json
 from copy import deepcopy
 
+from shared_student_authorization import demo_student_actor
+
 from app.ai.context_builder import select_knowledge
 from app.ai.context_contract import CONTEXT_POLICY_VERSION
 from app.ai.schemas import AIKnowledgeReference
@@ -138,13 +140,17 @@ def test_global_limits_change_prompt_and_source_fingerprints(api_context):
     from app.services.ai_diagnosis import (
         _build_input,
         _match_structured_knowledge,
-        explain_diagnosis,
+    )
+    from app.services.ai_diagnosis import (
+        _explain_diagnosis as explain_diagnosis,
     )
     from app.services.memory import case_source
 
     diagnosis_id = _create_diagnosis(api_context)
     with api_context["session_factory"]() as db:
         diagnosis = db.get(DiagnosisResult, diagnosis_id)
+        diagnosis.experiment_id = "synthetic"
+        diagnosis.context_snapshot = {**diagnosis.context_snapshot, "experiment_id": "synthetic"}
         device = db.query(Device).one()
         error = diagnosis.matched_rules[0]["error_type"]
         case = KnowledgeCase(
@@ -216,6 +222,16 @@ def test_global_case_limits_reach_actual_graph_reasoning_and_explanation(api_con
     provider.complete_json = capture
     for module in ("app.ai.reasoning", "app.services.ai_diagnosis"):
         monkeypatch.setattr(f"{module}.build_ai_client", lambda _settings: provider)
+    from app.ai import diagnosis_graph
+
+    build_context = diagnosis_graph.build_diagnosis_context
+
+    def synthetic_context(*args, **kwargs):
+        context = build_context(*args, **kwargs)
+        context.experiment_id = "synthetic"
+        return context
+
+    monkeypatch.setattr(diagnosis_graph, "build_diagnosis_context", synthetic_context)
     limits = "仅用于全局案例合成回归，不证明本次接线异常。"
     with api_context["session_factory"]() as db:
         db.add(KnowledgeCase(
@@ -230,7 +246,7 @@ def test_global_case_limits_reach_actual_graph_reasoning_and_explanation(api_con
             db, build_diagnosis_graph(InMemorySaver()), db.query(Device).one(),
             _settings(ai_enabled=True, ai_require_knowledge=True, ai_input_token_limit=20000),
             DiagnosisWorkflowStartRequest(lookback_seconds=60, question="解释合成异常"),
-        )
+         student_actor=demo_student_actor(db, db.query(Device).one()))
         assert workflow.experiment_version_id is None
         reasoning = next(p for p in prompts if "candidate_causes" in p)
         explanation = next(p for p in prompts if "input" in p)

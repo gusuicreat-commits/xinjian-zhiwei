@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import ValidationError
+from shared_student_authorization import demo_student_actor
 
 from app.ai.clients import AICompletion
 from app.ai.context_sanitizer import build_safe_ai_input, sanitize_provider_payload
@@ -15,7 +16,7 @@ from app.ai.reasoning import _fallback_reasoning, _reasoning_prompt, reason_abou
 from app.core.config import Settings
 from app.diagnosis.workflow_schemas import DiagnosisWorkflowStartRequest
 from app.models import AICallRecord, Device, DiagnosisResult
-from app.services.ai_diagnosis import explain_diagnosis
+from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
 from app.services.diagnosis_workflow import start_workflow
 
 
@@ -54,7 +55,7 @@ def evidence_review_run(api_context, request):
             db, graph, db.query(Device).one(),
             Settings(_env_file=None, ai_enabled=False, diagnosis_teacher_review_score=0),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
-        )
+         student_actor=demo_student_actor(db, db.query(Device).one()))
         state = dict(graph.get_state({"configurable": {
             "thread_id": workflow.graph_thread_id,
         }}).values)
@@ -235,7 +236,7 @@ def test_full_workflow_remains_usable_without_ai(api_context, scenario):
             db, graph, db.query(Device).one(),
             Settings(_env_file=None, ai_enabled=False, diagnosis_teacher_review_score=0),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
-        )
+         student_actor=demo_student_actor(db, db.query(Device).one()))
         assert result.status in {"waiting_feedback", "waiting_teacher"}
         state = graph.get_state({"configurable": {
             "thread_id": result.graph_thread_id,
@@ -373,7 +374,7 @@ def test_real_reasoning_provider_boundary(api_context, collision):
             db, graph, db.query(Device).one(),
             Settings(_env_file=None, ai_enabled=False, diagnosis_teacher_review_score=0),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
-        )
+         student_actor=demo_student_actor(db, db.query(Device).one()))
         state = dict(graph.get_state({"configurable": {
             "thread_id": workflow.graph_thread_id,
         }}).values)

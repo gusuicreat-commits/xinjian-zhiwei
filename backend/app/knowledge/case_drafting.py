@@ -15,11 +15,15 @@ from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_paylo
 from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
 from app.core.config import Settings
 from app.models.base import utc_now
+from app.models.classroom import User
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 from app.models.knowledge import KnowledgeCase, KnowledgeCaseDraft
 from app.schemas.knowledge_case import AICasePolishFields
+from app.services.auth import ActorContext, AuthorizationDenied, current_actor
+from app.services.knowledge_authorization import authorize_case_write
+from app.services.provenance import derive_test_flag
 
 FACT_FIELDS = {
     "experimentType",
@@ -44,9 +48,7 @@ class CaseDraftError(ValueError):
     pass
 
 
-def withdraw_case(
-    db, case, actor, *, request_id, expected_version, reason, recheck_access=None
-):
+def withdraw_case(db, case, actor, *, request_id, expected_version, reason, recheck_access=None):
     from app.models.classroom import AuditEvent
 
     case = db.scalar(
@@ -55,6 +57,7 @@ def withdraw_case(
         .with_for_update()
         .execution_options(populate_existing=True)
     )
+    authorize_case_write(db, current_actor(actor), case.source_draft_id)
     if recheck_access is not None:
         recheck_access()
     payload = {"expected_version": expected_version, "reason": reason}
@@ -89,6 +92,16 @@ def withdraw_case(
     )
     db.commit()
     return result
+
+
+def _authorize_final_case_write(db, identity, draft_id):
+    # The conditional revision UPDATE owns the domain row before authorization.
+    # Rejection must also undo that uncommitted claim for direct service callers.
+    try:
+        return authorize_case_write(db, identity, draft_id)
+    except AuthorizationDenied:
+        db.rollback()
+        raise
 
 
 def _update_draft(
@@ -252,7 +265,11 @@ def build_case_draft(
         allowed_ai_fields=sorted(ALLOWED_AI_FIELDS),
         facts_locked=True,
         status=("pending_review" if all(item["passed"] for item in checks) else "draft"),
-        is_test_data=diagnosis.is_test_data,
+        is_test_data=derive_test_flag(
+            diagnosis.is_test_data,
+            feedback.is_test_data,
+            *(item.is_test_data for item in guidance),
+        ),
     )
     db.add(draft)
     if commit:
@@ -271,6 +288,7 @@ def apply_ai_assisted_polish(
     expected_version: int | None = None,
     expected_status: str | None = None,
     ai_audit: dict[str, Any] | None = None,
+    actor_context: ActorContext | None = None,
 ) -> KnowledgeCaseDraft:
     """Accept wording improvements only when all fact-bearing fields are unchanged."""
 
@@ -328,6 +346,7 @@ def apply_ai_assisted_polish(
     _update_draft(
         db, draft, expected_status=original_status, expected_version=version, values=values
     )
+    _authorize_final_case_write(db, actor_context, draft.id)
     db.commit()
     db.refresh(draft)
     return draft
@@ -340,6 +359,7 @@ def generate_ai_assisted_polish(
     *,
     ai_client: AIClient | None = None,
     recheck_access: Callable[[], None] | None = None,
+    actor_context: ActorContext | None = None,
 ) -> KnowledgeCaseDraft:
     """Let AI fill expression-only fields and then enforce the fact boundary."""
 
@@ -347,6 +367,8 @@ def generate_ai_assisted_polish(
         raise CaseDraftError("reviewed case draft cannot be polished")
     if not draft.quality_checks or not all(item.get("passed") for item in draft.quality_checks):
         raise CaseDraftError("case draft failed quality checks")
+    authorize_case_write(db, actor_context, draft.id)
+    db.commit()  # no authorization locks across Provider I/O
     expected_status, expected_version = draft.status, draft.version_no
     diagnosis = db.get(DiagnosisResult, draft.diagnosis_result_id)
     if diagnosis is None:
@@ -428,10 +450,13 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
         expected_version=expected_version,
         expected_status=expected_status,
         ai_audit=ai_audit,
+        actor_context=actor_context,
     )
 
 
-def submit_case_draft_for_review(db: Session, draft: KnowledgeCaseDraft) -> KnowledgeCaseDraft:
+def submit_case_draft_for_review(
+    db: Session, draft: KnowledgeCaseDraft, *, actor_context: ActorContext | None = None
+) -> KnowledgeCaseDraft:
     if draft.status not in {"draft", "quality_checked", "pending_review"}:
         raise CaseDraftError("reviewed case draft cannot be resubmitted")
     if not draft.quality_checks or not all(
@@ -445,6 +470,7 @@ def submit_case_draft_for_review(db: Session, draft: KnowledgeCaseDraft) -> Know
         expected_version=draft.version_no,
         values={"status": "pending_review"},
     )
+    _authorize_final_case_write(db, actor_context, draft.id)
     db.commit()
     db.refresh(draft)
     return draft
@@ -460,7 +486,11 @@ def approve_case_draft(
     final_solution_steps: list[str],
     confirmation_note: str,
     confirmation_material: dict | None = None,
+    actor_context: ActorContext | None = None,
 ) -> KnowledgeCase:
+    if not isinstance(actor_context, ActorContext):
+        raise AuthorizationDenied(401)
+    reviewer_ref = actor_context.user_id
     if draft.status != "pending_review":
         raise CaseDraftError("case draft is not ready for teacher review")
     if db.get(KnowledgeCase, case_id) is not None:
@@ -494,6 +524,7 @@ def approve_case_draft(
         raise CaseDraftError(
             "formal publication requires confirmation method and recovery evidence"
         )
+    recovery_is_test = False
     if confirmation_material is not None:
         from app.schemas.knowledge_case import CaseConfirmationMaterial
         from app.services.diagnosis_episode import confirmed_recovery
@@ -507,6 +538,7 @@ def approve_case_draft(
             raise CaseDraftError(
                 "confirmation requires fresh recovery evidence in the original scope"
             )
+        recovery_is_test = recovery.is_test_data
         confirmation_material = {
             **material,
             "confirmed_by": reviewer_ref,
@@ -541,6 +573,11 @@ def approve_case_draft(
         "confirmation_material": confirmation_material,
         "requires_new_package": outside_candidates,
     }
+    case_is_test = derive_test_flag(
+        draft.is_test_data,
+        recovery_is_test,
+        getattr(db.get(User, reviewer_ref), "is_test_data", None),
+    )
     case = KnowledgeCase(
         id=case_id,
         experiment_type=draft.experiment_type,
@@ -558,14 +595,14 @@ def approve_case_draft(
         confirmed_at=confirmed_at,
         solution_record=solution_record,
         ai_generated_fields=payload.get("aiGeneratedFields") or {},
-        source_type="controlled_test" if draft.is_test_data else "real_experiment",
+        source_type="controlled_test" if case_is_test else "real_experiment",
         facts_locked=True,
         quality_check_passed=True,
         review_status="pending" if outside_candidates else "approved",
         source_ref=f"diagnosis-case-draft:{draft.id}",
         source_draft_id=draft.id,
         version="1",
-        is_test_data=draft.is_test_data,
+        is_test_data=case_is_test,
     )
     try:
         _update_draft(
@@ -582,6 +619,7 @@ def approve_case_draft(
                 "reviewed_at": confirmed_at,
             },
         )
+        _authorize_final_case_write(db, actor_context, draft.id)
         db.add(case)
         db.commit()
     except IntegrityError as exc:

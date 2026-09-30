@@ -9,6 +9,7 @@ from app.api.dependencies import (
     get_student_device,
     require_review_access,
     revalidate_student_access,
+    student_actor_context,
 )
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
@@ -34,7 +35,7 @@ from app.services.ai_diagnosis import explain_diagnosis, get_ai_status
 from app.services.data_scope import diagnosis_session, find_active_experiment_session
 from app.services.diagnosis import diagnose, save_diagnosis_result
 from app.services.diagnosis_checks import freeze
-from app.services.diagnosis_episode import diagnosis_issues, upsert_episode
+from app.services.diagnosis_episode import diagnosis_issues, episode_for_diagnosis
 from app.services.diagnosis_workflow import (
     WorkflowConflict,
     WorkflowScopeViolation,
@@ -51,6 +52,7 @@ from app.services.lightweight_diagnosis import (
     build_diagnosis_core,
     render_deterministic_explanation,
 )
+from app.services.student_authorization import authorize_student_actor
 
 router = APIRouter(prefix="/diagnosis", tags=["diagnosis"])
 AuthenticatedDevice = Annotated[Device, Depends(get_student_device)]
@@ -117,6 +119,7 @@ def _guidance_response(record: GuidanceHistory, device_key: str) -> GuidanceReco
 def run_device_diagnosis(
     device_id: str,
     payload: DiagnosisRunRequest,
+    request: Request,
     device: AuthenticatedDevice,
     db: DatabaseSession,
     settings: AppSettings,
@@ -124,11 +127,7 @@ def run_device_diagnosis(
 ) -> DiagnosisRunResponse:
     if device_id != device.device_key:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="device id mismatch")
-    feedback_scope = {
-        "experiment_session_id": session.id,
-        "student_user_id": session.student_user_id,
-        "device_id": device.id,
-    }
+    identity = student_actor_context(request, db, device, session)
     try:
         context = freeze(db, device, session, payload)
     except WorkflowScopeViolation as exc:
@@ -137,14 +136,14 @@ def run_device_diagnosis(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
+    authorize_student_actor(db, identity, device.id, session.id)
     outcome = diagnose(context)
     record = save_diagnosis_result(db, device, context, outcome)
-    if feedback_scope:
-        record.context_snapshot = {**record.context_snapshot, "feedback_scope": feedback_scope}
-    guidance = generate_guidance(db, device, record)
+    guidance = generate_guidance(db, device, record, student_actor=identity)
     core = build_diagnosis_core(record, guidance)
     explanation = render_deterministic_explanation(core)
-    episode = upsert_episode(db, device, record, guidance, settings)
+    episode = episode_for_diagnosis(db, record)
+    authorize_student_actor(db, identity, device.id, session.id)
     record.deterministic_core = core.model_dump(mode="json")
     record.deterministic_explanation = explanation.model_dump(mode="json")
     record.ai_enhancement = {
@@ -196,6 +195,7 @@ def run_device_diagnosis(
 )
 def run_guidance(
     diagnosis_result_id: str,
+    request: Request,
     device: AuthenticatedDevice,
     db: DatabaseSession,
     session: CurrentDiagnosisSession,
@@ -208,7 +208,8 @@ def run_guidance(
     _assert_diagnosis_scope(db, diagnosis_result, session)
     if not teaching_available(db, diagnosis_result):
         return GuidanceRunResponse(items=[])
-    records = generate_guidance(db, device, diagnosis_result)
+    identity = student_actor_context(request, db, device, session)
+    records = generate_guidance(db, device, diagnosis_result, student_actor=identity)
     return GuidanceRunResponse(
         items=[_guidance_response(record, device.device_key) for record in records]
         if teaching_available(db, diagnosis_result) else []
@@ -277,12 +278,14 @@ def run_ai_explanation(
     if diagnosis_result is None or diagnosis_result.device_id != device.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="diagnosis not found")
     _assert_diagnosis_scope(db, diagnosis_result, session)
-    generate_guidance(db, device, diagnosis_result)
+    identity = student_actor_context(request, db, device, session)
+    generate_guidance(db, device, diagnosis_result, student_actor=identity)
     response = explain_diagnosis(
         db,
         device,
         diagnosis_result,
         settings,
+        student_actor=identity,
         user_question=payload.user_question if payload else None,
     )
     revalidate_student_access(request, db)

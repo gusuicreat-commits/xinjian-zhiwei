@@ -241,12 +241,21 @@ async function logout(): Promise<void> {
 
 async function finishExperiment(): Promise<void> {
   if (readOnly.value) return
+  const actingCredentials = sessionStore.credentials
   try {
     await sessionStore.finishExperiment()
+    if (sessionStore.credentials && sessionStore.credentials !== actingCredentials) return
     dashboardStore.clear()
     await router.replace('/login')
   } catch {
-    ElMessage.warning('结束结果尚未确认，请重试原操作或重新登录查看会话状态。')
+    if (sessionStore.credentials && sessionStore.credentials !== actingCredentials) return
+    if (!sessionStore.isAuthenticated) {
+      dashboardStore.clear()
+      await router.replace('/login')
+    }
+    ElMessage.warning(
+      sessionStore.errorMessage || '结束结果尚未确认，请重试原操作或重新登录查看会话状态。',
+    )
   }
 }
 

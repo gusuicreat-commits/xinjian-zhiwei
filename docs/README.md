@@ -9,6 +9,7 @@
 | [项目简介](../README.md) | 产品用途、能力边界与第一次启动 |
 | [开发入口](../AGENTS.md) | 阅读顺序、适用范围与规范来源 |
 | [开发准则](development-guidelines.md) | 持续规则的唯一正文；重点入口：[模型内核](development-guidelines.md#model-core)、[业务规则](development-guidelines.md#business-rules)、[数据变更](development-guidelines.md#data-change)、[修复 Bug](development-guidelines.md#fix-bugs)、[规则与入口对应表](development-guidelines.md#rule-map) |
+| [共享校验修复方案](shared-validation-repair-plan.md) | 2026-09-30九项实现缺陷的修复设计：统一规则所有者、适用入口、事务边界和验收反例；按确认实施；实际修复与验收见[当次报告](../output/audits/shared-validation-fix-20260930/report.md)。 |
 
 ## 定位模块及契约
 

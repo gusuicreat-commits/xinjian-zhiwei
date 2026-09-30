@@ -11,7 +11,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.services.auth import resolve_session
+from app.services.auth import current_actor, resolve_session
 from app.services.internal_experiment_preparation import (
     PreparationError,
     PreparationSpec,
@@ -105,7 +105,14 @@ def run(args):
                 if current is None or not current.is_active or current.id != actor_id:
                     raise PreparationError("operator token expired or was revoked while waiting")
 
-            return apply_preparation(db, actor_id, spec, recheck_access=recheck, **credentials)
+            return apply_preparation(
+                db,
+                actor_id,
+                spec,
+                recheck_access=recheck,
+                actor_context=current_actor(actor),
+                **credentials,
+            )
     finally:
         engine.dispose()
 

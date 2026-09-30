@@ -224,7 +224,7 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
   ).toBe(true)
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20260927_0035')
+  expect(persisted.migration).toBe('20260930_0036')
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,
@@ -847,4 +847,66 @@ print(json.dumps({'device_key': result['objects']['device_key'],
   })
   await page.getByRole('button', { name: '结束本次实验', exact: true }).click()
   await expect(page).toHaveURL(/\/login$/)
+})
+
+test('a minimal end-command bookmark is resolved by a real authorized receipt without resubmission', async ({
+  page,
+  backend,
+}) => {
+  await page.goto('/login')
+  await page.getByPlaceholder('学生账号', { exact: true }).fill(backend.manifest.student_username)
+  await page.getByPlaceholder('学生密码', { exact: true }).fill(backend.manifest.student_password)
+  await page.getByRole('button', { name: '验证学生账号', exact: true }).click()
+  await expect(page.getByRole('button', { name: '进入所选实验', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: '进入所选实验', exact: true }).click()
+  await expect(page.getByRole('button', { name: '结束本次实验', exact: true })).toBeEnabled()
+  const credentials = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('xinjian-student-device-session')!),
+  )
+  const sessions = await page.request.get(`${backendURL}/api/v1/student/experiment-sessions`, {
+    headers: { Authorization: `Bearer ${credentials.accessToken}` },
+  })
+  const session = (await sessions.json()).find(
+    (item: { id: string }) => item.id === credentials.experimentSessionId,
+  )
+  const requestId = crypto.randomUUID()
+  const ended = await page.request.post(
+    `${backendURL}/api/v1/student/experiment-sessions/${session.id}/end`,
+    {
+      headers: { Authorization: `Bearer ${credentials.accessToken}` },
+      data: {
+        request_id: requestId,
+        expected_version: session.version_no,
+        reason: 'completed',
+      },
+    },
+  )
+  expect(ended.status()).toBe(200)
+  // Models the minimal record remaining after a lost response and later refusal;
+  // the receipt and session state below are persisted in the real database.
+  await page.evaluate(
+    ({ id, requestId }) =>
+      sessionStorage.setItem(
+        `xinjian-end-session:${id}:recovery`,
+        JSON.stringify({ operation: 'finishExperiment', request_id: requestId }),
+      ),
+    { id: session.id, requestId },
+  )
+  let mutations = 0
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/end')) mutations += 1
+  })
+  const receipt = page.waitForResponse((response) =>
+    response.url().endsWith(`/experiment-session-commands/${requestId}`),
+  )
+  await page.getByRole('button', { name: '结束本次实验', exact: true }).click()
+  expect((await receipt).status()).toBe(200)
+  await expect(page).toHaveURL(/\/login$/)
+  expect(mutations).toBe(0)
+  expect(
+    await page.evaluate(
+      (id) => sessionStorage.getItem(`xinjian-end-session:${id}:recovery`),
+      session.id,
+    ),
+  ).toBeNull()
 })

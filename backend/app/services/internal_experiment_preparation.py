@@ -28,7 +28,7 @@ from app.models import (
 )
 from app.models.base import utc_now
 from app.models.classroom import Role
-from app.services.auth import user_access
+from app.services.auth import ActorContext, AuthorizationDenied, authorize_actor, user_access
 from app.services.experiment_packages import load_experiment_package_runtime
 from app.services.rbac import assign_role
 
@@ -231,8 +231,11 @@ def apply_preparation(
     teacher_password=None,
     device_token=None,
     recheck_access=None,
+    actor_context: ActorContext | None = None,
 ):
     """Atomic provisioning. Retrying a committed prefix returns its unchanged receipt."""
+    if not isinstance(actor_context, ActorContext) or actor_context.user_id != actor_id:
+        raise AuthorizationDenied(401)
     if db.new or db.dirty or db.deleted:
         raise PreparationError("use a clean session for preparation")
     try:
@@ -256,6 +259,7 @@ def apply_preparation(
         db.scalar(select(User).where(User.id == actor_id).with_for_update())
         if recheck_access is not None:
             recheck_access()
+        authorize_actor(db, actor_context, "class.manage")
         _authorize(db, actor_id)
         existing = _existing(db, spec, actor_id)
         if existing:

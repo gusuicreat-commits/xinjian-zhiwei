@@ -280,6 +280,11 @@ def save_diagnosis_result(
     *,
     commit: bool = True,
 ) -> DiagnosisResult:
+    from app.services.source_lifecycle import protect_context_sources
+
+    protect_context_sources(db, device.id, context)
+    from app.services.provenance import derive_test_flag, diagnosis_scope_test_flag
+
     sources = [*context.logs, *context.heartbeats, *context.readings]
     record = DiagnosisResult(
         device_id=device.id,
@@ -302,8 +307,10 @@ def save_diagnosis_result(
         experiment_version_id=context.experiment_version_id,
         experiment_definition_hash=context.experiment_definition_hash,
         knowledge_scope=context.knowledge_scope.model_dump(mode="json"),
-        is_test_data=context.experiment_package_is_test_data
-        or any(item.is_test_data for item in sources),
+        is_test_data=derive_test_flag(
+            diagnosis_scope_test_flag(db, device, context),
+            context.experiment_package_is_test_data, *(item.is_test_data for item in sources)
+        ),
         created_at=utc_now(),
     )
     db.add(record)

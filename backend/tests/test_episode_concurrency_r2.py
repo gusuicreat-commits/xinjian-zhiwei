@@ -5,6 +5,7 @@ from threading import Barrier
 from uuid import uuid4
 
 import pytest
+from shared_source_fixture import persist_context_fixture
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
@@ -12,7 +13,7 @@ from app.db.base import Base
 from app.diagnosis.schemas import ContextLog, DiagnosisContext
 from app.models import Device, DiagnosisEpisode, DiagnosisResult, GuidanceHistory
 from app.services.diagnosis import diagnose, save_diagnosis_result
-from app.services.guidance import generate_guidance
+from app.services.guidance import _build_guidance_records as generate_guidance
 
 POSTGRES_DSN = os.getenv("XINJIAN_EVAL_POSTGRES_DSN") or os.getenv("TEST_EPISODE_POSTGRES_DSN")
 
@@ -65,6 +66,7 @@ def test_parallel_diagnoses_count_new_related_evidence_once(lifecycle_storage, d
                     )
                 ],
             )
+            persist_context_fixture(db, device, context)
             result = save_diagnosis_result(db, device, context, diagnose(context))
             ids.append(result.id)
     barrier = Barrier(2)
@@ -115,6 +117,7 @@ def test_older_snapshot_registered_late_cannot_resolve_unseen_evidence(lifecycle
                     )
                 ],
             )
+            persist_context_fixture(db, device, context)
             records.append(save_diagnosis_result(db, device, context, diagnose(context)))
         assert generate_guidance(db, device, records[1])[0].failure_count == 1
         assert generate_guidance(db, device, records[0])[0].failure_count == 2
@@ -159,6 +162,7 @@ def test_new_evidence_racing_resolution_has_one_lifecycle_order(lifecycle_storag
                     for j in range(index + 1)
                 ],
             )
+            persist_context_fixture(db, device, context)
             records.append(save_diagnosis_result(db, device, context, diagnose(context)))
         generate_guidance(db, device, records[0])
         first_id, second_id = [item.id for item in records]

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CommandRecoveryError } from '@/api/commandOutcome'
 import { issueLabel, readableText, logLevel, logSummary } from '@/presentation/userLanguage'
 import {
   Bell,
@@ -235,7 +236,13 @@ async function reportProblemResolved(item: TeacherIntervention): Promise<void> {
     ElMessage.success('问题状态已记录，工单处理状态保持独立')
   } catch (error) {
     if (sessionStore.accessToken !== actingToken || error === 'cancel' || error === 'close') return
-    ElMessage.error('结果尚未确认或证据已更新，请刷新并核对原请求；不要重复提交新请求。')
+    dashboardStore.handleFailure(error, actingToken)
+    ElMessage.error(
+      error instanceof CommandRecoveryError
+        ? error.message
+        : dashboardStore.errorMessage ||
+            '结果尚未确认或证据已更新，请刷新并核对原请求；不要重复提交新请求。',
+    )
   }
 }
 
@@ -311,7 +318,11 @@ async function handleIntervention(item: TeacherIntervention): Promise<void> {
     }
   } catch (error) {
     if (sessionStore.accessToken !== actingToken || error === 'cancel' || error === 'close') return
-    ElMessage.error('工单操作失败，可能已被其他教师更新，请刷新后重试')
+    ElMessage.error(
+      error instanceof CommandRecoveryError
+        ? error.message
+        : dashboardStore.errorMessage || '工单操作失败，请刷新后核对原操作。',
+    )
   }
 }
 async function handleWorkflowReview(
@@ -361,7 +372,11 @@ async function handleWorkflowReview(
     )
   } catch (error) {
     if (sessionStore.accessToken !== actingToken || error === 'cancel' || error === 'close') return
-    ElMessage.error('诊断审核失败，请刷新后重试')
+    ElMessage.error(
+      error instanceof CommandRecoveryError
+        ? error.message
+        : dashboardStore.errorMessage || '诊断审核失败，请刷新后核对原操作。',
+    )
   }
 }
 async function logout(): Promise<void> {

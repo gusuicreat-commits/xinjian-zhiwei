@@ -1,10 +1,14 @@
 """Read-only delivery projections; never rewrite a recorded workflow or call a model."""
 
+import json
 from copy import deepcopy
+from dataclasses import dataclass
 
 from sqlalchemy import select
 
 from app.ai.context_contract import current_context_policy
+from app.ai.output_contract import OUTPUT_CONTRACT_VERSION
+from app.ai.schemas import AIKnowledgeReference, AIStructuredExplanation
 from app.diagnosis.lightweight_schemas import DiagnosisCore
 from app.models import AICallRecord, DiagnosisResult
 from app.services.lightweight_diagnosis import (
@@ -16,13 +20,71 @@ LEGACY_CONTEXT_NOTICE = "原AI增强未通过当前适用条件检查；当前�
 LEGACY_CONTEXT_STATUS = "legacy_enhancement_not_revalidated"
 
 
-def _policy(record):
-    if record is None or record.status != "succeeded" or not record.output_json:
+@dataclass(frozen=True)
+class AdviceAssessment:
+    eligible: bool
+    reason: str
+    explanation: AIStructuredExplanation | None = None
+
+
+def current_sources_available(db, diagnosis, references):
+    from app.services.experiment_packages import teaching_available
+    from app.services.memory import references_available
+
+    if db is None or diagnosis is None:
         return False
     try:
-        return current_context_policy(record.input_snapshot)
-    except (AttributeError, TypeError):
+        return teaching_available(db, diagnosis) and references_available(db, diagnosis, references)
+    except (ValueError, KeyError, TypeError, AttributeError):
         return False
+
+
+def assess_current_advice(db, record, *, explanation=True):
+    """One read-only eligibility rule for current delivery, including detached records."""
+    if db is None or record is None:
+        return AdviceAssessment(False, "unverifiable_record")
+    if record.status != "succeeded" or not record.output_json:
+        return AdviceAssessment(False, "unsuccessful_record")
+    diagnosis = db.get(DiagnosisResult, record.diagnosis_result_id)
+    if not current_sources_available(db, diagnosis, record.knowledge_references or []):
+        return AdviceAssessment(False, "unavailable_teaching")
+    try:
+        refs = record.knowledge_references or []
+        for reference in refs:
+            AIKnowledgeReference.model_validate(reference)
+            content = str(reference.get("content") or "").lstrip()
+            if content.startswith(("{", "[")):
+                json.loads(content)
+        if not current_context_policy(record.input_snapshot):
+            return AdviceAssessment(False, "invalid_context_policy")
+        if not explanation:
+            return AdviceAssessment(True, "eligible")
+        output = AIStructuredExplanation.model_validate(record.output_json)
+        contract = (record.input_snapshot or {}).get("output_contract") or {}
+        if contract.get("version") != OUTPUT_CONTRACT_VERSION or any(
+            step not in contract.get("allowed_steps", []) for step in output.steps
+        ):
+            return AdviceAssessment(False, "invalid_output_contract")
+        output = AIStructuredExplanation.model_validate({
+            **output.model_dump(), "summary": contract["summary"],
+            "limitations": contract["limitations"],
+        })
+        return AdviceAssessment(True, "eligible", output)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        return AdviceAssessment(False, "invalid_output_contract")
+
+
+def bound_explanation_call(db, workflow, advice):
+    delivery = (advice or {}).get("context_delivery")
+    anchor_id = delivery.get("explanation_call_id") if isinstance(delivery, dict) else None
+    if not isinstance(anchor_id, str):
+        return None
+    return db.scalar(select(AICallRecord).where(
+        AICallRecord.id == anchor_id,
+        AICallRecord.workflow_run_id == workflow.id,
+        AICallRecord.diagnosis_result_id == workflow.diagnosis_result_id,
+        AICallRecord.call_stage.like("explanation%"),
+    ))
 
 
 def _inspection(db, workflow, advice, *, interrupt=False):
@@ -75,8 +137,8 @@ def _inspection(db, workflow, advice, *, interrupt=False):
     used = uses_reasoning or uses_explanation
     invalid = bool(used and (
         anchor is None
-        or (uses_explanation and not _policy(anchor))
-        or (uses_reasoning and not _policy(paired))
+        or (uses_explanation and not assess_current_advice(db, anchor).eligible)
+        or (uses_reasoning and not assess_current_advice(db, paired, explanation=False).eligible)
     ))
     return diagnosis, used, invalid
 

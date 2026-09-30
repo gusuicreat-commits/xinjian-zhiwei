@@ -2,9 +2,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_any_role, require_permission
+from app.api.dependencies import (
+    require_any_role,
+    require_permission,
+)
 from app.db.session import get_db
 from app.experiment_packages.loader import (
     ExperimentPackageLoadError,
@@ -43,6 +47,33 @@ router = APIRouter(prefix="/experiments", tags=["experiments"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 TemplateManager = Annotated[User, Depends(require_permission("assignment.manage"))]
 PackagePublisher = Annotated[User, Depends(require_any_role("admin"))]
+
+
+def _identity_conflict(db, error):
+    db.rollback()
+    constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    known = {
+        "ix_experiment_templates_code",
+        "experiment_templates_code_key",
+        "uq_template_versions_pair",
+        "ix_experiments_code",
+        "experiments_code_key",
+        "uq_experiment_versions_pair",
+        "experiment_versions_package_hash_key",
+    }
+    sqlite = str(error.orig) in {
+        "UNIQUE constraint failed: experiment_templates.code",
+        "UNIQUE constraint failed: experiment_template_versions.template_id, "
+        "experiment_template_versions.version",
+        "UNIQUE constraint failed: experiments.code",
+        "UNIQUE constraint failed: experiment_versions.experiment_id, experiment_versions.version",
+        "UNIQUE constraint failed: experiment_versions.package_hash",
+    }
+    if constraint in known or (db.get_bind().dialect.name == "sqlite" and sqlite):
+        raise HTTPException(
+            status_code=409, detail="experiment identity or version already exists"
+        ) from error
+    raise error
 
 
 def _response(
@@ -114,6 +145,8 @@ def import_package(
         )
     except ExperimentPackageLoadError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        _identity_conflict(db, exc)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _package_response(experiment, version)
@@ -154,15 +187,12 @@ def change_package_status(
     if version is None:
         raise HTTPException(status_code=404, detail="experiment package version not found")
     try:
-        from app.services.memory_governance import require_manager
-
         transition_experiment_package(
-            db, actor, version, payload.status,
-            recheck_access=lambda: require_manager(db, actor),
+            db,
+            actor,
+            version,
+            payload.status,
         )
-    except PermissionError as exc:
-        db.rollback()
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     experiment = db.get(Experiment, version.experiment_id)
@@ -175,16 +205,19 @@ def create(
     actor: TemplateManager,
     db: DatabaseSession,
 ) -> TemplateVersionResponse:
-    template, version = create_template(
-        db,
-        actor,
-        code=payload.code,
-        title=payload.title,
-        description=payload.description,
-        version=payload.version,
-        content=payload.content,
-        is_test_data=payload.is_test_data,
-    )
+    try:
+        template, version = create_template(
+            db,
+            actor,
+            code=payload.code,
+            title=payload.title,
+            description=payload.description,
+            version=payload.version,
+            content=payload.content,
+            is_test_data=payload.is_test_data,
+        )
+    except IntegrityError as exc:
+        _identity_conflict(db, exc)
     return _response(template, version)
 
 
@@ -202,13 +235,16 @@ def create_version(
     template = db.get(ExperimentTemplate, template_id)
     if template is None:
         raise HTTPException(status_code=404, detail="template not found")
-    version = create_template_version(
-        db,
-        actor,
-        template,
-        version=payload.version,
-        content=payload.content,
-    )
+    try:
+        version = create_template_version(
+            db,
+            actor,
+            template,
+            version=payload.version,
+            content=payload.content,
+        )
+    except IntegrityError as exc:
+        _identity_conflict(db, exc)
     return _response(template, version)
 
 
@@ -224,7 +260,12 @@ def edit(
         raise HTTPException(status_code=404, detail="template version not found")
     template = db.get(ExperimentTemplate, version.template_id)
     try:
-        update_content(db, actor, version, payload.content)
+        update_content(
+            db,
+            actor,
+            version,
+            payload.content,
+        )
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     return _response(template, version)
@@ -245,7 +286,12 @@ def change_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not found")
     template = db.get(ExperimentTemplate, version.template_id)
     try:
-        transition(db, actor, version, payload.status)
+        transition(
+            db,
+            actor,
+            version,
+            payload.status,
+        )
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     return _response(template, version)

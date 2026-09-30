@@ -13,6 +13,7 @@ from app.models.device_log import DeviceLog
 from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
+from app.models.diagnosis_workflow import DiagnosisWorkflowRun
 from app.models.guidance_history import GuidanceHistory
 from app.models.intervention import InterventionCase
 from app.models.sensor_reading import SensorReading
@@ -29,6 +30,7 @@ from app.schemas.student import (
     StudentReadingItem,
 )
 from app.services.ai_diagnosis import get_ai_status, serialize_ai_call
+from app.services.current_advice import bound_explanation_call, project_current_advice
 from app.services.data_scope import (
     diagnosis_session,
     find_active_experiment_session,
@@ -98,15 +100,6 @@ def build_student_dashboard(
             .order_by(DiagnosisFeedback.created_at.desc(), DiagnosisFeedback.id.desc())
             .limit(1)
         )
-        ai_call = db.scalar(
-            select(AICallRecord)
-            .where(
-                AICallRecord.diagnosis_result_id == diagnosis.id,
-                AICallRecord.call_stage.like("explanation%"),
-            )
-            .order_by(AICallRecord.created_at.desc(), AICallRecord.id.desc())
-            .limit(1)
-        )
         episode = db.scalar(
             select(DiagnosisEpisode)
             .where(DiagnosisEpisode.id == diagnosis.episode_id)
@@ -147,6 +140,34 @@ def build_student_dashboard(
     teaching_ready = diagnosis is None or teaching_available(db, diagnosis)
     if not teaching_ready:
         guidance, ai_call = [], None
+    current_output = None
+    if diagnosis is not None and teaching_ready:
+        workflow = db.scalar(select(DiagnosisWorkflowRun).where(
+            DiagnosisWorkflowRun.diagnosis_result_id == diagnosis.id,
+        ))
+        if workflow is not None:
+            frozen = workflow.final_result or workflow.review_request
+            ai_call = bound_explanation_call(db, workflow, frozen)
+            final, request = project_current_advice(db, workflow)
+            if final is not None and ai_call is not None:
+                current_output = final
+            elif request is not None and ai_call is not None:
+                # Deliver the validated projection, never a later mutable call.
+                current_output = request.get("ai_result")
+            if current_output and current_output.get("context_policy_status"):
+                current_output = None
+                ai_call = None
+        else:
+            call_id = (diagnosis.ai_enhancement or {}).get("call_record_id")
+            ai_call = db.scalar(select(AICallRecord).where(
+                AICallRecord.id == call_id,
+                AICallRecord.diagnosis_result_id == diagnosis.id,
+                AICallRecord.workflow_run_id.is_(None),
+                AICallRecord.call_stage.like("explanation%"),
+            )) if isinstance(call_id, str) else None
+        if workflow is None and ai_call is not None:
+            response = serialize_ai_call(ai_call, settings)
+            current_output = response.explanation.model_dump() if response.explanation else None
     device_status = calculate_device_status(device, settings.device_offline_after_seconds)
     device_state_explanation = build_device_state_explanation(
         device=device,
@@ -155,9 +176,7 @@ def build_student_dashboard(
         guidance=list(guidance),
         logs=list(reversed(logs)),
         readings=readings,
-        ai_output=(
-            ai_call.output_json if ai_call is not None and ai_call.status == "succeeded" else None
-        ),
+        ai_output=current_output,
     )
     if not teaching_ready:
         device_state_explanation = DeviceStateExplanation(

@@ -1,3 +1,6 @@
+from shared_write_authorization import authorize_write_fixture
+
+
 def test_readiness_reports_missing_external_inputs_without_faking_ready(
     api_context: dict[str, object],
 ) -> None:
@@ -71,7 +74,9 @@ def test_loadable_published_non_test_package_does_not_require_real_cases(api_con
         registry = documents["metadata.yaml"]["content_registry"]
         registry["units"] = [unit for unit in registry["units"]
                              if unit["target"]["entity_kind"] != "case"]
-        experiment, version = import_experiment_package(db, db.query(User).first(), documents)
+        experiment, version = import_experiment_package(
+            db, authorize_write_fixture(db, db.query(User).first()), documents
+        )
         experiment.is_test_data = False
         version.is_test_data = False
         version.status = "published"

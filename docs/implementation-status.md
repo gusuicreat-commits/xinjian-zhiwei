@@ -1,13 +1,13 @@
 # 芯鉴知微当前实现状态
 
-核对日期：2026-09-29。本文记录工作区的软件版本、能力、限制及执行证据；开发要求见[开发准则](development-guidelines.md)，外部事实与效果待验项见[真实性看板](project-truth-status.md)。代码存在、测试通过和已部署分别判断。
+核对日期：2026-09-30。本文记录工作区的软件版本、能力、限制及执行证据；开发要求见[开发准则](development-guidelines.md)，外部事实与效果待验项见[真实性看板](project-truth-status.md)。代码存在、测试通过和已部署分别判断。
 
 ## 当前版本
 
 | 对象 | 当前代码/内容版本 | 核对来源 |
 | --- | --- | --- |
 | 应用 | `1.0.0` | `VERSION`、应用配置与 `scripts/check_version.py` |
-| 数据库迁移 Head | `20260927_0035` | `backend/migrations/versions`；不是运行库版本 |
+| 数据库迁移 Head | `20260930_0036` | `backend/migrations/versions`；不是运行库版本 |
 | 诊断引擎兼容契约 | `2.2.0` | `experiment_packages/loader.py`；与应用版本分开 |
 | DHT11 工作区资料包 | `dht11_temperature_humidity@2.0.11` | 包 metadata.yaml；测试草稿 |
 | LED 工作区资料包 | `gpio_led_output@2.0.4` | 包 metadata.yaml；测试草稿 |
@@ -21,7 +21,7 @@
 
 | 领域 | 当前行为 | 定位/契约 |
 | --- | --- | --- |
-| 身份与会话 | 正式学生按班级/任务/设备/会话授权；设备凭据只认证设备，演示保留受限兼容；教师可释放指定占用 | `services/data_scope.py`、`experiment_sessions.py`；[API](api-design.md) |
+| 身份与会话 | PostgreSQL共享登录失败/在途额度，成功不清除其他在途请求；正式学生按班级/任务/设备/会话授权；设备凭据只认证设备，演示保留受限兼容；教师可释放指定占用 | `services/data_scope.py`、`experiment_sessions.py`；[API](api-design.md) |
 | 设备接入 | 四个遥测入口共享事务准入、额度和流式大小边界，等待后重验设备身份；批次幂等、序号冲突、时间质量、容量及会话归属校验 | `services/device_ingest.py`、`device_protocol.py`；[设备协议](device-protocol.md) |
 | 诊断与问题生命周期 | 规则识别异常，故障树限定候选，实际落库证据关联问题；相关新证据改变对应计数/修订，共享判据判断恢复及提示进度 | `diagnosis`、`services/diagnosis_episode.py`；[架构](architecture.md) |
 | 新数据检查 | 固定输入与请求身份；恢复原请求；新回执复用证据时读取问题当前处理状态，旧回执不改写，不额外调用模型 | `services/diagnosis_checks.py`；[重新检查规则](development-guidelines.md#recheck) |
@@ -33,6 +33,8 @@
 | 固件与运维 | 64位运行时钟；DHT11前次转换语义；配置持久存储后先保存单批、存储失败暂停、重试预算持久化、确认后仅重试清理。备份恢复核对同一数据库快照的内容与关系约束，模拟器提供实际场景清单 | [固件](../firmware/esp32_dht11/README.md)、[部署](deployment.md)、[模拟器](../simulator/README.md) |
 
 ## 软件限制
+
+- 2026-09-30全项目审计7项缺陷已修复（含MIME相邻边界）：工单锁后授权、旧模板并发、学生明确拒绝恢复、共享登录准入、重复身份409、坏文件422和文档CSP。最终完整门禁退出0：后端929、模拟器32、前端单元136、浏览器18/9/1项，另验Swagger/ReDoc真实渲染。迁移Head0036仅在隔离库验证，业务部署及实物未执行；见[方案、自审与修复报告](../output/audits/software-fix-20260930/report.md)。
 
 - 2026-09-29固件修复交付：DHT11包2.0.11、固件0.2.5，完整软件门禁退出0（后端906、模拟器32、前端单元130、浏览器17/9/1项），新增18个固件回归场景通过；两个镜像构建及LittleFS解包核对通过，操作手册v2已同步。详细源码身份、哈希、日志和实物未执行项见[修复报告](../output/audits/dht11-firmware-fix-20260929/report.md)。
 - 2026-09-29施工设计只读核对中，隔离主机反例发现固件0.2.4在慢HTTP重试成功后可能过早再次采样；该问题已在固件0.2.5修复，并补充启动等待、同轮缓存解除后的priming及HTTPS配置保护；本轮软件验收结果见[修复报告](../output/audits/dht11-firmware-fix-20260929/report.md)。真实读数时效参数补齐顺序见[实物施工方案](experiments/dht11-hardware-execution-plan.md)。以下历史软件通过记录不包含这个新增反例。
@@ -82,3 +84,9 @@ DHT11工作区2.0.8、固件0.2.4：新增[内部实验指南](experiments/dht11
 2026-09-29后续：用户交接离线安装的tool-mklittlefs 1.203.210628后，复核压缩包与安装文件一致；使用已有PlatformIO Core 6.1.19完成项目固件与buildfs构建，均退出0。LittleFS镜像为1,441,792字节，匹配0x160000分区；按实际尺寸解包仅含与源码一致的README.txt。随后补跑完整本机软件门禁，退出0：后端906、模拟器32、流程25、前端单元130、模拟浏览器17、真实后端浏览器9、离线审阅1项通过。此前镜像构建阻塞已解除，见[离线工具验收](../output/audits/littlefs-offline-20260929/report.md)。上一轮中止记录仍保留；实物烧录、挂载与掉电验证仍未执行。
 
 2026-09-29内部技术准备：按当前工作区再次定向构建固件和LittleFS镜像并核对分区/解包内容，T0软件就绪已具本机证据；T1—T4目标与[到货执行清单](experiments/dht11-arrival-checklist.md)已明确，均不冒充实物结果。构建尺寸、当次哈希及临时环境限制见[本轮记录](../output/audits/dht11-arrival-prep-20260929/report.md)。
+
+## 共享校验修复（2026-09-30）
+
+按[共享校验方案](shared-validation-repair-plan.md)修复本轮九项缺陷及同规则相邻入口：最终授权、当前建议资格、实验身份、来源清理、测试标记、命令恢复、权限失效页面、安全扫描和就绪探针统一对应校验。当前是未提交工作区，没有部署或改写业务历史。
+
+本轮本地验收分阶段完成：后端1004、模拟器32、PostgreSQL流程25、前端单元153、模拟浏览器19、真实数据库浏览器10、离线页面1项通过；固件、静态检查和独立容器断库恢复通过。完整脚本在新浏览器测试的重复文案定位处退出1，修正为正文定位后，浏览器三组及前端静态检查补跑退出0；不宣称单次全绿。中途失败、原因、最终源码指纹和未验收范围见[修复效果报告](../output/audits/shared-validation-fix-20260930/report.md)，不与历史数量累计。真实Provider语义、实物、部署和课堂效果仍未验证。

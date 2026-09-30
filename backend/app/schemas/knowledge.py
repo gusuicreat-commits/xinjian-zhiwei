@@ -66,7 +66,7 @@ class KnowledgeTextImportRequest(StrictKnowledgeModel):
 class KnowledgeFileImportRequest(StrictKnowledgeModel):
     filename: str = Field(min_length=1, max_length=300)
     content_base64: str = Field(min_length=1)
-    media_type: str = Field(min_length=1, max_length=150)
+    media_type: str = Field(min_length=1, max_length=100)
     language: Optional[str] = Field(default=None, max_length=30)
     storage_uri: Optional[str] = Field(default=None, max_length=1000)
     locator_prefix: dict[str, Any] = Field(default_factory=dict)

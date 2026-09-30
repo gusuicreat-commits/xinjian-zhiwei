@@ -17,9 +17,12 @@ from app.knowledge.case_drafting import (
     submit_case_draft_for_review,
 )
 from app.knowledge.validation import validate_reasoning_against_knowledge
+from app.models.classroom import User
 from app.models.diagnosis_feedback import DiagnosisFeedback
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
+from app.services.auth import ActorContext
+from app.services.rbac import assign_role, ensure_rbac_catalog
 
 
 def _verify_reasoning_constraints() -> None:
@@ -115,6 +118,19 @@ def _verify_case_draft_governance() -> str:
     Base.metadata.create_all(engine)
     try:
         with Session(engine) as db:
+            reviewer = User(
+                username="synthetic-case-reviewer",
+                display_name="Synthetic reviewer",
+                password_hash="unused",
+                is_test_data=True,
+            )
+            db.add(reviewer)
+            db.flush()
+            roles = ensure_rbac_catalog(db)
+            for role in ("admin", "formal_approver"):
+                assign_role(db, reviewer, roles[role])
+            db.commit()
+            identity = ActorContext(reviewer.id, mode="local_admin")
             diagnosis = DiagnosisResult(
                 device_id="case-draft-device",
                 evaluated_at=datetime.now(timezone.utc),
@@ -136,9 +152,7 @@ def _verify_case_draft_governance() -> str:
                     }
                 ],
                 context_snapshot={
-                    "experiment_template": {
-                        "template_id": "dht11_temperature_humidity"
-                    },
+                    "experiment_template": {"template_id": "dht11_temperature_humidity"},
                     "readings": [],
                     "expected_behaviors": [],
                 },
@@ -185,12 +199,12 @@ def _verify_case_draft_governance() -> str:
                 "title": "DHT11 读取异常排查",
                 "sourceIds": draft.source_ids,
             }
-            apply_ai_assisted_polish(db, draft, polished)
-            submit_case_draft_for_review(db, draft)
+            apply_ai_assisted_polish(db, draft, polished, actor_context=identity)
+            submit_case_draft_for_review(db, draft, actor_context=identity)
             changed = dict(polished)
             changed["possibleCauses"] = ["AI 创造的新故障"]
             try:
-                apply_ai_assisted_polish(db, draft, changed)
+                apply_ai_assisted_polish(db, draft, changed, actor_context=identity)
             except CaseDraftError:
                 pass
             else:
@@ -199,7 +213,8 @@ def _verify_case_draft_governance() -> str:
                 db,
                 draft,
                 case_id="dht11.feedback-confirmed.v1",
-                reviewer_ref="synthetic-test-reviewer",
+                reviewer_ref=reviewer.id,
+                actor_context=identity,
                 confirmed_root_cause="GPIO 配置错误",
                 final_solution_steps=["核对并修正 GPIO 配置", "重新运行并确认读数恢复"],
                 confirmation_note="合成审核流程夹具，不代表真实教师确认或硬件测试。",
@@ -234,14 +249,10 @@ def main() -> None:
                 {
                     "cause_id": "gpio_config",
                     "support_level": "medium",
-                    "used_evidence_ids": [
-                        "00000000-0000-0000-0000-000000000001"
-                    ],
+                    "used_evidence_ids": ["00000000-0000-0000-0000-000000000001"],
                 }
             ],
-            "evidence_registry": [
-                {"id": "00000000-0000-0000-0000-000000000001"}
-            ],
+            "evidence_registry": [{"id": "00000000-0000-0000-0000-000000000001"}],
             "allowed_verification_actions": [{"text": "核对 GPIO"}],
             "next_verification_action": "核对 GPIO",
             "knowledge_constraints": {"teacher_confirmed_cases": []},

@@ -21,20 +21,6 @@ def _tokens(value: Any) -> set[str]:
     }
 
 
-def _experiment_candidates(diagnosis: DiagnosisResult) -> set[str]:
-    context = diagnosis.context_snapshot or {}
-    template = context.get("experiment_template") or {}
-    candidates = {
-        str(item) for item in (diagnosis.experiment_id, template.get("template_id")) if item
-    }
-    candidates.update(
-        str(item.get("sensor_type"))
-        for item in context.get("readings", [])
-        if item.get("sensor_type")
-    )
-    return {item.lower() for item in candidates}
-
-
 def match_case_candidates(
     rows: Iterable[Any],
     diagnosis: DiagnosisResult,
@@ -51,7 +37,7 @@ def match_case_candidates(
         str(item.get("error_type")) for item in diagnosis.matched_rules if item.get("error_type")
     }
     context = context_from_diagnosis(diagnosis, guidance)
-    experiments = _experiment_candidates(diagnosis)
+    experiment = context.experiment_code
     observed_tokens = set().union(
         *(
             _tokens(value)
@@ -88,11 +74,13 @@ def match_case_candidates(
             continue
         matched_on = ["error_type"]
         score = 0.6
-        case_experiment = case.experiment_type.lower()
-        if case_experiment in experiments:
+        if experiment is None:
+            entry["reason"] = "applicability_unknown"
+            continue
+        if case.experiment_type == experiment:
             score += 0.25
             matched_on.append("experiment_type")
-        elif experiments:
+        else:
             entry["reason"] = "experiment_mismatch"
             continue
         applicability = evaluate_case_applicability(case.solution_record, context)

@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
+from shared_student_authorization import demo_student_actor
 from sqlalchemy import select
 
 from app.ai.diagnosis_graph import build_diagnosis_graph
@@ -86,7 +87,15 @@ def _resume_feedback(db, graph, workflow, device, settings, action="resolved"):
         db.commit()
     db.commit()
     db.refresh(feedback)
-    return resume_workflow_with_feedback(db, graph, workflow, feedback, device, settings)
+    return resume_workflow_with_feedback(
+        db,
+        graph,
+        workflow,
+        feedback,
+        device,
+        settings,
+        student_actor=demo_student_actor(db, device),
+    )
 
 
 class FailOnceAfterTerminalSaver(InMemorySaver):
@@ -130,6 +139,7 @@ def test_graph_wraps_existing_deterministic_pipeline_without_changing_facts(
             device,
             settings,
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
 
         assert workflow.status == "waiting_feedback"
@@ -205,6 +215,7 @@ def test_unresolved_feedback_resumes_same_workflow_and_waits_again(
             device,
             settings,
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
         original_thread = workflow.graph_thread_id
 
@@ -239,6 +250,7 @@ def test_terminal_checkpoint_failure_is_reconciled_without_duplicate_result(
             device,
             _settings(),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
 
         workflow = _resume_feedback(db, graph, workflow, device, _settings())
@@ -270,6 +282,7 @@ def test_review_terminal_checkpoint_failure_reconciles_one_audit(
             device,
             settings,
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
         teacher = User(
             username="graph-review-checkpoint-replay",
@@ -279,6 +292,9 @@ def test_review_terminal_checkpoint_failure_reconciles_one_audit(
         )
         db.add(teacher)
         db.commit()
+        from shared_authorization import authorize_review_fixture
+
+        authorize_review_fixture(db, teacher, workflow)
 
         workflow = review_workflow(
             db,
@@ -385,6 +401,7 @@ def test_graph_supplies_knowledge_before_reasoning_and_validates_after(
             device,
             _settings(diagnosis_rag_trigger_score=0.0),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
         assert workflow.status in {"waiting_feedback", "waiting_teacher"}
         assert workflow.needs_rag is False
@@ -412,6 +429,7 @@ def test_structured_match_audit_keeps_explanatory_query(api_context: dict[str, A
                 diagnosis_teacher_review_score=1.0,
             ),
             DiagnosisWorkflowStartRequest(lookback_seconds=60, question=question),
+            student_actor=demo_student_actor(db, device),
         )
         assert workflow.status == "waiting_teacher"
         assert workflow.retrieval_audit["mode"] == "structured_case_match"
@@ -438,6 +456,7 @@ def test_failed_node_records_bounded_observability(
                 device,
                 _settings(),
                 DiagnosisWorkflowStartRequest(lookback_seconds=60),
+                student_actor=demo_student_actor(db, device),
             )
 
         workflow = db.scalar(select(DiagnosisWorkflowRun))
@@ -470,6 +489,7 @@ def test_low_evidence_interrupt_can_be_edited_without_overwriting_rule_facts(
             device,
             settings,
             DiagnosisWorkflowStartRequest(lookback_seconds=60, question="为什么没有数据？"),
+            student_actor=demo_student_actor(db, device),
         )
         assert workflow.status == "waiting_teacher"
         assert workflow.review_request["instruction"]
@@ -483,6 +503,9 @@ def test_low_evidence_interrupt_can_be_edited_without_overwriting_rule_facts(
         )
         db.add(teacher)
         db.commit()
+        from shared_authorization import authorize_review_fixture
+
+        authorize_review_fixture(db, teacher, workflow)
         original_rules = list(workflow.review_request["rule_hits"])
         original_score = workflow.evidence_score
         original_level = workflow.guidance_level
@@ -533,6 +556,7 @@ def test_reject_finishes_without_publishing_result(api_context: dict[str, Any]) 
             device,
             settings,
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
         teacher = User(
             username="graph-reject-reviewer",
@@ -542,6 +566,9 @@ def test_reject_finishes_without_publishing_result(api_context: dict[str, Any]) 
         )
         db.add(teacher)
         db.commit()
+        from shared_authorization import authorize_review_fixture
+
+        authorize_review_fixture(db, teacher, workflow)
         workflow = review_workflow(
             db,
             graph,
@@ -574,6 +601,7 @@ def test_failed_resume_does_not_leave_review_and_can_be_retried(
             device,
             settings,
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
         teacher = User(
             username="graph-resume-retry-reviewer",
@@ -583,6 +611,9 @@ def test_failed_resume_does_not_leave_review_and_can_be_retried(
         )
         db.add(teacher)
         db.commit()
+        from shared_authorization import authorize_review_fixture
+
+        authorize_review_fixture(db, teacher, workflow)
 
         class FailingGraph:
             def invoke(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
@@ -642,6 +673,7 @@ def test_duplicate_review_is_rejected_without_duplicate_audit(
             device,
             settings,
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
         teacher = User(
             username="graph-idempotent-reviewer",
@@ -651,6 +683,9 @@ def test_duplicate_review_is_rejected_without_duplicate_audit(
         )
         db.add(teacher)
         db.commit()
+        from shared_authorization import authorize_review_fixture
+
+        authorize_review_fixture(db, teacher, workflow)
         request = DiagnosisWorkflowReviewRequest(action="approve", comment="仅应保存一次")
         workflow = review_workflow(db, graph, workflow, teacher, settings, request)
 
@@ -683,6 +718,7 @@ def test_terminal_node_replay_keeps_one_formal_review(
             device,
             settings,
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
         teacher = User(
             username="graph-terminal-replay-reviewer",
@@ -692,6 +728,9 @@ def test_terminal_node_replay_keeps_one_formal_review(
         )
         db.add(teacher)
         db.commit()
+        from shared_authorization import authorize_review_fixture
+
+        authorize_review_fixture(db, teacher, workflow)
         workflow = review_workflow(
             db,
             graph,
@@ -752,6 +791,7 @@ def test_checkpoint_serialization_excludes_request_and_review_secrets(
                 lookback_seconds=60,
                 question="请排查设备，Authorization: Bearer checkpoint-secret-token",
             ),
+            student_actor=demo_student_actor(db, device),
         )
         teacher = User(
             username="graph-secret-reviewer",
@@ -761,6 +801,9 @@ def test_checkpoint_serialization_excludes_request_and_review_secrets(
         )
         db.add(teacher)
         db.commit()
+        from shared_authorization import authorize_review_fixture
+
+        authorize_review_fixture(db, teacher, workflow)
         workflow = review_workflow(
             db,
             graph,
@@ -854,7 +897,12 @@ def test_new_workflow_keeps_episode_attempts_even_without_matching_guidance(
     with api_context["session_factory"]() as db:
         device = db.scalar(select(Device).where(Device.device_key == "phase2-test-device"))
         workflow = start_workflow(
-            db, graph, device, settings, DiagnosisWorkflowStartRequest(lookback_seconds=60)
+            db,
+            graph,
+            device,
+            settings,
+            DiagnosisWorkflowStartRequest(lookback_seconds=60),
+            student_actor=demo_student_actor(db, device),
         )
         diagnosis = db.get(DiagnosisResult, workflow.diagnosis_result_id)
         feedback = DiagnosisFeedback(

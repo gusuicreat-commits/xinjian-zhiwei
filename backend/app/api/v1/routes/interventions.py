@@ -2,16 +2,21 @@ import csv
 import io
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user, require_permission
+from app.api.dependencies import (
+    get_current_user,
+    require_permission,
+    revalidate_user_permission,
+)
 from app.db.session import get_db
 from app.models.base import utc_now
 from app.models.classroom import (
     AuditEvent,
+    Classroom,
     ExperimentAssignment,
     TeachingAssignment,
     User,
@@ -29,11 +34,12 @@ from app.schemas.intervention import (
     InterventionTimelineItem,
     ProblemResolutionRequest,
 )
-from app.services.auth import user_access
+from app.services.auth import current_actor, user_access
 from app.services.data_scope import (
     ScopeConflict,
     ScopeViolation,
     assert_student_session_access,
+    authorize_teacher_class,
     diagnosis_session,
     teacher_has_class_access,
 )
@@ -45,6 +51,7 @@ from app.services.interventions import (
     public_resolution_summary,
     timeline,
 )
+from app.services.provenance import derive_test_flag
 
 router = APIRouter(prefix="/teacher-workflow", tags=["teacher-workflow"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
@@ -128,6 +135,15 @@ def _assert_case_access(db, actor, case, *, allow_student):
     raise HTTPException(status_code=403, detail="intervention recorded scope is not accessible")
 
 
+def _recheck_action_access(request, db, actor, case, target_id=None):
+    current = revalidate_user_permission(request, db, "intervention.manage")
+    if current.id != actor.id:
+        raise HTTPException(status_code=403, detail="operation actor changed")
+    _assert_case_access(db, current, case, allow_student=False)
+    if target_id:
+        _assert_teacher_class_access(db, db.get(User, target_id), case.class_id)
+
+
 @router.post(
     "/diagnoses/{diagnosis_id}/intervention",
     response_model=InterventionCaseResponse,
@@ -197,7 +213,11 @@ def intervention_queue(
 
 @router.post("/interventions/{case_id}/problem-resolution")
 def resolve_intervention_problem(
-    case_id: str, payload: ProblemResolutionRequest, actor: InterventionManager, db: DatabaseSession
+    case_id: str,
+    payload: ProblemResolutionRequest,
+    request: Request,
+    actor: InterventionManager,
+    db: DatabaseSession,
 ):
     case = db.get(InterventionCase, case_id)
     if case is None:
@@ -208,6 +228,7 @@ def resolve_intervention_problem(
             db,
             case,
             actor,
+            recheck_access=lambda: _recheck_action_access(request, db, actor, case),
             request_id=str(payload.request_id),
             expected_revision=payload.expected_revision,
             recovery_diagnosis_id=str(payload.recovery_diagnosis_id)
@@ -245,6 +266,7 @@ def read_intervention(
 def act_on_intervention(
     case_id: str,
     payload: InterventionActionRequest,
+    request: Request,
     actor: InterventionManager,
     db: DatabaseSession,
 ) -> InterventionCaseResponse:
@@ -263,6 +285,13 @@ def act_on_intervention(
             db,
             case,
             actor,
+            recheck_access=lambda: _recheck_action_access(
+                request,
+                db,
+                actor,
+                case,
+                payload.target_teacher_user_id if payload.action == "transfer" else None,
+            ),
             request_id=str(payload.request_id) if payload.request_id else None,
             action=payload.action,
             expected_version=payload.expected_version,
@@ -311,13 +340,17 @@ def publish_message(
     actor: InterventionManager,
     db: DatabaseSession,
 ) -> ClassroomMessageResponse:
-    _assert_teacher_class_access(db, actor, payload.class_id)
+    actor = authorize_teacher_class(db, current_actor(actor), payload.class_id)
     message = ClassroomMessage(
         class_id=payload.class_id,
         author_user_id=actor.id,
         message=payload.message,
         audience=payload.audience,
-        is_test_data=payload.is_test_data,
+        is_test_data=derive_test_flag(
+            actor.is_test_data,
+            getattr(db.get(Classroom, payload.class_id), "is_test_data", None),
+            explicit=payload.is_test_data,
+        ),
     )
     db.add(message)
     db.commit()
@@ -341,7 +374,7 @@ def retract_message(
     message = db.get(ClassroomMessage, message_id)
     if message is None:
         raise HTTPException(status_code=404, detail="message not found")
-    _assert_teacher_class_access(db, actor, message.class_id)
+    actor = authorize_teacher_class(db, current_actor(actor), message.class_id)
     if message.retracted_at is None:
         message.retracted_at = utc_now()
         message.retracted_by_user_id = actor.id
@@ -390,7 +423,11 @@ def export_class_report(
             resource_type="class",
             resource_id=class_id,
             details_json={"format": "csv", "row_count": len(cases)},
-            is_test_data=all(case.is_test_data for case in cases) if cases else False,
+            is_test_data=derive_test_flag(
+                actor.is_test_data,
+                getattr(db.get(Classroom, class_id), "is_test_data", None),
+                *(case.is_test_data for case in cases),
+            ),
             created_at=utc_now(),
         )
     )

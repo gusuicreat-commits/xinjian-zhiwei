@@ -384,6 +384,9 @@ def _ingest_device_batch_locked(
 
 
 def cleanup_test_run(db: Session, device: Device, test_run_id: str) -> dict[str, int]:
+    from app.services.source_lifecycle import assert_sources_unused
+
+    device = lock_ingestion_device(db, device, None)
     request_ids = list(
         db.scalars(
             select(IngestionRequest.id).where(
@@ -395,6 +398,12 @@ def cleanup_test_run(db: Session, device: Device, test_run_id: str) -> dict[str,
     )
     if not request_ids:
         return {"requests": 0, "logs": 0, "readings": 0, "heartbeats": 0}
+    source_ids = set()
+    for model in (DeviceLog, SensorReading, DeviceHeartbeat):
+        source_ids.update(db.scalars(select(model.id).where(
+            model.ingestion_request_id.in_(request_ids)
+        )))
+    assert_sources_unused(db, device.id, source_ids)
     logs = db.execute(
         delete(DeviceLog).where(DeviceLog.ingestion_request_id.in_(request_ids))
     ).rowcount

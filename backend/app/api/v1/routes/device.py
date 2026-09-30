@@ -139,7 +139,14 @@ def delete_test_run(
         normalized_id = str(UUID(test_run_id))
     except ValueError as error:
         raise HTTPException(status_code=422, detail="test_run_id must be a UUID") from error
-    counts = cleanup_test_run(db, device, normalized_id)
+    try:
+        counts = cleanup_test_run(db, device, normalized_id)
+    except ScopeConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ProtocolIngestError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
     return TestRunCleanupResponse(
         test_run_id=normalized_id,
         deleted_requests=counts["requests"],

@@ -91,8 +91,16 @@ def test_teacher_work_completion_and_explicit_problem_resolution_are_separate(ap
         session = db.get(ExperimentSession, api_context["experiment_session_id"])
         actor = db.get(
             User, session.student_user_id
-        )  # service test; HTTP authorization is tested separately
+        )  # service test with explicit current teacher grants
         classroom = db.get(ExperimentAssignment, session.experiment_assignment_id).class_id
+        from shared_authorization import session_actor_fixture
+
+        from app.models import TeachingAssignment
+        from app.services.rbac import assign_role, ensure_rbac_catalog
+
+        assign_role(db, actor, ensure_rbac_catalog(db)["teacher"])
+        db.add(TeachingAssignment(class_id=classroom, user_id=actor.id))
+        session_actor_fixture(db, actor)
         case = ensure_intervention_case(
             db, diagnosis, class_id=classroom, actor_user_id=actor.id, source="synthetic"
         )
@@ -182,7 +190,7 @@ def test_same_error_in_two_components_has_separate_guidance(api_context):
     from copy import deepcopy
 
     from app.models import Device
-    from app.services.guidance import generate_guidance
+    from app.services.guidance import _build_guidance_records as generate_guidance
 
     log(api_context)
     result = run(api_context)

@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from uuid import uuid4
 
+from shared_authorization import session_actor_fixture
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 from test_migration_r2 import migration_db as _migration_db
@@ -72,7 +73,7 @@ def test_two_students_compete_for_one_device(migration_db):
 
     def compete(user_id):
         with factory() as db:
-            user = db.get(User, user_id)
+            user = session_actor_fixture(db, db.get(User, user_id))
             barrier.wait(timeout=10)
             try:
                 return start_session(

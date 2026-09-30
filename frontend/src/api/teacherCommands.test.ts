@@ -38,3 +38,24 @@ it('a received conflict does not automatically retry, and another account cannot
   )
   expect(apiClient.post).toHaveBeenCalledTimes(1)
 })
+
+it('a delayed review recovery cannot return protected results or clear state after account change', async () => {
+  const { reviewDiagnosisWorkflow } = await import('./teacher')
+  const key = 'xinjian-workflow-review:teacher-a:workflow:recovery'
+  sessionStorage.setItem(key, JSON.stringify({ workflow_id: 'workflow' }))
+  let resolve!: (value: unknown) => void
+  vi.mocked(apiClient.get).mockReturnValue(
+    new Promise((done) => {
+      resolve = done
+    }) as never,
+  )
+  const recovery = reviewDiagnosisWorkflow('token-a', 'workflow', { action: 'approve' })
+  sessionStorage.setItem(
+    'xinjian-teacher-session',
+    JSON.stringify({ user_id: 'teacher-b', access_token: 'token-b' }),
+  )
+  resolve({ data: { id: 'workflow', status: 'completed' } })
+  await expect(recovery).rejects.toThrow('TEACHER_SESSION_REQUIRED')
+  expect(sessionStorage.getItem(key)).not.toBeNull()
+  expect(apiClient.post).not.toHaveBeenCalled()
+})

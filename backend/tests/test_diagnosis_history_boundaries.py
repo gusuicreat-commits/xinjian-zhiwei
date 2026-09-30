@@ -3,16 +3,23 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from shared_student_authorization import demo_student_actor
 
 from app.core.config import Settings
 from app.models import Device
 from app.services.diagnosis import build_diagnosis_context, diagnose, save_diagnosis_result
 from app.services.diagnosis_episode import upsert_episode
-from app.services.guidance import generate_guidance
+from app.services.guidance import _build_guidance_records as generate_guidance
 
 
 def record(db, device, at, *, failure=True, observation=None, scope=None, status="unknown"):
     context = build_diagnosis_context(db, device, evaluated_at=at)
+    # This fixture describes an explicit isolated input window.
+    context.logs = []
+    context.readings = []
+    context.heartbeats = []
+    context.observations = []
+    context.events = []
     if scope:
         context.feedback_scope = {"experiment_session_id": scope}
     if failure:
@@ -60,6 +67,9 @@ def record(db, device, at, *, failure=True, observation=None, scope=None, status
             context.recheck_source_time_quality = {
                 f"sensor_reading:{observation}": "device_reported"
             }
+    from shared_source_fixture import persist_context_fixture
+
+    persist_context_fixture(db, device, context)
     return save_diagnosis_result(db, device, context, outcome)
 
 
@@ -319,5 +329,5 @@ def test_first_reasoning_already_has_durable_episode(api_context, monkeypatch):
             db.query(Device).one(),
             Settings(ai_enabled=False),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
-        )
+         student_actor=demo_student_actor(db, db.query(Device).one()))
         assert checked == [workflow.diagnosis_result_id]

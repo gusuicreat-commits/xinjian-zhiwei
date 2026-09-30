@@ -2,6 +2,7 @@ from copy import deepcopy
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
+from shared_student_authorization import demo_student_actor
 from sqlalchemy import func, select
 from test_diagnosis_workflow import _add_failure_log, _settings
 
@@ -32,7 +33,7 @@ def advice_task(api_context, monkeypatch):
         workflow = start_workflow(
             db, build_diagnosis_graph(InMemorySaver()), db.scalar(select(Device)), _settings(),
             DiagnosisWorkflowStartRequest(lookback_seconds=60),
-        )
+         student_actor=demo_student_actor(db, db.scalar(select(Device))))
         diagnosis = db.get(DiagnosisResult, workflow.diagnosis_result_id)
 
         def forbid_provider(*args, **kwargs):
@@ -57,6 +58,19 @@ def add_call(db, diagnosis, workflow, stage="explanation", *, current=False):
     record.status = "succeeded"
     record.input_snapshot = policy_snapshot(current)
     record.output_json = {"summary": "model explanation"}
+    if current and stage.startswith("explanation"):
+        from app.ai.output_contract import OUTPUT_CONTRACT_VERSION
+        record.output_json = {
+            "summary": "model explanation", "error_type": "SENSOR_READ_FAILED",
+            "evidence": [], "possible_causes": [], "steps": ["检查供电"],
+            "hint_level": 1, "need_teacher_help": False, "limitations": [],
+        }
+        record.input_snapshot = {
+            **record.input_snapshot,
+            "output_contract": {"version": OUTPUT_CONTRACT_VERSION,
+                                "summary": "server summary", "limitations": [],
+                                "allowed_steps": ["检查供电"]},
+        }
     db.flush()
     return record
 

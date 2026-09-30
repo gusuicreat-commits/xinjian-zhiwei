@@ -6,6 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+from shared_write_authorization import authorize_write_fixture
 
 from app.experiment_packages.loader import (
     ExperimentPackageLoadError,
@@ -302,6 +303,7 @@ def test_registered_derivation_lists_package_without_revoking_it(api_context):
     ]
     with api_context["session_factory"]() as db:
         actor = db.scalar(select(User).where(User.username == "experiment-package-admin"))
+        authorize_write_fixture(db, actor)
         _, version = import_experiment_package(db, actor, documents, is_test_data=True)
         for status in ("pending", "approved", "published"):
             transition_experiment_package(db, actor, version, status)

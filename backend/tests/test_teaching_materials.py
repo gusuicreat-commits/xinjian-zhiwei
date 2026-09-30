@@ -3,6 +3,7 @@
 from copy import deepcopy
 
 import pytest
+from shared_write_authorization import authorize_write_fixture
 from test_experiment_packages import PACKAGE_ROOT
 
 from app.experiment_packages.loader import (
@@ -185,9 +186,7 @@ def test_http_guidance_snapshot_survives_feedback_and_all_ai_modes(mode):
         for material in materials:
             if material["status"] == "available":
                 assert material["steps"][0]["step_id"] == "identify"
-                assert "dht11.protocol_evidence" in [
-                    c["concept_id"] for c in material["concepts"]
-                ]
+                assert "dht11.protocol_evidence" in [c["concept_id"] for c in material["concepts"]]
         request = {"request_id": str(uuid4()), "action": "unresolved"}
         path = f"/api/v1/student/diagnoses/{workflow['diagnosis_result_id']}/feedback"
         for _ in range(2):
@@ -219,6 +218,7 @@ def test_new_release_does_not_rewrite_guidance_and_revocation_stops_display():
             docs["metadata.yaml"]["package"]["version"] = f"{major}.{minor}.{int(patch) + 1}"
             docs["knowledge/concepts.yaml"]["concepts"][0]["description"] = "新版资料不能覆盖旧诊断"
             actor = db.scalar(select(User).where(User.username == "synthetic-teacher"))
+            authorize_write_fixture(db, actor)
             _, new = import_experiment_package(db, actor, docs, is_test_data=True)
             for state in ("pending", "approved", "published"):
                 transition_experiment_package(db, actor, new, state)
@@ -226,6 +226,7 @@ def test_new_release_does_not_rewrite_guidance_and_revocation_stops_display():
         with env.sessions() as db:
             old = db.get(ExperimentVersion, env.versions[env.package])
             actor = db.scalar(select(User).where(User.username == "synthetic-teacher"))
+            authorize_write_fixture(db, actor)
             transition_experiment_package(db, actor, old, "revoked")
         assert dashboard(env)["guidance"] == []
 
@@ -279,8 +280,24 @@ def test_reference_text_is_not_sent_to_real_provider_entry_points(monkeypatch):
                 )
             )
             assert draft is not None
+            from shared_write_authorization import authorize_write_fixture
+
+            from app.models import User
+
+            reviewer = User(
+                username="material-reviewer",
+                display_name="Synthetic reviewer",
+                password_hash="unused",
+                is_test_data=True,
+            )
+            db.add(reviewer)
+            authorize_write_fixture(db, reviewer, "formal_approver")
             generate_ai_assisted_polish(
-                db, draft, env.app.dependency_overrides[get_settings](), ai_client=provider
+                db,
+                draft,
+                env.app.dependency_overrides[get_settings](),
+                ai_client=provider,
+                actor_context=reviewer._actor_context,
             )
         assert len(provider.prompts) == 1
         assert secret not in provider.prompts[0]
@@ -292,7 +309,8 @@ def test_old_guidance_is_not_backfilled_and_new_unavailable_material_fails_close
 
     from app.evaluation.workflow_environment import workflow_environment
     from app.models import Device, DiagnosisResult, GuidanceHistory
-    from app.services.guidance import generate_guidance, history_to_evaluation
+    from app.services.guidance import _build_guidance_records as generate_guidance
+    from app.services.guidance import history_to_evaluation
     from app.services.teaching_materials import attach_teaching_materials
 
     with workflow_environment("dht11_temperature_humidity") as env:

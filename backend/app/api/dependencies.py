@@ -181,7 +181,7 @@ def require_permission(permission_code: str):
 def revalidate_student_access(request: Request, db: Session):
     """Long-running operations must not deliver to an identity revoked during I/O."""
     db.expire_all()
-    return get_student_device(
+    device = get_student_device(
         request,
         db,
         authorization=request.headers.get("Authorization"),
@@ -189,6 +189,7 @@ def revalidate_student_access(request: Request, db: Session):
         x_device_id=request.headers.get("X-Device-ID"),
         session_id=request.headers.get("X-Experiment-Session-ID"),
     )
+    return device
 
 
 def require_any_role(*role_codes: str):
@@ -210,3 +211,33 @@ def require_any_role(*role_codes: str):
         return user
 
     return dependency
+
+
+def revalidate_user_permission(request: Request, db: Session, permission: str) -> User:
+    """Re-read login, account and grants after waiting, before mutations/replays."""
+    db.expire_all()
+    user = get_current_user(db, request.headers.get("Authorization"))
+    from app.services.auth import AuthorizationDenied, authorize_actor, current_actor
+
+    try:
+        return authorize_actor(db, current_actor(user), permission)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+def student_actor_context(request: Request, db: Session, device, session):
+    """Build a server-owned runtime identity from already authenticated credentials."""
+    from app.services.auth import current_actor
+    from app.services.student_authorization import StudentActorContext
+
+    authorization = request.headers.get("Authorization")
+    if authorization:
+        user = get_current_user(db, authorization)
+        return StudentActorContext(device.id, session.id, account=current_actor(user))
+    # Re-run device authentication: never treat a caller-provided device ID as proof.
+    authenticated = get_authenticated_device(
+        request, db, request.headers.get("X-Device-Token"), request.headers.get("X-Device-ID"),
+    )
+    return StudentActorContext(
+        authenticated.id, session.id, demo_device_hash=authenticated.token_hash,
+    )

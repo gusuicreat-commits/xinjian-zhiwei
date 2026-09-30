@@ -5,11 +5,13 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from shared_write_authorization import authorize_write_fixture
 from sqlalchemy import func, select
 
 from app.core.security import hash_password
 from app.experiment_packages.loader import load_experiment_package, package_documents
 from app.models import AuditEvent, Course, Device, ExperimentAssignment, ExperimentSession, User
+from app.services.auth import ActorContext
 from app.services.experiment_packages import (
     import_experiment_package,
     transition_experiment_package,
@@ -44,6 +46,7 @@ def seed_preparation(db):
     db.commit()
     root = Path(__file__).resolve().parents[1] / "experiment_packages/dht11_temperature_humidity"
     bundle, _ = load_experiment_package(root)
+    authorize_write_fixture(db, actor)
     _, version = import_experiment_package(db, actor, package_documents(bundle), is_test_data=True)
     for state in ("pending", "approved", "published"):
         transition_experiment_package(db, actor, version, state)
@@ -65,12 +68,19 @@ def test_plan_is_read_only_and_apply_replays_without_reset_or_session(prepared_c
         assert inspect_preparation(db, actor_id, spec)["state"] == "absent"
         assert db.scalar(select(func.count(AuditEvent.id))) == before
         assert db.scalar(select(Course).where(Course.code == spec.prefix + "-course")) is None
-        first = apply_preparation(db, actor_id, spec, **SECRETS)
+        first = apply_preparation(
+            db, actor_id, spec, **SECRETS, actor_context=ActorContext(actor_id, mode="local_admin")
+        )
         student = db.get(User, first["objects"]["student_id"])
         pw = student.password_hash
         token = db.get(Device, first["objects"]["device_id"]).token_hash
         # Retrying a committed operation must not require or change credentials.
-        assert apply_preparation(db, actor_id, spec) == first
+        assert (
+            apply_preparation(
+                db, actor_id, spec, actor_context=ActorContext(actor_id, mode="local_admin")
+            )
+            == first
+        )
         assert inspect_preparation(db, actor_id, spec) == first
         assert db.get(User, student.id).password_hash == pw
         assert db.get(Device, first["objects"]["device_id"]).token_hash == token
@@ -82,6 +92,7 @@ def test_plan_is_read_only_and_apply_replays_without_reset_or_session(prepared_c
             )
             == 0
         )
+        authorize_write_fixture(db, student, "student")
         result = start_session(
             db,
             student,
@@ -92,7 +103,12 @@ def test_plan_is_read_only_and_apply_replays_without_reset_or_session(prepared_c
         session = db.get(ExperimentSession, result["id"])
         assert session.experiment_version_id == spec.package_version_id
         assert session.is_test_data
-        assert apply_preparation(db, actor_id, spec) == first
+        assert (
+            apply_preparation(
+                db, actor_id, spec, actor_context=ActorContext(actor_id, mode="local_admin")
+            )
+            == first
+        )
         assert session.experiment_version_id == spec.package_version_id
         assert (
             db.scalar(
@@ -114,7 +130,13 @@ def test_unpublished_or_stale_package_cannot_create_objects(prepared_context, st
         db.get(ExperimentVersion, spec.package_version_id).status = state
         db.commit()
         with pytest.raises(PreparationError):
-            apply_preparation(db, actor_id, spec, **SECRETS)
+            apply_preparation(
+                db,
+                actor_id,
+                spec,
+                **SECRETS,
+                actor_context=ActorContext(actor_id, mode="local_admin"),
+            )
         assert db.scalar(select(Course).where(Course.code == spec.prefix + "-course")) is None
 
 
@@ -139,7 +161,13 @@ def test_invalid_input_cannot_leave_partial_preparation(prepared_context, change
         db.commit()
         values = {**SECRETS, "student_password": "x"} if change == "weak_secret" else SECRETS
         with pytest.raises(PreparationError):
-            apply_preparation(db, actor_id, spec, **values)
+            apply_preparation(
+                db,
+                actor_id,
+                spec,
+                **values,
+                actor_context=ActorContext(actor_id, mode="local_admin"),
+            )
         assert db.scalar(select(User).where(User.username == spec.prefix + "-student")) is None
         assert db.scalar(select(Device).where(Device.device_key == spec.prefix + "-device")) is None
 
@@ -156,26 +184,53 @@ def test_precommit_failure_rolls_back_and_after_commit_receipt_is_recoverable(
 
         monkeypatch.setattr(db, "commit", fail)
         with pytest.raises(RuntimeError):
-            apply_preparation(db, actor_id, spec, **SECRETS)
+            apply_preparation(
+                db,
+                actor_id,
+                spec,
+                **SECRETS,
+                actor_context=ActorContext(actor_id, mode="local_admin"),
+            )
         monkeypatch.setattr(db, "commit", real_commit)
     with factory() as db:
         assert inspect_preparation(db, actor_id, spec)["state"] == "absent"
-        apply_preparation(db, actor_id, spec, **SECRETS)  # discard response, reconnect
+        apply_preparation(
+            db, actor_id, spec, **SECRETS, actor_context=ActorContext(actor_id, mode="local_admin")
+        )  # discard response, reconnect
     with factory() as db:
         recovered = inspect_preparation(db, actor_id, spec)
         assert recovered["state"] == "ready"
-        assert apply_preparation(db, actor_id, spec) == recovered
+        assert (
+            apply_preparation(
+                db, actor_id, spec, actor_context=ActorContext(actor_id, mode="local_admin")
+            )
+            == recovered
+        )
 
 
 def test_existing_objects_are_not_silently_repaired_or_rebound(prepared_context):
     factory, actor_id, spec = prepared_context
     with factory() as db:
-        result = apply_preparation(db, actor_id, spec, **SECRETS)
+        result = apply_preparation(
+            db, actor_id, spec, **SECRETS, actor_context=ActorContext(actor_id, mode="local_admin")
+        )
         with pytest.raises(PreparationError):
-            apply_preparation(db, actor_id, replace(spec, device_kind="hardware"), **SECRETS)
+            apply_preparation(
+                db,
+                actor_id,
+                replace(spec, device_kind="hardware"),
+                **SECRETS,
+                actor_context=ActorContext(actor_id, mode="local_admin"),
+            )
         task = db.get(ExperimentAssignment, result["objects"]["assignment_id"])
         task.experiment_version_id = None
         db.commit()
         with pytest.raises(PreparationError):
-            apply_preparation(db, actor_id, spec, **SECRETS)
+            apply_preparation(
+                db,
+                actor_id,
+                spec,
+                **SECRETS,
+                actor_context=ActorContext(actor_id, mode="local_admin"),
+            )
         assert db.get(ExperimentAssignment, task.id).experiment_version_id is None

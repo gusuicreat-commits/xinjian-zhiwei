@@ -1,4 +1,9 @@
-import axios from 'axios'
+import {
+  assertCommandRecoverable,
+  recordCommandFailure,
+  completeCommand,
+  commandOutcome,
+} from './commandOutcome'
 import { apiClient } from './client'
 import { newRequestId, feedbackSessionScope } from './feedbackRetry'
 import type { DeviceCredentials, DiagnosisWorkflow } from '@/types/student'
@@ -82,14 +87,40 @@ export async function submitCheck(
   baselineId?: string | null,
 ): Promise<DiagnosisWorkflow> {
   if (!c.experimentSessionId) throw new Error('请先连接有效实验会话')
+  const identity = sessionStorage.getItem('xinjian-student-device-session')
+  const assertCurrent = () => {
+    if (sessionStorage.getItem('xinjian-student-device-session') !== identity)
+      throw new CheckRequestError('实验会话已变化，请重新登录。', 'login')
+  }
+  const recoveryRaw = sessionStorage.getItem(`${key(c)}:recovery`)
+  if (recoveryRaw) {
+    const bookmark = JSON.parse(recoveryRaw) as { request_id: string }
+    const receipt = await latestCheck(c, headers)
+    assertCurrent()
+    if (receipt?.request_id === bookmark.request_id && receipt.status !== 'pending') {
+      const response = await apiClient.get<DiagnosisWorkflow | null>(
+        `/api/v1/diagnosis-workflows/devices/${encodeURIComponent(c.deviceId)}/latest`,
+        { headers },
+      )
+      assertCurrent()
+      if (sessionStorage.getItem(`${key(c)}:recovery`) !== recoveryRaw)
+        throw new CheckRequestError('恢复记录已变化，请重新查询。', 'refresh')
+      if (response.data) {
+        completeCommand(key(c), bookmark.request_id)
+        return response.data
+      }
+    }
+  }
+  assertCommandRecoverable(key(c))
   let payload = pendingCheck(c)
   if (!payload) {
     let server: CheckReceipt | null
     try {
       server = await latestCheck(c, headers)
+      assertCurrent()
     } catch (error) {
-      if (axios.isAxiosError(error) && [401, 403, 409, 422].includes(error.response?.status ?? 0))
-        throw rejectedRequest(error.response!.status)
+      const outcome = commandOutcome('submitCheck', error)
+      if (!outcome.retainPayload) throw rejectedRequest(outcome.status!)
       throw new CheckRequestError(
         '暂时无法查询上次检查状态，本次尚未提交。请恢复网络后重新查询。',
         'retry',
@@ -111,13 +142,14 @@ export async function submitCheck(
       payload,
       { headers },
     )
-    sessionStorage.removeItem(key(c))
+    assertCurrent()
+    completeCommand(key(c), payload.request_id)
     return response.data
   } catch (error) {
-    if (axios.isAxiosError(error) && [401, 403, 409, 422].includes(error.response?.status ?? 0)) {
-      sessionStorage.removeItem(key(c))
-      throw rejectedRequest(error.response!.status)
-    }
+    assertCurrent()
+    recordCommandFailure(key(c), 'submitCheck', payload.request_id, error)
+    const outcome = commandOutcome('submitCheck', error)
+    if (!outcome.retainPayload) throw rejectedRequest(outcome.status!)
     throw new CheckRequestError(
       '检查结果尚未确认，请点击“确认上次检查结果”沿用原请求重试',
       'confirm',

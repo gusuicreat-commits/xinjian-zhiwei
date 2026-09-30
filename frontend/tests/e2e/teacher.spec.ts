@@ -354,3 +354,31 @@ test('keeps authorized pending handoffs visible across tasks and reload without 
   await expect(page.getByText('测试学生', { exact: true })).toHaveCount(0)
   expect(writes).toEqual([])
 })
+
+test('a rejected teacher action removes stale protected data from the page', async ({ page }) => {
+  await mockTeacherWorkspace(page)
+  let writes = 0
+  await page.route('**/api/v1/teacher-workflow/interventions/*/actions', (route) => {
+    writes += 1
+    return route.fulfill({ status: 403, json: { detail: 'permission changed' } })
+  })
+  await page.goto('/teacher/login')
+  await page.getByPlaceholder('教师用户名').fill('browser-teacher')
+  await page.getByPlaceholder('密码').fill('browser-test-password')
+  await page.getByRole('button', { name: '进入教师端' }).click()
+  await page.getByRole('button', { name: 'Phase 9 浏览器测试设备', exact: true }).click()
+  await page.getByRole('button', { name: /phase9-browser-device.*查看详情/ }).click()
+  await page.getByRole('button', { name: '认领', exact: true }).click()
+  await expect(
+    page.locator('#app').getByText('数据加载失败：实验会话或访问权限已变化，请重新登录。', { exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Phase 9 浏览器测试设备', exact: true }),
+  ).toHaveCount(0)
+  expect(writes).toBe(1)
+  expect(
+    await page.evaluate(() =>
+      sessionStorage.getItem('xinjian-intervention:browser-test-teacher:phase9-case'),
+    ),
+  ).toBeNull()
+})

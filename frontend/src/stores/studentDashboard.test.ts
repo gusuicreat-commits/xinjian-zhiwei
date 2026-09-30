@@ -135,7 +135,7 @@ describe('student feedback submission boundaries', () => {
     const pending = vi.mocked(createDiagnosisFeedback).mock.calls[0]![2]
     expect(sessionStorage.length).toBe(1)
     const saved = sessionStorage.getItem(sessionStorage.key(0)!)!
-    expect(JSON.parse(saved)).toEqual(pending)
+    expect(JSON.parse(saved)).toEqual({ ...pending, outcome_unknown: true })
     expect(saved).not.toContain(credentials.deviceToken)
     expect(sessionStorage.key(0)).not.toContain(credentials.deviceToken)
 

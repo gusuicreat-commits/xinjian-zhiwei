@@ -11,6 +11,7 @@ from test_internal_experiment_preparation import SECRETS, seed_preparation
 from test_migration_r2 import migration_db as _migration_db
 
 from app.models import AuditEvent, Course, ExperimentVersion, User
+from app.services.auth import ActorContext, AuthorizationDenied
 from app.services.internal_experiment_preparation import (
     PreparationError,
     apply_preparation,
@@ -31,7 +32,13 @@ def test_concurrent_preparations_create_one_receipt_and_replay_after_reconnect(m
     def apply():
         with factory() as db:
             barrier.wait(timeout=10)
-            return apply_preparation(db, actor_id, spec, **SECRETS)
+            return apply_preparation(
+                db,
+                actor_id,
+                spec,
+                **SECRETS,
+                actor_context=ActorContext(actor_id, mode="local_admin"),
+            )
 
     with ThreadPoolExecutor(2) as pool:
         futures = [pool.submit(apply) for _ in range(2)]
@@ -49,7 +56,13 @@ def test_concurrent_preparations_create_one_receipt_and_replay_after_reconnect(m
         )
         assert inspect_preparation(db, actor_id, spec) == results[0]
         with pytest.raises(PreparationError):
-            apply_preparation(db, actor_id, replace(spec, device_kind="hardware"), **SECRETS)
+            apply_preparation(
+                db,
+                actor_id,
+                replace(spec, device_kind="hardware"),
+                **SECRETS,
+                actor_context=ActorContext(actor_id, mode="local_admin"),
+            )
     migrate("check")
 
 
@@ -71,8 +84,17 @@ def test_access_and_package_rechecked_after_lock_acquisition(migration_db, chang
 
     def apply():
         with factory() as db:
-            with pytest.raises(PreparationError):
-                apply_preparation(db, actor_id, spec, **SECRETS)
+            expected_error = AuthorizationDenied if change == "actor" else PreparationError
+            with pytest.raises(expected_error) as exc:
+                apply_preparation(
+                    db,
+                    actor_id,
+                    spec,
+                    **SECRETS,
+                    actor_context=ActorContext(actor_id, mode="local_admin"),
+                )
+            if change == "actor":
+                assert exc.value.status_code == 401
 
     try:
         with ThreadPoolExecutor(1) as pool:

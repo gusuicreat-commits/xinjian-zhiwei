@@ -21,7 +21,6 @@ from app.ai.context_contract import (
     CONTEXT_CONTRACT_VERSION,
     CONTEXT_POLICY_VERSION,
     ContextManifestV1,
-    current_context_policy,
 )
 from app.ai.context_sanitizer import (
     ProviderInputError,
@@ -35,7 +34,7 @@ from app.ai.governance import (
     current_delivery_scope,
     estimate_prompt_tokens,
 )
-from app.ai.output_contract import OUTPUT_CONTRACT_VERSION, explanation_contract
+from app.ai.output_contract import explanation_contract
 from app.ai.schemas import (
     AIDiagnosisInput,
     AIExplanationResponse,
@@ -62,6 +61,7 @@ from app.services.lightweight_diagnosis import (
     explanation_fingerprint,
     render_deterministic_explanation,
 )
+from app.services.provenance import derive_test_flag
 
 
 def get_ai_status(settings: Settings) -> AIStatusResponse:
@@ -305,7 +305,9 @@ def _save_record(
         fallback_reason=fallback_reason,
         error_code=error_code,
         error_message=error_message,
-        is_test_data=diagnosis.is_test_data or any(item.is_test_data for item in knowledge),
+        is_test_data=derive_test_flag(
+            diagnosis.is_test_data, *(item.is_test_data for item in knowledge),
+        ),
     )
     db.add(record)
     try:
@@ -355,15 +357,11 @@ def _response(
 ) -> AIExplanationResponse:
     from sqlalchemy.orm import object_session
 
-    from app.services.experiment_packages import teaching_available
-    from app.services.memory import references_available
+    from app.services.current_advice import current_sources_available
 
     db = object_session(record)
-    available = db is not None
-    if db is not None:
-        diagnosis = db.get(DiagnosisResult, record.diagnosis_result_id)
-        available = bool(diagnosis and teaching_available(db, diagnosis)
-                         and references_available(db, diagnosis, knowledge))
+    diagnosis = db.get(DiagnosisResult, record.diagnosis_result_id) if db is not None else None
+    available = current_sources_available(db, diagnosis, knowledge)
     if not available:
         explanation, knowledge, deterministic_result = None, [], None
         notice = "引用资料已停用或无法核验，请联系教师。"
@@ -389,55 +387,16 @@ def _response(
 def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanationResponse:
     from sqlalchemy.orm import object_session
 
-    from app.services.experiment_packages import teaching_available
-    from app.services.memory import references_available
+    from app.services.current_advice import assess_current_advice
 
-    db = object_session(record)
-    if db is not None:
-        diagnosis = db.get(DiagnosisResult, record.diagnosis_result_id)
-        if diagnosis is None or not teaching_available(db, diagnosis) or not references_available(
-                db, diagnosis, record.knowledge_references):
-            return _response(record, None, [], settings,
-                             "引用资料已停用或无法核验，请联系教师。",
-                             enhancement_status="failed_fallback").model_copy(
-                                 update={"mode": "rules_only", "status": "skipped"})
-    explanation = None
-    contract = (record.input_snapshot or {}).get("output_contract") or {}
-    if record.output_json:
-        try:
-            for ref in record.knowledge_references:
-                content = str(ref.get("content") or "").lstrip()
-                if content.startswith(("{", "[")):
-                    json.loads(content)
-            explanation = AIStructuredExplanation.model_validate(record.output_json)
-            if not current_context_policy(record.input_snapshot):
-                raise ValueError("historical output lacks applicability policy")
-            if contract.get("version") != OUTPUT_CONTRACT_VERSION or any(
-                step not in contract.get("allowed_steps", []) for step in explanation.steps
-            ):
-                raise ValueError("historical output lacks the current contract")
-            explanation = explanation.model_copy(
-                update={
-                    "summary": contract["summary"],
-                    "limitations": contract["limitations"],
-                }
-            )
-        except (ValueError, KeyError, TypeError):
-            # Preserve the historical audit row but never silently serve it as
-            # a newly validated suggestion. Do not charge/call the provider again.
-            return _response(
-                record,
-                None,
-                [],
-                settings,
-                "历史解释未通过当前输出约束，请查看确定性诊断结果。",
-                enhancement_status="failed_fallback",
-            ).model_copy(
-                update={
-                    "status": "failed",
-                    "mode": "rules_only",
-                }
-            )
+    assessment = assess_current_advice(object_session(record), record)
+    explanation = assessment.explanation
+    if record.status == "succeeded" and not assessment.eligible:
+        return _response(
+            record, None, [], settings,
+            "历史解释或引用资料未通过当前校验，请查看确定性诊断结果。",
+            enhancement_status="failed_fallback",
+        ).model_copy(update={"status": "failed", "mode": "rules_only"})
     knowledge = [AIKnowledgeReference.model_validate(item) for item in record.knowledge_references]
     if record.status == "succeeded":
         notice = "此接口仅补充解释；确定性规则、证据和故障树结果保持不变。"
@@ -467,6 +426,37 @@ def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanation
     )
 
 
+def _authorize_projection(db, diagnosis, student_actor):
+    # None is available only to the private offline construction primitive.
+    if student_actor is None:
+        return
+    from app.services.auth import AuthorizationDenied
+    from app.services.data_scope import diagnosis_session
+    from app.services.student_authorization import authorize_student_actor
+
+    authorize_student_actor(db, student_actor, diagnosis.device_id, student_actor.session_id)
+    owner = diagnosis_session(db, diagnosis)
+    if owner is None or owner.id != student_actor.session_id:
+        raise AuthorizationDenied(403)
+
+
+def explain_diagnosis(db, device, diagnosis, settings, *, student_actor, **kwargs):
+    """Authorized delivery; actual call audit survives a later projection denial."""
+    from app.services.auth import AuthorizationDenied
+    from app.services.student_authorization import StudentActorContext
+
+    if not isinstance(student_actor, StudentActorContext) or diagnosis.device_id != device.id:
+        raise AuthorizationDenied(401)
+    _authorize_projection(db, diagnosis, student_actor)
+    db.commit()  # Identity locks never span provider I/O.
+    response = _explain_diagnosis(
+        db, device, diagnosis, settings, student_actor=student_actor, **kwargs,
+    )
+    _authorize_projection(db, diagnosis, student_actor)
+    db.commit()  # Release delivery locks before the next graph node can wait.
+    return response
+
+
 def _skipped_response(
     db: Session,
     *,
@@ -486,6 +476,7 @@ def _skipped_response(
     workflow_run_id: str | None = None,
     call_stage: str = "explanation",
     memory_sources: list[dict[str, Any]] | None = None,
+    student_actor=None,
 ) -> AIExplanationResponse:
     route_path = (
         "ai_disabled → deterministic_only"
@@ -527,6 +518,7 @@ def _skipped_response(
         response.deterministic_result = deterministic_result
         return response
     enhancement_status = "disabled" if error_code == "AI_NOT_CONFIGURED" else "skipped"
+    _authorize_projection(db, diagnosis, student_actor)
     diagnosis.ai_enhancement = {
         "status": enhancement_status,
         "trigger_reason": trigger_reason,
@@ -549,12 +541,13 @@ def _skipped_response(
     )
 
 
-def explain_diagnosis(
+def _explain_diagnosis(
     db: Session,
     device: Device,
     diagnosis: DiagnosisResult,
     settings: Settings,
     *,
+    student_actor=None,
     ai_client: AIClient | None = None,
     ai_clients: list[tuple[str, AIClient]] | None = None,
     user_question: str | None = None,
@@ -608,9 +601,16 @@ def explain_diagnosis(
     memory_sources = sources_for_references(db, diagnosis, knowledge)
     core = build_diagnosis_core(diagnosis, guidance, [item.chunk_id for item in knowledge])
     deterministic = render_deterministic_explanation(core)
+    _authorize_projection(db, diagnosis, student_actor)
     diagnosis.deterministic_core = core.model_dump(mode="json")
     diagnosis.deterministic_explanation = deterministic.model_dump(mode="json")
-    episode = upsert_episode(db, device, diagnosis, guidance, settings)
+    if student_actor is None:
+        episode = upsert_episode(db, device, diagnosis, guidance, settings)
+    else:
+        from app.services.diagnosis_episode import episode_for_diagnosis
+
+        episode = episode_for_diagnosis(db, diagnosis)
+        db.commit()
     policy = decide_ai_policy(core, settings, episode=episode, user_question=user_question)
 
     rejected_context = None
@@ -633,7 +633,7 @@ def explain_diagnosis(
                 for item in diagnosis.matched_rules
             ],
             allowed_evidence=[],
-            is_test_data=diagnosis.is_test_data,
+            is_test_data=derive_test_flag(diagnosis.is_test_data),
         )
         if rejected_context is not None:
             local._context_manifest = audit_manifest(rejected_context)
@@ -659,6 +659,7 @@ def explain_diagnosis(
             started=started,
             workflow_run_id=workflow_run_id,
             call_stage=call_stage,
+            student_actor=student_actor,
         )
 
     if not settings.ai_enabled or not ai.configured:
@@ -755,6 +756,7 @@ def explain_diagnosis(
             started=started,
             workflow_run_id=workflow_run_id,
             call_stage=call_stage,
+            student_actor=student_actor,
         )
 
     now = datetime.now(timezone.utc)
@@ -811,6 +813,7 @@ def explain_diagnosis(
         )
         if not created:
             return serialize_ai_call(saved, settings)
+        _authorize_projection(db, diagnosis, student_actor)
         diagnosis.ai_enhancement = {
             "status": "cache_hit",
             "trigger_reason": policy.reason,
@@ -851,6 +854,7 @@ def explain_diagnosis(
             started=started,
             workflow_run_id=workflow_run_id,
             call_stage=call_stage,
+            student_actor=student_actor,
         )
 
     if settings.ai_require_knowledge and not knowledge:
@@ -871,6 +875,7 @@ def explain_diagnosis(
             started=started,
             workflow_run_id=workflow_run_id,
             call_stage=call_stage,
+            student_actor=student_actor,
         )
 
     if estimated_input_tokens > settings.ai_input_token_limit:
@@ -891,6 +896,7 @@ def explain_diagnosis(
             started=started,
             workflow_run_id=workflow_run_id,
             call_stage=call_stage,
+            student_actor=student_actor,
         )
 
     projected_cost = estimate_ai_cost(
@@ -918,6 +924,7 @@ def explain_diagnosis(
             estimated_cost=projected_cost or 0.0,
             workflow_run_id=workflow_run_id,
             call_stage=call_stage,
+            student_actor=student_actor,
         )
 
     last_error: Exception | None = None
@@ -981,6 +988,7 @@ def explain_diagnosis(
             started=started,
             workflow_run_id=workflow_run_id,
             call_stage=call_stage,
+            student_actor=student_actor,
         )
     duration_ms = int((time.monotonic() - started) * 1000)
     local_fallback = len(clients) > 1 and route == "cloud"
@@ -1022,6 +1030,7 @@ def explain_diagnosis(
         )
         if not created:
             return serialize_ai_call(saved, settings)
+        _authorize_projection(db, diagnosis, student_actor)
         diagnosis.ai_enhancement = {
             "status": "failed_fallback",
             "trigger_reason": policy.reason,
@@ -1081,6 +1090,7 @@ def explain_diagnosis(
     )
     if not created:
         return serialize_ai_call(saved, settings)
+    _authorize_projection(db, diagnosis, student_actor)
     from app.services.memory import record_uses
 
     record_uses(db, diagnosis, knowledge, target_type="cache", target_id=cache_fingerprint,

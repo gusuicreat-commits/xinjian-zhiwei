@@ -75,6 +75,7 @@ def test_matcher_uses_explicit_experiment_error_and_review_fields() -> None:
         )
         diagnosis = DiagnosisResult(
             device_id="test-device",
+            experiment_id="dht11_temperature_humidity",
             evaluated_at=datetime.now(timezone.utc),
             ruleset_version="test",
             ruleset_hash="0" * 64,

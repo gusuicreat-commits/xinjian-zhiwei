@@ -1,4 +1,5 @@
 import pytest
+from shared_write_authorization import authorize_write_fixture
 
 from app.core.security import hash_password
 from app.models import User
@@ -41,7 +42,7 @@ def test_incomplete_or_placeholder_template_cannot_be_approved(
 ) -> None:
     actor = _actor(api_context)
     with api_context["session_factory"]() as db:
-        actor = db.merge(actor)
+        actor = authorize_write_fixture(db, db.merge(actor), "teacher")
         _, version = create_template(
             db,
             actor,
@@ -62,7 +63,7 @@ def test_published_version_is_immutable_and_a_new_version_is_required(
 ) -> None:
     actor = _actor(api_context)
     with api_context["session_factory"]() as db:
-        actor = db.merge(actor)
+        actor = authorize_write_fixture(db, db.merge(actor), "teacher")
         template, version = create_template(
             db,
             actor,
@@ -103,7 +104,9 @@ def test_formal_template_requires_confirmed_hardware_facts(
 ) -> None:
     actor = _actor(api_context)
     with api_context["session_factory"]() as db:
-        actor = db.merge(actor)
+        actor = authorize_write_fixture(db, db.merge(actor), "teacher")
+        actor.is_test_data = False
+        db.commit()
         _, version = create_template(
             db,
             actor,

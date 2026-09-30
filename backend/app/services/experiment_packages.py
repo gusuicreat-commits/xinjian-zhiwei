@@ -25,6 +25,8 @@ from app.models.experiment import (
     ExperimentPackageArtifact,
     ExperimentVersion,
 )
+from app.services.auth import AuthorizationDenied, authorize_actor, current_actor, user_access
+from app.services.provenance import derive_test_flag
 
 PACKAGE_TRANSITIONS = {
     "draft": {"pending"},
@@ -81,7 +83,11 @@ def import_experiment_package(
     # omitted optional field from producing one hash at import and another at runtime.
     snapshot = package_documents(bundle)
     bundle, report = load_experiment_package_payload(snapshot)
-    is_test_data = is_test_data or any(case.is_test_data for case in bundle.cases.cases)
+    actor = authorize_actor(db, current_actor(actor), "assignment.manage")
+    is_test_data = derive_test_flag(
+        actor.is_test_data, *(case.is_test_data for case in bundle.cases.cases),
+        explicit=is_test_data,
+    )
     identity = bundle.metadata.experiment
     experiment = db.scalar(select(Experiment).where(Experiment.code == identity.code))
     if experiment is None:
@@ -102,6 +108,7 @@ def import_experiment_package(
     ):
         raise ValueError("package identity conflicts with the existing experiment")
 
+    is_test_data = derive_test_flag(experiment.is_test_data, explicit=is_test_data)
     release = bundle.metadata.package
     duplicate = db.scalar(
         select(ExperimentVersion).where(
@@ -166,15 +173,14 @@ def transition_experiment_package(
     actor: User,
     version: ExperimentVersion,
     target: str,
-    *,
-    recheck_access=None,
 ) -> ExperimentVersion:
     original_status = version.status
     # All releases of one experiment serialize on the same durable parent row.
     db.scalar(select(Experiment).where(Experiment.id == version.experiment_id).with_for_update())
     db.refresh(version)
-    if recheck_access is not None:
-        recheck_access()
+    actor = authorize_actor(db, current_actor(actor), "assignment.manage")
+    if "admin" not in user_access(db, actor.id)[0]:
+        raise AuthorizationDenied()
     if version.status != original_status:
         raise ValueError("package state changed; refresh before applying a transition")
     if target not in PACKAGE_TRANSITIONS.get(version.status, set()):
@@ -215,7 +221,7 @@ def transition_experiment_package(
             resource_type="experiment_version",
             resource_id=version.id,
             details_json={"package_hash": version.package_hash},
-            is_test_data=version.is_test_data,
+            is_test_data=derive_test_flag(version.is_test_data, actor.is_test_data),
             created_at=utc_now(),
         )
     )

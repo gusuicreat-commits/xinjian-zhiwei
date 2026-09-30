@@ -32,12 +32,14 @@ from app.models.diagnosis_result import DiagnosisResult
 from app.models.diagnosis_workflow import DiagnosisWorkflowReview, DiagnosisWorkflowRun
 from app.models.guidance_history import GuidanceHistory
 from app.services.ai_diagnosis import _match_structured_knowledge, explain_diagnosis
+from app.services.auth import ActorContext, AuthorizationDenied
+from app.services.data_scope import authorize_workflow_review
 from app.services.diagnosis import (
     build_diagnosis_context,
     diagnose,
     save_diagnosis_result,
 )
-from app.services.diagnosis_episode import diagnosis_issues, upsert_episode
+from app.services.diagnosis_episode import diagnosis_issues
 from app.services.guidance import generate_guidance
 from app.services.lightweight_diagnosis import (
     build_diagnosis_core,
@@ -54,6 +56,8 @@ class DiagnosisGraphContext:
     ai_clients: list[tuple[str, AIClient]] | None = None
     review_payload: dict[str, Any] | None = None
     frozen_context: DiagnosisContext | None = None
+    review_actor: ActorContext | None = None
+    student_actor: Any | None = None
 
 
 class DiagnosisNodeExecutionError(RuntimeError):
@@ -76,6 +80,8 @@ def observed_node(name: str):
             try:
                 _workflow(runtime, state)
                 update = function(state, runtime)
+            except AuthorizationDenied:
+                raise
             except Exception as exc:
                 duration_ms = round((perf_counter() - started) * 1000, 3)
                 raise DiagnosisNodeExecutionError(name, duration_ms, type(exc).__name__) from exc
@@ -342,6 +348,11 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
             experiment_version_id=state.get("experiment_version_id"),
             experiment_session_id=state.get("experiment_session_id"),
         )
+        context.feedback_scope = {
+            "experiment_session_id": workflow.experiment_session_id,
+            "student_user_id": workflow.student_user_id,
+            "device_id": workflow.device_id,
+        }
         outcome = diagnose(context)
         record = save_diagnosis_result(
             db,
@@ -351,7 +362,9 @@ def rule_engine(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) 
             commit=False,
         )
         workflow.diagnosis_result_id = record.id
-        workflow.is_test_data = record.is_test_data
+        from app.services.provenance import derive_test_flag
+
+        workflow.is_test_data = derive_test_flag(record.is_test_data, workflow.is_test_data)
         # The result and its workflow reference are one transaction. A saver
         # failure can therefore replay this node without creating an orphan or a
         # second deterministic diagnosis result.
@@ -500,12 +513,14 @@ def fault_tree_analyzer(
         )
     )
     guidance = generate_guidance(
-        runtime.context.db, runtime.context.device, diagnosis, settings=runtime.context.settings
+        runtime.context.db, runtime.context.device, diagnosis, settings=runtime.context.settings,
+        student_actor=runtime.context.student_actor,
     )
-    # Establish durable budget ownership before the first reasoning Provider call.
-    upsert_episode(
-        runtime.context.db, runtime.context.device, diagnosis, guidance, runtime.context.settings
-    )
+    # Guidance atomically established durable budget ownership before Provider I/O.
+    from app.services.student_authorization import authorize_student_actor
+
+    authorize_student_actor(runtime.context.db, runtime.context.student_actor,
+                            runtime.context.device.id, state["experiment_session_id"])
     core = build_diagnosis_core(diagnosis, guidance)
     deterministic = render_deterministic_explanation(core)
     diagnosis.deterministic_core = core.model_dump(mode="json")
@@ -581,7 +596,8 @@ def ai_reasoning_node(
         ai_client=runtime.context.ai_client,
         ai_clients=runtime.context.ai_clients,
         sensitive_sources=tuple(
-            source for ref in graph_knowledge
+            source
+            for ref in graph_knowledge
             for source in (json.loads(ref.content), *ref._sensitive_sources)
         ),
     )
@@ -625,8 +641,11 @@ def _safe_locator(locator: Any, sensitive_values=()) -> dict[str, Any]:
     if not isinstance(locator, dict):
         return {}
     return {
-        key: (sanitize_text(value, sensitive_values=sensitive_values, max_chars=200)
-              if isinstance(value, str) else value)
+        key: (
+            sanitize_text(value, sensitive_values=sensitive_values, max_chars=200)
+            if isinstance(value, str)
+            else value
+        )
         for key, value in locator.items()
         if key in _LOCATOR_KEYS and isinstance(value, (str, int, float, bool))
     }
@@ -642,11 +661,20 @@ def _knowledge_state_reference(item: AIKnowledgeReference) -> dict[str, Any] | N
     secrets = set()
     for source in item._sensitive_sources:
         secrets.update(_sensitive_values(source))
-    identities = ((item.chunk_id, 100), (item.case_id or item.chunk_id, 100),
-                  (item.source_key, 200), (item.source_version, 100))
-    if any(value is not None and (len(value) > limit or sanitize_text(
-        value, sensitive_values=secrets, max_chars=None
-    ) != value) for value, limit in identities):
+    identities = (
+        (item.chunk_id, 100),
+        (item.case_id or item.chunk_id, 100),
+        (item.source_key, 200),
+        (item.source_version, 100),
+    )
+    if any(
+        value is not None
+        and (
+            len(value) > limit
+            or sanitize_text(value, sensitive_values=secrets, max_chars=None) != value
+        )
+        for value, limit in identities
+    ):
         return None
     return {
         "chunk_id": item.chunk_id,
@@ -737,8 +765,14 @@ def knowledge_context(
 
     pairs = [(item, _knowledge_state_reference(item)) for item in references]
     references = [item for item, safe in pairs if safe is not None]
-    record_uses(runtime.context.db, diagnosis, references, target_type="workflow",
-                target_id=state["diagnosis_id"], use_kind="matched")
+    record_uses(
+        runtime.context.db,
+        diagnosis,
+        references,
+        target_type="workflow",
+        target_id=state["diagnosis_id"],
+        use_kind="matched",
+    )
     runtime.context.db.commit()
     knowledge_context = [safe for _, safe in pairs if safe is not None]
     supply = {
@@ -811,6 +845,7 @@ def ai_explanation(
         runtime.context.device,
         diagnosis,
         runtime.context.settings,
+        student_actor=runtime.context.student_actor,
         ai_client=runtime.context.ai_client,
         ai_clients=runtime.context.ai_clients,
         user_question=state.get("question"),
@@ -1124,6 +1159,13 @@ def _persist_teacher_review(
         )
     )
     if existing is None:
+        if runtime.context.review_payload is None or runtime.context.review_actor is None:
+            raise AuthorizationDenied(401)
+        reviewer = authorize_workflow_review(
+            runtime.context.db, runtime.context.review_actor, workflow
+        )
+        if reviewer.id != audit_decision.get("reviewer_user_id"):
+            raise AuthorizationDenied()
         # The terminal node holds a FOR UPDATE lock on its workflow row, so this
         # check-and-insert sequence is serialized even for direct graph workers.
         # The unique constraint remains the final database invariant.
@@ -1140,6 +1182,27 @@ def _persist_teacher_review(
         workflow.resume_count = (workflow.resume_count or 0) + 1
 
 
+def _authorize_terminal(state, runtime, workflow, *, rejecting=False):
+    decision = state.get("teacher_review") or {}
+    if rejecting or workflow.status == "waiting_teacher":
+        if decision.get("action") not in {"approve", "edit", "reject"}:
+            raise AuthorizationDenied(401)
+    if decision:
+        if runtime.context.review_actor is None:
+            raise AuthorizationDenied(401)
+        # The actual review insert separately binds the reviewer and audit payload.
+        authorize_workflow_review(runtime.context.db, runtime.context.review_actor, workflow)
+    else:
+        from app.services.student_authorization import authorize_student_actor
+
+        authorize_student_actor(
+            runtime.context.db,
+            runtime.context.student_actor,
+            workflow.device_id,
+            workflow.experiment_session_id,
+        )
+
+
 @observed_node("persist_result")
 def persist_result(
     state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]
@@ -1147,6 +1210,10 @@ def persist_result(
     # Lock again inside the terminal transaction. API-level locks are released by
     # earlier node commits and cannot protect direct worker/checkpoint replays.
     workflow = _workflow(runtime, state, for_update=True)
+    if workflow.status in {"completed", "rejected"}:
+        runtime.context.db.commit()
+        return {"status": workflow.status, "diagnosis_status": workflow.status, "node_trace": []}
+    _authorize_terminal(state, runtime, workflow)
     result = _approved_result(state)
     _persist_teacher_review(state, runtime, workflow)
     workflow.final_result = result
@@ -1165,6 +1232,10 @@ def persist_result(
 @observed_node("reject_result")
 def reject_result(state: DiagnosisState, runtime: Runtime[DiagnosisGraphContext]) -> dict[str, Any]:
     workflow = _workflow(runtime, state, for_update=True)
+    if workflow.status in {"completed", "rejected"}:
+        runtime.context.db.commit()
+        return {"status": workflow.status, "diagnosis_status": workflow.status, "node_trace": []}
+    _authorize_terminal(state, runtime, workflow, rejecting=True)
     _persist_teacher_review(state, runtime, workflow)
     workflow.final_result = None
     workflow.review_request = None

@@ -247,7 +247,8 @@ def reused_result(db, previous, baseline_id, diagnosis_id):
     return result
 
 
-def run_check(db, graph, device, settings, payload, session):
+def run_check(db, graph, device, settings, payload, session, *, student_actor):
+    from app.services.student_authorization import authorize_student_actor
     from app.services.student_feedback import feedback_lock
 
     # Session-level advisory mutex survives business commits, but holds no row transaction
@@ -255,6 +256,8 @@ def run_check(db, graph, device, settings, payload, session):
     with feedback_lock(db, "check:" + session.id):
         session_id = session.id
         db.expire_all()
+        session = authorize_student_actor(db, student_actor, device.id, session_id)
+        db.commit()
         session = resolve_experiment_session(db, device, session_id)
         canonical = payload.model_dump(mode="json", exclude={"request_id"})
         payload_hash = digest(canonical)
@@ -274,6 +277,7 @@ def run_check(db, graph, device, settings, payload, session):
                         db, db.get(DiagnosisResult, result.diagnosis_result_id)
                     ):
                         raise WorkflowConflict("experiment package is no longer available")
+                authorize_student_actor(db, student_actor, device.id, session_id)
                 return result, command
         else:
             previous = latest_check(db, session.id)
@@ -309,6 +313,10 @@ def run_check(db, graph, device, settings, payload, session):
                 raise WorkflowScopeViolation("target problem is outside this baseline")
             validate_workflow_start(db, device, payload, session)
             frozen = freeze(db, device, session, payload)
+            from app.services.source_lifecycle import protect_context_sources
+
+            authorize_student_actor(db, student_actor, device.id, session_id)
+            protect_context_sources(db, device.id, frozen)
             input_signature = signature(frozen)
             if baseline:
                 old_context = DiagnosisContext.model_validate(baseline.context_snapshot)
@@ -394,9 +402,11 @@ def run_check(db, graph, device, settings, payload, session):
             session,
             check=command,
             frozen_context=frozen,
+            student_actor=student_actor,
         )
         db.refresh(command)
         diagnosis = db.get(DiagnosisResult, workflow.diagnosis_result_id)
+        authorize_student_actor(db, student_actor, device.id, session_id)
         command.result = comparison(db, command, diagnosis)
         command.status = "completed"
         db.commit()

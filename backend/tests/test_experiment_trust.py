@@ -4,6 +4,7 @@ from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
+from shared_write_authorization import authorize_write_fixture
 from sqlalchemy import select
 
 from app.diagnosis.expected_behavior import compare_expected_behaviors
@@ -211,6 +212,9 @@ def test_led_evidence_persists_distinct_types_and_real_uuids(api_context):
         ],
     )
     with api_context["session_factory"]() as db:
+        from shared_source_fixture import persist_context_fixture
+
+        persist_context_fixture(db, db.scalar(select(Device).limit(1)), context)
         result = save_diagnosis_result(
             db, db.scalar(select(Device).limit(1)), context, diagnose(context)
         )
@@ -316,6 +320,7 @@ def test_http_ingest_to_package_evidence_uses_same_semantics(api_context, name):
         )
         db.add(actor)
         db.flush()
+        authorize_write_fixture(db, actor)
         _, version = import_experiment_package(db, actor, package_documents(bundle))
         assert version.is_test_data  # A caller cannot strip the package's test provenance.
         for status in ("pending", "approved", "published"):

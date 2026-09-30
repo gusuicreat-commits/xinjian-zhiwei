@@ -1,3 +1,4 @@
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -5,12 +6,20 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import (
+    get_redoc_html,
+    get_swagger_ui_html,
+    get_swagger_ui_oauth2_redirect_html,
+)
+from fastapi.responses import HTMLResponse
 
 from app.ai.diagnosis_graph import build_diagnosis_graph
+from app.api.errors import authorization_denied_handler
 from app.api.v1.router import api_router
 from app.api.v1.routes.health import router as health_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.services.auth import AuthorizationDenied
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -51,10 +60,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None,
+    redoc_url=None,
     lifespan=lifespan,
 )
+
+
+app.add_exception_handler(AuthorizationDenied, authorization_denied_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -83,7 +95,10 @@ async def request_security_and_logging(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none'",
+    )
     logger.info(
         "http_request_completed",
         extra={
@@ -95,6 +110,55 @@ async def request_security_and_logging(request: Request, call_next):
         },
     )
     return response
+
+
+def _documentation_response(document: HTMLResponse) -> HTMLResponse:
+    nonce = secrets.token_urlsafe(24)
+    html = document.body.decode("utf-8").replace("<script", f'<script nonce="{nonce}"')
+    return HTMLResponse(
+        html,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": (
+                "default-src 'none'; "
+                f"script-src 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+                "style-src 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https://fastapi.tiangolo.com "
+                "https://cdn.redoc.ly/redoc/logo-mini.svg; "
+                "connect-src 'self'; worker-src blob:; "
+                "base-uri 'none'; frame-ancestors 'none'"
+            ),
+        },
+    )
+
+
+@app.get("/docs", include_in_schema=False)
+def swagger_documentation(request: Request):
+    root = request.scope.get("root_path", "").rstrip("/")
+    return _documentation_response(
+        get_swagger_ui_html(
+            openapi_url=root + app.openapi_url,
+            title=app.title + " - Swagger UI",
+            oauth2_redirect_url=root + "/docs/oauth2-redirect",
+        )
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+def redoc_documentation(request: Request):
+    root = request.scope.get("root_path", "").rstrip("/")
+    return _documentation_response(
+        get_redoc_html(
+            openapi_url=root + app.openapi_url,
+            title=app.title + " - ReDoc",
+            with_google_fonts=False,
+        )
+    )
+
+
+@app.get("/docs/oauth2-redirect", include_in_schema=False)
+def swagger_oauth_redirect():
+    return _documentation_response(get_swagger_ui_oauth2_redirect_html())
 
 
 # Conventional probe paths remain available at the service root for container

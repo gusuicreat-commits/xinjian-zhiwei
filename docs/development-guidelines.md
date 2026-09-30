@@ -83,7 +83,7 @@
 - 学生结束、开始和管理释放共用actor→device锁顺序，等待后重读与重验，状态/审计/回执同事务。管理释放需`assignment.manage`及teacher/admin角色，教师按原任务班级授权；停用学生/班级不隐藏占用，审核角色不自动有管理权。释放须指定目标、请求身份、原版本和原因，只取消该会话，不结束故障、工单或课程，不影响后继会话。
 - 内部测试初始化（BR-LAB-PREP）只面向明确选择的隔离测试库和已认证测试管理员，要求当前已发布测试包及精确hash；不自动审批包或创建活动会话。初始化对象与回执同事务，前缀锁及包状态锁后重验权限。同前缀同身份同配置复用，不重置凭据；冲突或部分对象拒绝接管。会话经原入口固定版本，合成与实物使用独立设备身份。
 - 结束阻止新操作，当前仍有权限的原学生可确认原回执；恢复不得消费新操作。迟到上报保留原采集归属，不归给下一位学生。课后历史需单独本人授权。
-- 撤权在请求及长任务交付时重验；反馈锁、生命周期锁、工作流恢复行锁等待后，写入/继续前复用完整授权。新反馈、pending恢复、applied重放均适用；登录失效401、资格/权限不足403，不伪装为可重试503。审计保留原执行人，详情/列表/搜索/导出/缓存/通知/错误响应均不得泄露无权内容。
+- 撤权在请求及长任务交付时重验；反馈锁、生命周期锁、旧模板发布锁、工作流恢复行锁等待后，写入/继续前复用完整授权。新反馈、pending恢复、applied重放均适用；登录失效401、资格/权限不足403，不伪装为可重试503。审计保留原执行人，详情/列表/搜索/导出/缓存/通知/错误响应均不得泄露无权内容。
 
 ### 3.2 设备记录与事实语义（BR-EVIDENCE）
 
@@ -262,13 +262,21 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 
 | 规则 | 唯一执行位置 | 入口与必须保留的反例 |
 | --- | --- | --- |
+| AUTH/R1：短事务最终授权 | `services/auth.py`的`ActorContext/authorize_actor`、`data_scope`、`student_authorization`、`knowledge_authorization` | HTTP/服务/图终结/CLI使用运行时身份引用，不把授权结果或令牌写Checkpoint；权限支持行受事务保护，等待后重验，拒绝无成功副作用；`test_shared_authorization*`、`test_template_authorization.py`、`test_knowledge_final_authorization.py`。已有Review-Token维护接口保持独立契约，不获得个人教师能力。 |
+| ADVICE/R2、IDENTITY/R3：当前建议与实验身份 | `services/current_advice.py::assess_current_advice`、`knowledge/applicability.py::context_from_diagnosis` | 工作流/学生状态说明/解释记录共用来源、结构、策略校验；绑定冻结调用，保留教师编辑；未知/冲突实验不匹配，sensor_type不扩大范围；`test_shared_advice_regression.py`。 |
+| SOURCE/R4：原始来源保留 | `services/source_lifecycle.py` | 原始输入引用持久化和测试运行清理共用设备事务锁；校验冻结来源仍存在，全部引用/旧在途情况整次拒绝409，无引用允许清理及空重放；`test_shared_source_cleanup.py`、`test_shared_source_postgres.py`。 |
+| PROVENANCE/R5：测试来源传播 | `services/provenance.py::derive_test_flag` | 消息/导出/诊断/工作流/工单/案例/包/指导的新记录；任一来源为测试或必要来源未知则不能标正式，不批量改历史；`test_provenance_contract.py`。 |
+| COMMAND/R6：拒绝与未知结果 | `frontend/src/api/commandOutcome.ts`、`api/resilience.ts`和Store权限失效动作 | 区分各操作409；401/403清执行载荷和受保护视图，未知历史只留恢复编号；当前授权GET回执正向恢复，未找到不能推断未执行；迟到请求不能恢复旧数据。 |
+| OPS/R7、R8：安全扫描与运行就绪 | `scripts/security_scan.sh`→`security_scan.py`、`health.py::readiness` | 扫描输出仅路径/行号/规则，错误非通过；Compose使用ready探针，独立容器断库/恢复验收；`test_security_scan_contract.py`及当次容器报告。 |
 | AUTH：持久化归属/当前授权 | `services/data_scope.py`、`api/dependencies.py` | 仪表盘/诊断/解释/反馈/工单/读取；换学生、跨班、多角色、无/多会话、未知归属；`test_student_scope_r2.py`、`test_diagnosis_scope_r2.py`、`test_business_identity.py` |
 | AUTH：反馈等待后重验 | `api/dependencies.py::revalidate_student_access`由`student_feedback`/`diagnosis_workflow`调用 | 新反馈、pending恢复、applied重放、反馈/生命周期/恢复行锁；`test_feedback_authorization_wait.py`、`test_feedback_recovery.py`、`test_feedback_reliability.py` |
+| AUTH：共享登录准入 | `services/login_limits.py`、`services/auth.py`、`api/v1/routes/auth.py` | 在途+失败原子限额、成功不清其他在途、过期不签令牌、独立进程共享、容量与迁移回撤；`test_audit_remediation.py`、`test_migration_r2.py` |
 | SESSION：独占、释放、回执 | `services/experiment_sessions.py` | 开始/学生结束/教师列表详情释放/原命令确认；双占用、撤权、原班归属、旧会话不关新会话；`test_business_sessions*.py`、`test_session_release.py`、`test_simulation_fixes_postgres.py` |
 | EVIDENCE：摄入校验/容量/共享限额 | `services/device_protocol.py`、`services/device_ingest.py`、`api/v1/routes/device.py::BoundedTelemetryRoute`、`schemas/device.py` | ingest/logs/readings/heartbeat及协议脚本；半批、重传/乱序、单位、缺值、NaN/Inf、整数极值、流式大小、并发最后额度；`test_ingestion*.py`、`test_development_gates.py` |
 | ISSUE/LIFECYCLE/COUNTERS：问题与恢复 | `services/diagnosis_episode.py`、`services/recovery_evidence.py`、`services/guidance.py`、固定图升级节点 | 新旧诊断/反馈/指导/教师/恢复/预算；多树多组件、旧证据、时间回退、解决竞争、跨轮计数；`test_episode_lifecycle_r2.py`、`test_episode_concurrency_r2.py`、`test_shared_recovery_boundary.py`、`test_business_issues.py` |
 | RECHECK：冻结输入/恢复/处理快照 | `services/diagnosis_checks.py`、`services/diagnosis_workflow.py` | 启动、重查、原请求、checks/latest、旧基准；同/异ID并发、丢回执、重启、旧回执不变/新状态刷新；`test_diagnosis_checks*.py`、`test_check_handling_snapshot.py` |
-| INTERVENTION：实际对象与公开投影 | `api/v1/routes/interventions.py::_case_response`、`services/interventions.py` | 创建/复用/冲突重读/列表/动作/仪表盘；跨班复用、私密旧摘要、重复求助、关闭不等恢复；`test_intervention_scope_r2.py`、`test_interventions.py` |
+| INTERVENTION：实际对象与公开投影 | `api/v1/routes/interventions.py::_case_response`、`services/interventions.py` | 创建/复用/冲突重读/列表/动作/仪表盘；跨班复用、私密旧摘要、重复求助、关闭不等恢复；`test_intervention_scope_r2.py`、`test_interventions.py`、`test_audit_remediation.py`（等锁期间撤授课/令牌/权限，动作及问题解决均无副作用） |
+| LEGACY/FILES/DOCS：旧入口边界 | `services/experiment_templates.py`、`services/knowledge_files.py`、`main.py` | 旧草稿不覆盖发布、双发布唯一、重复身份409、空/坏DOCX422、展开限额、docs nonce与API安全头；`test_audit_remediation.py` |
 | KNOWLEDGE：审批/润色竞争 | `knowledge/case_drafting.py` | submit/approve/reject/polish；双审批、来源唯一、事务失败、迟到润色、撤权、候选外根因；`test_knowledge_case_concurrency.py`、`test_business_knowledge.py` |
 | MEMORY：三类投影、来源、停用与副本 | `services/memory.py`、`memory_governance.py`、`memory_restore.py`；`cli/sync_knowledge_cases.py` | 工作流/解释/缓存/恢复/案例撤回/包撤销/教师复核/清理；跨班、缺来源、版本变更、迟到结果、计划变化、旧备份；`test_memory_lifecycle.py`、`test_memory_postgres.py`、浏览器记忆复核场景 |
 | PACKAGE：内容、版本与教学快照 | `experiment_packages/loader.py`、`experiment_packages/teaching.py`、`services/experiment_packages.py`、`services/teaching_materials.py` | 导入/发布/运行/撤回/初次与反馈指导/仪表盘；缺/重复/循环引用、组件隔离、不兼容、旧包不回填、参考不外发；`test_business_package_boundary.py`、`test_teaching_materials.py`、`test_dht11_material_contract.py` |

@@ -212,3 +212,29 @@ describe('teacher dashboard store', () => {
     expect(store.workflowSections.queue.state).toBe('ready')
   })
 })
+
+it('hides the protected view on action 403 and ignores an older refresh', async () => {
+  setActivePinia(createPinia())
+  vi.mocked(getTeacherDashboard).mockResolvedValue(dashboard)
+  const store = useTeacherDashboardStore()
+  await store.load('A')
+  let complete!: (value: TeacherDashboard) => void
+  vi.mocked(getTeacherDashboard).mockReturnValue(
+    new Promise((resolve) => {
+      complete = resolve
+    }),
+  )
+  const refresh = store.load('A')
+  vi.mocked(actOnTeacherIntervention).mockRejectedValue({
+    isAxiosError: true,
+    response: { status: 403 },
+  })
+  await expect(
+    store.act('A', 'case', { action: 'claim', expected_version: 1, is_private: false }),
+  ).rejects.toBeDefined()
+  expect(store.dashboard).toBeNull()
+  expect(store.failureKind).toBe('forbidden')
+  complete(dashboard)
+  await refresh
+  expect(store.dashboard).toBeNull()
+})

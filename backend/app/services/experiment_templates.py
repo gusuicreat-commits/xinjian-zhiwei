@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.models.base import utc_now
 from app.models.classroom import AuditEvent, User
 from app.models.experiment import ExperimentTemplate, ExperimentTemplateVersion
+from app.services.auth import authorize_actor, current_actor
+from app.services.provenance import derive_test_flag
 
 REQUIRED_FIELDS = (
     "objective",
@@ -79,6 +81,8 @@ def create_template(
     content: dict[str, Any],
     is_test_data: bool,
 ) -> tuple[ExperimentTemplate, ExperimentTemplateVersion]:
+    actor = authorize_actor(db, current_actor(actor), "assignment.manage")
+    is_test_data = derive_test_flag(actor.is_test_data, explicit=is_test_data)
     template = ExperimentTemplate(
         code=code,
         title=title,
@@ -124,6 +128,12 @@ def create_template_version(
     version: str,
     content: dict[str, Any],
 ) -> ExperimentTemplateVersion:
+    template = db.scalar(
+        select(ExperimentTemplate).where(ExperimentTemplate.id == template.id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    authorize_actor(db, current_actor(actor), "assignment.manage")
+    _assert_template_write_scope(actor, template)
     template_version = ExperimentTemplateVersion(
         template_id=template.id,
         version=version,
@@ -145,12 +155,31 @@ def create_template_version(
             resource_type="experiment_template_version",
             resource_id=template_version.id,
             details_json={"code": template.code, "version": version},
-            is_test_data=template.is_test_data,
+            is_test_data=derive_test_flag(template.is_test_data, actor.is_test_data),
             created_at=utc_now(),
         )
     )
     db.commit()
     return template_version
+
+
+def _assert_template_write_scope(actor, template):
+    if actor.is_test_data and not template.is_test_data:
+        raise ValueError("test actors must create a separate test template before editing")
+
+
+def _lock_version(db, version, actor):
+    expected = (version.status, version.content_hash)
+    template = db.scalar(
+        select(ExperimentTemplate)
+        .where(ExperimentTemplate.id == version.template_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
+    db.refresh(version, with_for_update=True)
+    authorize_actor(db, current_actor(actor), "assignment.manage")
+    _assert_template_write_scope(actor, template)
+    if (version.status, version.content_hash) != expected:
+        raise ValueError("template changed; refresh before editing or reviewing")
 
 
 def update_content(
@@ -159,6 +188,7 @@ def update_content(
     version: ExperimentTemplateVersion,
     content: dict[str, Any],
 ) -> None:
+    _lock_version(db, version, actor)
     if version.status != "draft":
         raise ValueError("only draft template versions are editable")
     version.content_json = content
@@ -175,7 +205,7 @@ def update_content(
             resource_type="experiment_template_version",
             resource_id=version.id,
             details_json={"content_hash": version.content_hash},
-            is_test_data=template.is_test_data,
+            is_test_data=derive_test_flag(template.is_test_data, actor.is_test_data),
             created_at=utc_now(),
         )
     )
@@ -188,6 +218,7 @@ def transition(
     version: ExperimentTemplateVersion,
     target: str,
 ) -> None:
+    _lock_version(db, version, actor)
     if target not in TRANSITIONS.get(version.status, set()):
         raise ValueError(f"invalid template transition {version.status} -> {target}")
     template = db.get(ExperimentTemplate, version.template_id)
@@ -218,7 +249,7 @@ def transition(
             resource_type="experiment_template_version",
             resource_id=version.id,
             details_json={"content_hash": version.content_hash},
-            is_test_data=template.is_test_data,
+            is_test_data=derive_test_flag(template.is_test_data, actor.is_test_data),
             created_at=utc_now(),
         )
     )

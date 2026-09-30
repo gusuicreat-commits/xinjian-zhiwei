@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from shared_write_authorization import authorize_write_fixture
 from sqlalchemy import select
 
 from app.core.config import Settings
@@ -121,6 +122,7 @@ def test_package_versions_are_immutable_and_runtime_is_database_backed(
         db.commit()
         documents = package_documents(bundle)
         documents["metadata.yaml"]["experiment"].pop("locale")
+        authorize_write_fixture(db, actor)
         experiment, version = import_experiment_package(db, actor, documents, is_test_data=True)
         with pytest.raises(ValueError, match="cannot be overwritten"):
             import_experiment_package(db, actor, package_documents(bundle), is_test_data=True)
@@ -189,6 +191,7 @@ def test_diagnosis_persists_package_binding_and_normalized_evidence(
         )
         db.add(actor)
         db.commit()
+        authorize_write_fixture(db, actor)
         experiment, version = import_experiment_package(
             db, actor, package_documents(bundle), is_test_data=True
         )
@@ -205,6 +208,9 @@ def test_diagnosis_persists_package_binding_and_normalized_evidence(
         )
         device = db.scalar(select(Device).limit(1))
         outcome = diagnose(context)
+        from shared_source_fixture import persist_context_fixture
+
+        persist_context_fixture(db, device, context)
         result = save_diagnosis_result(db, device, context, outcome)
         evidence = list(
             db.scalars(select(DiagnosisEvidence).where(DiagnosisEvidence.diagnosis_id == result.id))

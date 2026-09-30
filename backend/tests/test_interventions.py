@@ -36,11 +36,14 @@ def test_intervention_actions_are_versioned_and_private_notes_can_be_filtered(
         )
         case = InterventionCase(
             diagnosis_result_id="synthetic-diagnosis",
+            class_id=db.query(Classroom).one().id,
             status="open",
             version_no=1,
             is_test_data=True,
         )
         db.add_all([teacher, case])
+        db.flush()
+        assign_role(db, teacher, ensure_rbac_catalog(db)["admin"])
         db.commit()
         teacher_id = teacher.id
         case_id = case.id
@@ -52,6 +55,10 @@ def test_intervention_actions_are_versioned_and_private_notes_can_be_filtered(
         stale_case = stale_session.get(InterventionCase, case_id)
         teacher = first_session.get(User, teacher_id)
         stale_teacher = stale_session.get(User, teacher_id)
+        from shared_authorization import session_actor_fixture
+
+        session_actor_fixture(first_session, teacher)
+        session_actor_fixture(stale_session, stale_teacher)
 
         claimed = apply_action(
             first_session,
@@ -83,6 +90,7 @@ def test_intervention_actions_are_versioned_and_private_notes_can_be_filtered(
     with api_context["session_factory"]() as db:
         case = db.get(InterventionCase, case_id)
         teacher = db.get(User, teacher_id)
+        session_actor_fixture(db, teacher)
         noted = apply_action(
             db,
             case,

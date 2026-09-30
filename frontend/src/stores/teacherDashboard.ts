@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useTeacherSessionStore } from './teacherSession'
 import { ref, watch } from 'vue'
 
 import {
@@ -125,6 +126,38 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
     )
   }
 
+  function handleFailure(
+    error: unknown,
+    accessToken: string,
+    affected: 'view' | 'queue' | 'history' | 'metrics' = 'view',
+  ): void {
+    if (owner !== accessToken) return
+    const kind = classifyRequestFailure(error)
+    if (kind === 'unauthorized') {
+      const auth = useTeacherSessionStore()
+      if (auth.accessToken === accessToken) auth.logout()
+      else clear()
+    } else if (kind === 'forbidden' && affected === 'view') {
+      // The action response does not identify a safe remaining class scope.
+      // Hide this protected view, retain the account, and invalidate in-flight reads.
+      clear()
+      owner = accessToken
+    }
+    if (affected === 'view' || kind === 'unauthorized') {
+      state.value = 'error'
+      failureKind.value = kind
+      if (['unauthorized', 'forbidden', 'conflict'].includes(kind)) dashboard.value = null
+      errorMessage.value = failureMessage(kind)
+    } else {
+      if (['forbidden', 'conflict'].includes(kind)) {
+        if (affected === 'queue') workflowQueue.value = []
+        if (affected === 'history') workflowHistory.value = []
+        if (affected === 'metrics') workflowMetrics.value = null
+      }
+      workflowSections.value[affected] = { state: 'error', failureKind: kind }
+    }
+  }
+
   async function load(accessToken: string): Promise<void> {
     if (owner !== accessToken) {
       clear()
@@ -163,7 +196,7 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
         if (!current()) return
         const kind = classifyRequestFailure(error)
         if (['unauthorized', 'forbidden', 'conflict'].includes(kind)) discard()
-        workflowSections.value[key] = { state: 'error', failureKind: kind }
+        handleFailure(error, accessToken, key)
       }
     }
     await Promise.all([
@@ -176,11 +209,7 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
           failureKind.value = null
         } catch (error) {
           if (!current()) return
-          state.value = 'error'
-          failureKind.value = classifyRequestFailure(error)
-          if (['unauthorized', 'forbidden', 'conflict'].includes(failureKind.value))
-            dashboard.value = null
-          errorMessage.value = failureMessage(failureKind.value)
+          handleFailure(error, accessToken)
         }
       })(),
       section(
@@ -276,6 +305,7 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
       return scope === epoch && owner === accessToken
     } catch (error) {
       if (scope !== epoch || owner !== accessToken) return false
+      handleFailure(error, accessToken)
       throw error
     } finally {
       if (scope === epoch && workflowReviewingId.value === workflowId)
@@ -325,6 +355,7 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
       return scope === epoch && owner === accessToken
     } catch (error) {
       if (scope !== epoch || owner !== accessToken) return false
+      handleFailure(error, accessToken)
       throw error
     } finally {
       if (scope === epoch && actionLoadingCaseId.value === caseId) actionLoadingCaseId.value = null
@@ -362,5 +393,6 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
     act,
     reviewWorkflow,
     clear,
+    handleFailure,
   }
 })

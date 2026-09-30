@@ -1,7 +1,6 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_review_access
@@ -14,14 +13,8 @@ from app.knowledge.case_drafting import (
     withdraw_case,
 )
 from app.models.classroom import (
-    DeviceBinding,
-    ExperimentAssignment,
-    ExperimentSession,
-    TeachingAssignment,
     User,
 )
-from app.models.diagnosis_feedback import DiagnosisFeedback
-from app.models.diagnosis_result import DiagnosisResult
 from app.models.knowledge import KnowledgeCase, KnowledgeCaseDraft
 from app.schemas.knowledge import (
     KnowledgeChunkMergeRequest,
@@ -43,7 +36,7 @@ from app.schemas.knowledge_case import (
     KnowledgeCaseDraftResponse,
     KnowledgeCaseResponse,
 )
-from app.services.auth import user_access
+from app.services.auth import current_actor, user_access
 from app.services.knowledge import (
     KnowledgeServiceError,
     create_source,
@@ -57,6 +50,7 @@ from app.services.knowledge import (
     split_chunk_at,
     update_chunk,
 )
+from app.services.knowledge_authorization import reviewable_case_drafts
 from app.services.knowledge_files import decode_and_extract
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -86,36 +80,7 @@ def _require_case_reviewer(db: Session, actor: User) -> set[str]:
     return set(roles)
 
 
-def _reviewable_case_drafts(actor: User, roles: set[str]):
-    query = select(KnowledgeCaseDraft)
-    if "formal_approver" in roles:
-        return query
-    # Use the recorded feedback session, not any current binding of a reused device.
-    return (
-        query.join(DiagnosisFeedback, DiagnosisFeedback.id == KnowledgeCaseDraft.feedback_id)
-        .join(DiagnosisResult, DiagnosisResult.id == KnowledgeCaseDraft.diagnosis_result_id)
-        .join(ExperimentSession, ExperimentSession.id == DiagnosisFeedback.experiment_session_id)
-        .join(
-            ExperimentAssignment,
-            ExperimentAssignment.id == ExperimentSession.experiment_assignment_id,
-        )
-        .join(TeachingAssignment, TeachingAssignment.class_id == ExperimentAssignment.class_id)
-        .where(
-            DiagnosisFeedback.diagnosis_result_id == DiagnosisResult.id,
-            DiagnosisFeedback.device_id == DiagnosisResult.device_id,
-            ExperimentSession.device_id == DiagnosisResult.device_id,
-            TeachingAssignment.user_id == actor.id,
-            select(DeviceBinding.id)
-            .where(
-                DeviceBinding.device_id == DiagnosisResult.device_id,
-                DeviceBinding.class_id == ExperimentAssignment.class_id,
-                DeviceBinding.student_user_id == ExperimentSession.student_user_id,
-                DeviceBinding.is_active.is_(True),
-            )
-            .exists(),
-        )
-    )
-
+_reviewable_case_drafts = reviewable_case_drafts
 
 def _require_case_scope(db: Session, actor: User, roles: set[str], draft_id: str) -> None:
     if (
@@ -201,6 +166,7 @@ def polish_diagnosis_case_draft(
             draft,
             settings,
             recheck_access=lambda: _recheck_case_access(db, actor, draft_id),
+            actor_context=current_actor(actor),
         )
     except CaseDraftError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -228,6 +194,7 @@ def approve_diagnosis_case_draft(
             draft,
             case_id=payload.case_id,
             reviewer_ref=actor.id,
+            actor_context=current_actor(actor),
             confirmed_root_cause=payload.confirmed_root_cause,
             final_solution_steps=payload.final_solution_steps,
             confirmation_note=payload.confirmation_note,
@@ -366,6 +333,8 @@ def import_knowledge_file(
             payload.content_base64,
             settings.knowledge_max_file_bytes,
         )
+        if not content.strip():
+            raise KnowledgeServiceError(422, "KNOWLEDGE_FILE_EMPTY", "File has no usable text")
         extracted = KnowledgeTextImportRequest(
             title=payload.filename,
             content=content,
@@ -477,6 +446,8 @@ def review_knowledge_document(
         )
     authenticated_payload = payload.model_copy(update={"reviewer_ref": actor.id})
     try:
-        return review_document(db, document_id, authenticated_payload)
+        return review_document(
+            db, document_id, authenticated_payload, actor_context=current_actor(actor)
+        )
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)

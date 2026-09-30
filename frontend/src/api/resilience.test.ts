@@ -6,13 +6,15 @@ import { classifyRequestFailure, withCappedRetry } from '@/api/resilience'
 describe('request resilience', () => {
   it('distinguishes authentication and backend failures', () => {
     expect(
-      classifyRequestFailure(new axios.AxiosError('unauthorized', 'ERR', undefined, undefined, {
-        status: 401,
-        statusText: 'Unauthorized',
-        headers: {},
-        config: { headers: {} } as never,
-        data: {},
-      })),
+      classifyRequestFailure(
+        new axios.AxiosError('unauthorized', 'ERR', undefined, undefined, {
+          status: 401,
+          statusText: 'Unauthorized',
+          headers: {},
+          config: { headers: {} } as never,
+          data: {},
+        }),
+      ),
     ).toBe('unauthorized')
     expect(classifyRequestFailure(new axios.AxiosError('network'))).toBe('backend')
   })
@@ -26,4 +28,12 @@ describe('request resilience', () => {
     await expect(withCappedRetry(operation, 1)).resolves.toBe('ok')
     expect(operation).toHaveBeenCalledTimes(2)
   })
+})
+
+it('honors a received permission response even when browser connectivity is offline', () => {
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+  expect(classifyRequestFailure({ isAxiosError: true, response: { status: 403 } })).toBe(
+    'forbidden',
+  )
+  vi.restoreAllMocks()
 })

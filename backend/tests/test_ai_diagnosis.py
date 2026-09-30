@@ -14,7 +14,7 @@ from app.models import (
     DiagnosisWorkflowRun,
     ExperimentSession,
 )
-from app.services.ai_diagnosis import explain_diagnosis
+from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
 
 
 class FakeAIClient:

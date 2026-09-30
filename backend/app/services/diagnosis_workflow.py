@@ -355,15 +355,26 @@ def start_workflow(
     payload: DiagnosisWorkflowStartRequest,
     experiment_session: ExperimentSession | None = None,
     *,
+    student_actor,
     check=None,
     frozen_context=None,
 ) -> DiagnosisWorkflowRun:
+    from app.services.auth import AuthorizationDenied
+    from app.services.student_authorization import authorize_student_actor
+
+    authorize_student_actor(
+        db, student_actor, device.id, getattr(student_actor, "session_id", None)
+    )
     resolved_session, package_runtime = validate_workflow_start(
         db, device, payload, experiment_session
     )
+    if resolved_session.id != student_actor.session_id:
+        raise AuthorizationDenied(403)
     existing = (
         db.get(DiagnosisWorkflowRun, check.workflow_id) if check and check.workflow_id else None
     )
+    from app.services.provenance import derive_test_flag
+
     workflow_id = existing.id if existing else new_uuid()
     workflow = existing or DiagnosisWorkflowRun(
         id=workflow_id,
@@ -380,9 +391,10 @@ def start_workflow(
         embedding_version=None,
         node_trace=[],
         error_messages=[],
-        is_test_data=(
-            device.device_type in {"test-fixture", "generic-test-fixture"}
-            or bool(package_runtime and package_runtime.version.is_test_data)
+        is_test_data=derive_test_flag(
+            device.device_type in {"test-fixture", "generic-test-fixture"},
+            package_runtime.version.is_test_data if package_runtime else False,
+            resolved_session.is_test_data,
         ),
     )
     db.add(workflow)
@@ -474,11 +486,18 @@ def start_workflow(
                 None if saved and saved.next else initial_state,
                 config=_config(workflow),
                 context=DiagnosisGraphContext(
-                    db=db, device=device, settings=settings, frozen_context=frozen_context
+                    db=db,
+                    device=device,
+                    settings=settings,
+                    frozen_context=frozen_context,
+                    student_actor=student_actor,
                 ),
             )
     except Exception as exc:
         db.rollback()
+        if isinstance(exc, AuthorizationDenied):
+            raise
+        authorize_student_actor(db, student_actor, device.id, resolved_session.id)
         workflow = db.get(DiagnosisWorkflowRun, workflow.id)
         if workflow is None:
             raise
@@ -492,7 +511,11 @@ def start_workflow(
                 graph,
                 workflow,
                 context=DiagnosisGraphContext(
-                    db=db, device=device, settings=settings, frozen_context=frozen_context
+                    db=db,
+                    device=device,
+                    settings=settings,
+                    frozen_context=frozen_context,
+                    student_actor=student_actor,
                 ),
             )
             return _sync_business_record(
@@ -512,6 +535,7 @@ def start_workflow(
         workflow.completed_at = datetime.now(timezone.utc)
         db.commit()
         raise
+    authorize_student_actor(db, student_actor, device.id, resolved_session.id)
     return _sync_business_record(
         db,
         workflow,
@@ -542,6 +566,11 @@ def review_workflow(
     if locked_workflow is None:
         raise WorkflowConflict("workflow no longer exists")
     workflow = locked_workflow
+    from app.services.auth import current_actor
+    from app.services.data_scope import authorize_workflow_review
+
+    actor_context = current_actor(reviewer)
+    authorize_workflow_review(db, actor_context, workflow)
     assert_workflow_ownership(db, workflow)
     if workflow.status != "waiting_teacher":
         raise WorkflowConflict("workflow is not waiting for teacher review")
@@ -591,6 +620,7 @@ def review_workflow(
                 db=db,
                 device=device,
                 settings=settings,
+                review_actor=actor_context,
                 review_payload={
                     "action": payload.action,
                     "comment": payload.comment,
@@ -615,6 +645,7 @@ def review_workflow(
                         db=db,
                         device=device,
                         settings=settings,
+                        review_actor=actor_context,
                         review_payload={
                             "action": payload.action,
                             "comment": payload.comment,
@@ -651,6 +682,7 @@ def resume_workflow_with_feedback(
     device: Device,
     settings: Settings,
     *,
+    student_actor,
     reconcile_only: bool = False,
     authorize: Callable[[], Any] | None = None,
 ) -> DiagnosisWorkflowRun:
@@ -668,6 +700,16 @@ def resume_workflow_with_feedback(
         # Feedback recovery can wait here even after its outer mutex was acquired.
         authorize()
     workflow = locked
+    from app.services.student_authorization import authorize_student_actor
+
+    authorize_student_actor(
+        db,
+        student_actor,
+        device.id,
+        workflow.experiment_session_id,
+        require_active=False,
+        permission="feedback.create",
+    )
     assert_workflow_ownership(db, workflow, expected_device_id=device.id)
     if authorize is not None:
         session = resolve_experiment_session(
@@ -716,10 +758,15 @@ def resume_workflow_with_feedback(
             if pending_interrupts:
                 result["__interrupt__"] = pending_interrupts
         else:
+            # The graph may wait for the episode lifecycle mutex. Release the
+            # precheck transaction before that wait; terminal writes reauthorize.
+            db.commit()
             result = graph.invoke(
                 None if resumed_already or pending_task_results else Command(resume=decision),
                 config=_config(workflow),
-                context=DiagnosisGraphContext(db=db, device=device, settings=settings),
+                context=DiagnosisGraphContext(
+                    db=db, device=device, settings=settings, student_actor=student_actor
+                ),
                 durability="sync",
             )
     except Exception:
@@ -743,7 +790,9 @@ def resume_workflow_with_feedback(
                 db,
                 graph,
                 refreshed,
-                context=DiagnosisGraphContext(db=db, device=device, settings=settings),
+                context=DiagnosisGraphContext(
+                    db=db, device=device, settings=settings, student_actor=student_actor
+                ),
             )
         else:
             raise
@@ -752,6 +801,14 @@ def resume_workflow_with_feedback(
     refreshed = db.get(DiagnosisWorkflowRun, workflow.id)
     if refreshed is None:
         raise WorkflowConflict("workflow no longer exists")
+    authorize_student_actor(
+        db,
+        student_actor,
+        device.id,
+        workflow.experiment_session_id,
+        require_active=False,
+        permission="feedback.create",
+    )
     refreshed.resume_count = int(refreshed.resume_count or 0) + 1
     if feedback.request_id:
         feedback.processing_status = "applied"

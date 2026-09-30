@@ -101,6 +101,7 @@ def main() -> None:
                 ],
                 evidence=[],
                 context_snapshot={
+                    "experiment_id": source.experiment_type,
                     "experiment_template": {"template_id": source.experiment_type},
                     "readings": [],
                 },
@@ -111,6 +112,13 @@ def main() -> None:
             matched = match_knowledge_cases(db, diagnosis, [])
             if [item.case_id for item in matched] != [source.id]:
                 raise SystemExit("structured knowledge matcher validation failed")
+            frozen_snapshot = diagnosis.context_snapshot
+            diagnosis.context_snapshot = {
+                key: value for key, value in frozen_snapshot.items() if key != "experiment_id"
+            }
+            if match_knowledge_cases(db, diagnosis, []):
+                raise SystemExit("missing canonical experiment identity must not match")
+            diagnosis.context_snapshot = frozen_snapshot
             print(
                 {
                     "case_files": len(definitions),

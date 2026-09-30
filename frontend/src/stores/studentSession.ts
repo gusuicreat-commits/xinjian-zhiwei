@@ -1,4 +1,10 @@
-import { isAxiosError } from 'axios'
+import {
+  assertCommandRecoverable,
+  recordCommandFailure,
+  completeCommand,
+  commandOutcome,
+  recoverSessionCommand,
+} from '@/api/commandOutcome'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
@@ -126,6 +132,21 @@ export const useStudentSessionStore = defineStore('student-session', () => {
   async function beginExperiment(assignmentId: string, deviceId: string): Promise<void> {
     if (!accountToken.value || !accountUserId.value) throw new Error('account required')
     const key = `xinjian-start-session:${accountUserId.value}`
+    const recoveryRevision = authRevision
+    const recovered = await recoverSessionCommand(
+      key,
+      accountToken.value,
+      () => recoveryRevision === authRevision,
+    )
+    if (recoveryRevision !== authRevision) return
+    if (recovered) {
+      const sessions = await getStudentExperimentSessions(accountToken.value)
+      if (recoveryRevision !== authRevision) return
+      availableSessions.value = sessions
+      if (sessions.some((item) => item.id === recovered.id)) await selectExperiment(recovered.id)
+      return
+    }
+    assertCommandRecoverable(key)
     const previous = sessionStorage.getItem(key)
     const payload = previous
       ? (JSON.parse(previous) as {
@@ -139,13 +160,13 @@ export const useStudentSessionStore = defineStore('student-session', () => {
       throw new Error(errorMessage.value)
     }
     sessionStorage.setItem(key, JSON.stringify(payload))
-    const revision = authRevision
+    let revision = authRevision
     loading.value = true
     let started: StudentExperimentSession
     try {
       started = await startStudentExperiment(accountToken.value, payload)
       if (revision !== authRevision) return
-      sessionStorage.removeItem(key)
+      completeCommand(key, payload.request_id)
       availableSessions.value = [
         started,
         ...availableSessions.value.filter((s) => s.id !== started.id),
@@ -153,7 +174,37 @@ export const useStudentSessionStore = defineStore('student-session', () => {
       errorMessage.value = ''
     } catch (error) {
       if (revision !== authRevision) return
-      if (isAxiosError(error) && error.response?.status === 409) {
+      recordCommandFailure(key, 'beginExperiment', payload.request_id, error)
+      const { status } = commandOutcome('beginExperiment', error)
+      if (status === 401) {
+        sessionStorage.removeItem(key)
+        logout()
+        errorMessage.value = '登录已失效，请重新登录后选择实验。'
+      } else if (status === 403) {
+        revision = ++authRevision
+        sessionStorage.removeItem(key)
+        credentials.value = null
+        session.value = null
+        sessionStorage.removeItem(STORAGE_KEY)
+        assignments.value = []
+        availableSessions.value = []
+        errorMessage.value = '当前任务或设备权限已变化，请重新选择可用任务。'
+        try {
+          const [sessions, tasks] = await Promise.all([
+            getStudentExperimentSessions(accountToken.value),
+            getStudentAssignments(accountToken.value),
+          ])
+          if (revision !== authRevision) return
+          availableSessions.value = sessions
+          assignments.value = tasks
+        } catch {
+          if (revision !== authRevision) return
+          errorMessage.value = '权限已变化，刷新任务失败，请重新登录获取可用任务。'
+        }
+      } else if (status === 422) {
+        sessionStorage.removeItem(key)
+        errorMessage.value = '开始实验的参数无效，请重新选择任务和设备。'
+      } else if (status === 409) {
         sessionStorage.removeItem(key)
         errorMessage.value = '设备被占用或任务状态已变化，本次开始请求被拒绝。请重新选择后再开始。'
       } else {
@@ -167,14 +218,27 @@ export const useStudentSessionStore = defineStore('student-session', () => {
   }
 
   async function finishExperiment(): Promise<void> {
+    const revision = authRevision
     const current = credentials.value
     if (!current?.accessToken || !current.experimentSessionId) return
     const key = `xinjian-end-session:${current.experimentSessionId}`
+    const recovered = await recoverSessionCommand(
+      key,
+      current.accessToken,
+      () => revision === authRevision && credentials.value === current,
+    )
+    if (revision !== authRevision) return
+    if (recovered) {
+      logout()
+      return
+    }
+    assertCommandRecoverable(key)
     const previous = sessionStorage.getItem(key)
     let pending: { requestId: string; version: number }
     if (previous) pending = JSON.parse(previous) as typeof pending
     else {
       const sessions = await getStudentExperimentSessions(current.accessToken)
+      if (revision !== authRevision) return
       const selected = sessions.find((s) => s.id === current.experimentSessionId)
       if (!selected) throw new Error('会话已变化，请重新登录确认。')
       pending = { requestId: newRequestId(), version: selected.version_no }
@@ -183,10 +247,18 @@ export const useStudentSessionStore = defineStore('student-session', () => {
     try {
       await endStudentExperiment(current, pending.requestId, pending.version)
     } catch (error) {
-      if (isAxiosError(error) && error.response?.status === 409) sessionStorage.removeItem(key)
-      throw error
+      recordCommandFailure(key, 'finishExperiment', pending.requestId, error)
+      if (revision !== authRevision) return
+      const outcome = commandOutcome('finishExperiment', error)
+      if (outcome.permission) {
+        logout()
+        errorMessage.value = '登录或实验权限已变化，请重新登录核对会话状态。'
+      } else if (!outcome.retainPayload) {
+        errorMessage.value = '结束请求被拒绝，请刷新实验状态后核对参数。'
+      } else errorMessage.value = '结束结果尚未确认，请确认原请求后再操作。'
+      throw new Error(errorMessage.value)
     }
-    sessionStorage.removeItem(key)
+    completeCommand(key, pending.requestId)
     if (credentials.value === current) logout()
   }
 

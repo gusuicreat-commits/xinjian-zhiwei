@@ -1,3 +1,4 @@
+
 """Attach deterministic, versioned reference material to existing guidance hints.
 
 References are not actions or observed facts and are deliberately excluded from
@@ -9,6 +10,7 @@ from copy import deepcopy
 from app.experiment_packages.loader import ExperimentPackageLoadError
 from app.experiment_packages.teaching import ordered_steps
 from app.services.experiment_packages import load_experiment_package_runtime
+from app.services.provenance import derive_test_flag
 
 
 def select_teaching_materials(bundle, *, tree_id, cause_id, level, scope):
@@ -62,7 +64,7 @@ def attach_teaching_materials(db, diagnosis, *, tree_id, scope, hints):
             base.update(
                 package_version=runtime.version.version,
                 package_hash=runtime.version.package_hash,
-                is_test_data=diagnosis.is_test_data or runtime.version.is_test_data,
+                is_test_data=derive_test_flag(diagnosis.is_test_data, runtime.version.is_test_data),
             )
         except ExperimentPackageLoadError:
             runtime = None

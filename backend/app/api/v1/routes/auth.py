@@ -1,6 +1,3 @@
-from collections import defaultdict, deque
-from datetime import datetime, timezone
-from threading import Lock
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -36,13 +33,12 @@ from app.services.data_scope import (
     find_active_experiment_session,
     teacher_has_class_access,
 )
+from app.services.login_limits import finish_attempt, reserve_attempt
 from app.services.student_dashboard import build_student_dashboard
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
-_failed_logins: dict[str, deque[float]] = defaultdict(deque)
-_failed_login_lock = Lock()
 
 
 def _login_key(request: Request, username: str) -> str:
@@ -50,35 +46,12 @@ def _login_key(request: Request, username: str) -> str:
     return f"{host}:{username.lower()}"
 
 
-def _check_login_limit(key: str, max_failures: int, window_seconds: int) -> None:
-    now = datetime.now(timezone.utc).timestamp()
-    with _failed_login_lock:
-        attempts = _failed_logins[key]
-        while attempts and attempts[0] <= now - window_seconds:
-            attempts.popleft()
-        if len(attempts) >= max_failures:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "code": "LOGIN_RATE_LIMITED",
-                    "message": "Too many failed login attempts",
-                },
-            )
-
-
-def _record_login_result(key: str, succeeded: bool) -> None:
-    with _failed_login_lock:
-        if succeeded:
-            _failed_logins.pop(key, None)
-        else:
-            _failed_logins[key].append(datetime.now(timezone.utc).timestamp())
-
-
 @router.post("/session", response_model=SessionResponse)
 def login(payload: LoginRequest, request: Request, db: DatabaseSession) -> SessionResponse:
     settings = get_settings()
     key = _login_key(request, payload.username)
-    _check_login_limit(
+    attempt_id = reserve_attempt(
+        db,
         key,
         settings.auth_login_max_failures,
         settings.auth_login_window_seconds,
@@ -88,14 +61,24 @@ def login(payload: LoginRequest, request: Request, db: DatabaseSession) -> Sessi
         payload.username,
         payload.password,
         settings.auth_session_hours,
+        finalize_success=lambda: finish_attempt(
+            db,
+            attempt_id,
+            succeeded=True,
+            window_seconds=settings.auth_login_window_seconds,
+        ),
     )
     if result is None:
-        _record_login_result(key, False)
+        finish_attempt(
+            db,
+            attempt_id,
+            succeeded=False,
+            window_seconds=settings.auth_login_window_seconds,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "INVALID_CREDENTIALS", "message": "Invalid credentials"},
         )
-    _record_login_result(key, True)
     user, token, session, roles, permissions = result
     return SessionResponse(
         access_token=token,

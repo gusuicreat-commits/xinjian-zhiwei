@@ -100,6 +100,9 @@ def persisted_facts(api_context):
                 ],
             )
         )
+        from shared_source_fixture import persist_context_fixture
+
+        persist_context_fixture(db, device, context)
         diagnosis = save_diagnosis_result(db, device, context, outcome)
         rows = list(
             db.scalars(

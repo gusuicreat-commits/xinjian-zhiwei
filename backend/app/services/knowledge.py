@@ -26,6 +26,8 @@ from app.schemas.knowledge import (
     KnowledgeTextImportRequest,
     KnowledgeWorkspaceResponse,
 )
+from app.services.auth import ActorContext, authorize_actor
+from app.services.provenance import derive_test_flag
 
 FORMAL_SOURCE_TYPES = {
     "official_hardware",
@@ -214,7 +216,7 @@ def import_text_document(
             "KNOWLEDGE_DOCUMENT_TOO_LARGE",
             "Document text exceeds the configured character limit",
         )
-    document_is_test = source.is_test_data or payload.is_test_data
+    document_is_test = derive_test_flag(source.is_test_data, explicit=payload.is_test_data)
     if not document_is_test:
         if not payload.organizer_ref:
             raise KnowledgeServiceError(
@@ -486,11 +488,19 @@ def delete_chunk(db: Session, chunk_id: str) -> KnowledgeWorkspaceResponse:
 
 
 def review_document(
-    db: Session, document_id: str, payload: KnowledgeReviewRequest
+    db: Session, document_id: str, payload: KnowledgeReviewRequest,
+    *, actor_context: ActorContext | None = None,
 ) -> KnowledgeReviewResponse:
+    db.scalar(select(KnowledgeDocument.id).where(KnowledgeDocument.id == document_id)
+              .with_for_update())
+    actor = authorize_actor(db, actor_context,
+                            "knowledge.review.approve" if payload.reviewer_role == "formal_approver"
+                            else "knowledge.organize")
+    payload = payload.model_copy(update={"reviewer_ref": actor.id})
     document = db.scalar(
         select(KnowledgeDocument)
         .where(KnowledgeDocument.id == document_id)
+        .execution_options(populate_existing=True)
         .options(
             joinedload(KnowledgeDocument.source),
             selectinload(KnowledgeDocument.chunks),

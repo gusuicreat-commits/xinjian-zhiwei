@@ -225,3 +225,99 @@ def session_package_version_id(db, session, requested=None):
     if requested and pinned and requested != pinned:
         raise ScopeViolation("requested package differs from the session snapshot")
     return pinned or requested
+
+
+def authorize_workflow_review(db, actor, workflow):
+    """Resolve class from the immutable recorded session, not request input."""
+    from app.services.auth import AuthorizationDenied, authorize_actor, user_access
+
+    user = authorize_actor(db, actor, "intervention.manage")
+    session = db.scalar(
+        select(ExperimentSession)
+        .where(ExperimentSession.id == workflow.experiment_session_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if (
+        session is None
+        or session.device_id != workflow.device_id
+        or (session.student_user_id != workflow.student_user_id)
+    ):
+        raise AuthorizationDenied()
+    assignment = db.scalar(
+        select(ExperimentAssignment)
+        .where(ExperimentAssignment.id == session.experiment_assignment_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if assignment is None:
+        raise AuthorizationDenied()
+    roles, _ = user_access(db, user.id)
+    if "admin" not in roles:
+        grant = db.scalar(
+            select(TeachingAssignment.id)
+            .where(
+                TeachingAssignment.class_id == assignment.class_id,
+                TeachingAssignment.user_id == user.id,
+            )
+            .with_for_update(read=True)
+        )
+        if "teacher" not in roles or grant is None:
+            raise AuthorizationDenied()
+    return user
+
+
+def authorize_teacher_class(db, actor, class_id, permission="intervention.manage"):
+    from app.services.auth import AuthorizationDenied, authorize_actor, user_access
+
+    user = authorize_actor(db, actor, permission)
+    classroom = (
+        db.scalar(
+            select(Classroom)
+            .where(Classroom.id == class_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+        if class_id is not None
+        else None
+    )
+    if classroom is None:
+        raise AuthorizationDenied()
+    roles, _ = user_access(db, user.id)
+    if "admin" not in roles:
+        grant = db.scalar(
+            select(TeachingAssignment.id)
+            .where(
+                TeachingAssignment.class_id == class_id,
+                TeachingAssignment.user_id == user.id,
+            )
+            .with_for_update(read=True)
+        )
+        if "teacher" not in roles or grant is None:
+            raise AuthorizationDenied()
+    return user
+
+
+def protect_student_scope(db, student, session):
+    """Protect recorded membership through a short final write transaction."""
+    assignment = db.scalar(
+        select(ExperimentAssignment)
+        .where(ExperimentAssignment.id == session.experiment_assignment_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if assignment is None:
+        raise ScopeViolation("assignment is unavailable")
+    db.scalar(
+        select(Classroom)
+        .where(Classroom.id == assignment.class_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    db.scalar(
+        select(Enrollment)
+        .where(Enrollment.class_id == assignment.class_id, Enrollment.user_id == student.id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    assert_student_session_access(db, student, session, require_active=False)

@@ -59,7 +59,7 @@ def test_empty_database_upgrade_matches_models(migration_db):
     engine, migrate = migration_db
     migrate("upgrade", "head")
     with engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260927_0035"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260930_0036"
     migrate("check")
 
 
@@ -180,4 +180,33 @@ def test_0032_upgrade_preserves_history_and_receipts_block_destructive_downgrade
         migrate("downgrade", "20260920_0032")
     with engine.connect() as conn:
         assert conn.scalar(text("SELECT count(*) FROM diagnosis_checks")) == 1
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260927_0035"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260930_0036"
+
+
+def test_login_limit_migration_preserves_history_and_live_security_window(migration_db):
+    engine, migrate = migration_db
+    migrate("upgrade", "20260927_0035")
+    with engine.begin() as conn:
+        user = _seed(conn, "users")
+    migrate("upgrade", "head")
+    migrate("check")
+    with engine.begin() as conn:
+        table = Table("users", MetaData(), autoload_with=conn)
+        assert dict(conn.execute(table.select()).mappings().one()) == user
+        conn.execute(
+            text(
+                "INSERT INTO login_attempts (id, key_hash, status, expires_at) "
+                "VALUES (:id, :key, 'pending', CURRENT_TIMESTAMP + INTERVAL '5 minutes')"
+            ),
+            {"id": str(uuid4()), "key": "0" * 64},
+        )
+    with pytest.raises(AssertionError, match="Wait for active login reservations"):
+        migrate("downgrade", "20260927_0035")
+    with engine.begin() as conn:
+        assert conn.scalar(text("SELECT count(*) FROM login_attempts")) == 1
+        conn.execute(
+            text("UPDATE login_attempts SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second'")
+        )
+    migrate("downgrade", "20260927_0035")
+    migrate("upgrade", "head")
+    migrate("check")

@@ -1,6 +1,6 @@
 # 芯鉴知微 API 设计
 
-代码核对日期：2026-09-27。本文按使用入口解释契约；精确字段与枚举见对应版本的 FastAPI OpenAPI（`/docs`）及 `backend/app/schemas/`、`backend/app/diagnosis/workflow_schemas.py`。服务层权限、幂等和跨字段约束不能仅从 OpenAPI 推断。权限与状态规则见[开发准则](development-guidelines.md#business-rules)，部署与实际验收见 [实现状态](implementation-status.md)。
+代码核对日期：2026-09-30。本文按使用入口解释契约；精确字段与枚举见对应版本的 FastAPI OpenAPI（`/docs`）及 `backend/app/schemas/`、`backend/app/diagnosis/workflow_schemas.py`。服务层权限、幂等和跨字段约束不能仅从 OpenAPI 推断。权限与状态规则见[开发准则](development-guidelines.md#business-rules)，部署与实际验收见 [实现状态](implementation-status.md)。
 
 ## 通用约定
 
@@ -9,6 +9,18 @@
 - 声明为严格模型的请求拒绝未知字段；`metadata` 等扩展对象按各 Schema 保留。不能将自由字典等同于整份请求免校验。
 - 测试数据显式标记；常规接口为 `is_test_data: true`，批量协议为 `isTestData: true`。
 - 原始请求：入库到对应记录的 `raw_payload`，用于追溯；认证头不会写入原始载荷。
+
+## 登录与明确拒绝
+
+`POST /auth/session` 在校验密码前为“连接来源 IP＋小写用户名”的哈希键原子预留额度；失败和在途请求共同受 `AUTH_LOGIN_MAX_FAILURES`（默认5）限制。PostgreSQL 的 `login_attempts` 表供多个 worker 和重启后的实例共享；不保存明文用户名、IP 或密码。预留有效期和失败后窗口均使用 `AUTH_LOGIN_WINDOW_SECONDS`（默认300秒）。过期检查不得签发令牌；成功与会话创建一起提交，只清理自身预留及已完成失败，不清理其他在途请求。全表最多10000条，每次准入最多清理500条过期记录，容量不足返回429。SQLite只用于单进程开发/测试。代理部署须正确配置可信代理，不能无条件信任客户端转发头。
+
+学生开始实验的401/403/422是明确拒绝：客户端清除该待确认请求；401重新登录，403清空原权限内容并刷新任务，422重新选择参数。网络错误和5xx仍可能丢失已提交回执，必须保留原请求ID，不允许直接换任务重试。
+
+旧模板编辑、审核、发布与版本创建采用同一父模板锁；锁后刷新版本状态和内容hash，拒绝旧快照写入，并重验账号及权限。模板代码、同模板版本号等明确身份冲突返回409，不产生半成品。
+
+知识文件在创建内部文本请求前拒绝空白正文（422 `KNOWLEDGE_FILE_EMPTY`）；不支持的DOCX压缩或坏ZIP返回422 `KNOWLEDGE_FILE_PARSE_FAILED`；编码及展开的DOCX正文超限返回413；上传MIME类型与文本模型、存储保持100字符上限，超长返回422。扫描PDF仍按原契约返回不可提取文本，不自动OCR。
+
+`/docs`、`/redoc`、`/docs/oauth2-redirect` 使用每次响应的脚本nonce及文档专用CSP，响应不缓存；Swagger/ReDoc脚本样式仍来自FastAPI默认CDN。JSON API维持 `default-src 'none'`，文档CSP不会全局开放脚本。
 
 ## 设备接入
 
@@ -331,7 +343,7 @@ pending --formal_approver--> approved
 | 409 | 资源重复、非法状态流转、实验包版本已存在或审核条件不满足 |
 | 413 | 请求体、批次数量或提取文本超过配置上限 |
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
-| 429 | 遥测写入超过设备共享速率限制 |
+| 429 | 遥测写入超过设备共享速率限制，或登录失败/在途额度及总容量已满 |
 | 503 | 工作区未配置或工作流基础设施暂不可用；常规模型失败由确定性降级处理 |
 
 ## 上下文审计兼容
@@ -349,3 +361,12 @@ pending --formal_approver--> approved
 维护者入口为`app.cli.prepare_internal_experiment`，提供plan/apply/status，操作见[准备说明](experiments/internal-lab-preparation.md)。没有新增HTTP接口；CLI显式选择测试PostgreSQL与已登录管理员令牌，调用共同初始化服务。包导入/状态流转仍由上述管理员接口负责，学生会话仍经原学生接口创建。初始化不绕过固定包、授权、测试标记或历史边界。
 
 对象和成功审计同事务提交；同前缀同操作者同包hash/设备性质可恢复原回执，变更或残缺对象拒绝接管。plan/status不写入、不发放凭据；终端输出只含对象ID和状态，秘密由交互或环境变量输入。具体运行限制与回归入口见开发准则BR-LAB-PREP。
+
+
+## 2026-09-30 共享校验修复契约
+
+- 受保护写入在服务/最终图节点重验当前账号、登录会话、权限与记录归属；登录失效401、资格失效403，状态/版本冲突409。运行时身份引用不进入Checkpoint；已提交终态重放不重复审核。
+- `DELETE /api/v1/device/test-runs/{id}`：引用或未完成冻结流程使整次清理返回409，不部分删除。无引用的测试运行可清理，空重放仍返回零计数。
+- `GET /api/v1/student/experiment-session-commands/{request_id}`：当前账号只能读取本人且当前仍有资源访问权的会话命令回执。200返回`{status: "applied", request_id, result}`；404仅表示当前无可用回执，不能证明此前请求未执行。用于开始、结束和管理释放的正向恢复，不产生新命令。
+- 页面明确拒绝时删除可执行载荷；若之前已有未知结果，则仅保留原请求编号并使用当前授权的只读接口核查。反馈409的恢复语义与普通版本409不同。
+- 当前AI建议与设备状态说明共用资格校验；冻结绑定缺失、来源停用、契约或策略无效则确定性降级，不改历史记录、不额外调用Provider。

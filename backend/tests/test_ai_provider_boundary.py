@@ -17,7 +17,7 @@ from app.ai.context_sanitizer import (
 from app.ai.schemas import AIKnowledgeReference
 from app.core.config import Settings
 from app.models import AICallRecord, Device, DiagnosisResult
-from app.services.ai_diagnosis import explain_diagnosis
+from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
 
 
 def _client() -> OpenAICompatibleClient:

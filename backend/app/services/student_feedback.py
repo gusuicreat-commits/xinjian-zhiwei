@@ -135,7 +135,7 @@ def read_feedback_recovery(db, device, session_id):
 
 
 def submit_student_feedback(
-    db, device, diagnosis, payload, session_id, graph, settings, *, authorize
+    db, device, diagnosis, payload, session_id, graph, settings, *, authorize, student_actor
 ):
     diagnosis_id = diagnosis.id
     # The route has only authenticated/read so far. Release its read connection
@@ -201,6 +201,11 @@ def submit_student_feedback(
                     # The lifecycle mutex is another independent wait. Recheck
                     # credentials and scope immediately before the first write.
                     authorize()
+                    from app.services.student_authorization import authorize_student_actor
+
+                    authorize_student_actor(
+                        db, student_actor, device.id, session_id, permission="feedback.create"
+                    )
                     session = resolve_experiment_session(db, device, session_id)
                     _workflow_for_feedback_scope(db, device, diagnosis, session)
                     record = save_student_feedback(
@@ -227,10 +232,21 @@ def submit_student_feedback(
                 record,
                 device,
                 settings,
+                student_actor=student_actor,
                 reconcile_only=session.status != "active",
                 authorize=authorize,
             )
         else:
+            from app.services.student_authorization import authorize_student_actor
+
+            authorize_student_actor(
+                db,
+                student_actor,
+                device.id,
+                session_id,
+                require_active=False,
+                permission="feedback.create",
+            )
             record.processing_status = "applied"
             db.commit()
         db.refresh(record)

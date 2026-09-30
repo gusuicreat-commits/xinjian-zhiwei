@@ -201,13 +201,21 @@ class WorkflowEnvironment:
             )
             db.add(classroom)
             db.flush()
+            from app.services.auth import ActorContext
+
+            publisher = User(username="synthetic-package-admin", display_name="合成包管理员",
+                             password_hash=teacher.password_hash, is_test_data=True)
+            db.add(publisher)
+            db.flush()
+            assign_role(db, publisher, roles["admin"])
+            publisher._actor_context = ActorContext(publisher.id, mode="local_admin")
             self.versions = {}
             self.hashes = {}
             for package in ("dht11_temperature_humidity", "gpio_led_output"):
                 bundle, _ = load_experiment_package(PACKAGE_ROOT / package)
-                _, version = import_experiment_package(db, teacher, package_documents(bundle))
+                _, version = import_experiment_package(db, publisher, package_documents(bundle))
                 for status in ("pending", "approved", "published"):
-                    transition_experiment_package(db, teacher, version, status)
+                    transition_experiment_package(db, publisher, version, status)
                 self.versions[package] = version.id
                 self.hashes[package] = version.package_hash
             assignment = ExperimentAssignment(
@@ -309,7 +317,11 @@ def workflow_environment(package, mode="valid", postgres_dsn=None):
         env.sessions = sessionmaker(bind=env.engine, autoflush=False, expire_on_commit=False)
         Base.metadata.create_all(env.engine)
         env.seed()
+        from app.api.errors import authorization_denied_handler
+        from app.services.auth import AuthorizationDenied
+
         env.app = FastAPI()
+        env.app.add_exception_handler(AuthorizationDenied, authorization_denied_handler)
         env.app.include_router(api_router, prefix="/api/v1")
         settings = Settings(
             _env_file=None,

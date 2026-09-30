@@ -26,6 +26,7 @@ from app.services.diagnosis_episode import (
     lifecycle_lock,
     upsert_episode,
 )
+from app.services.provenance import derive_test_flag
 from app.services.teaching_materials import attach_teaching_materials
 
 
@@ -144,16 +145,40 @@ def _observed_span(history, diagnosis, tree, episode_id=None):
     return max(0, int((max(values) - min(values)).total_seconds())) if values else 0
 
 
-def generate_guidance(db, device, diagnosis_result, *, settings=None):
+def generate_guidance(db, device, diagnosis_result, *, student_actor, settings=None):
+    """One authorized business transaction after the lifecycle wait; no provider I/O."""
+    from app.services.auth import AuthorizationDenied
+    from app.services.data_scope import diagnosis_session
+    from app.services.student_authorization import authorize_student_actor
+
     with lifecycle_lock(db, diagnosis_result):
-        episode = upsert_episode(db, device, diagnosis_result, [], settings or get_settings())
-        records = _generate_guidance(db, device, diagnosis_result, episode=episode)
-        upsert_episode(db, device, diagnosis_result, records, settings or get_settings())
+        authorize_student_actor(db, student_actor, device.id,
+                                getattr(student_actor, "session_id", None))
+        owner = diagnosis_session(db, diagnosis_result)
+        if diagnosis_result.device_id != device.id or owner is None or (
+            owner.id != student_actor.session_id
+        ):
+            raise AuthorizationDenied(403)
+        return _build_guidance_records(db, device, diagnosis_result, settings=settings)
+
+
+def _build_guidance_records(db, device, diagnosis_result, *, settings=None):
+    """Internal construction primitive; production calls require the authorized wrapper."""
+    with lifecycle_lock(db, diagnosis_result):
+        episode = upsert_episode(
+            db, device, diagnosis_result, [], settings or get_settings(), commit=False,
+        )
+        records = _generate_guidance(db, device, diagnosis_result, episode=episode, commit=False)
+        upsert_episode(
+            db, device, diagnosis_result, records, settings or get_settings(), commit=False,
+        )
+        db.commit()
         return records
 
 
+
 def _generate_guidance(
-    db: Session, device: Device, diagnosis_result: DiagnosisResult, *, episode=None
+    db: Session, device: Device, diagnosis_result: DiagnosisResult, *, episode=None, commit=True
 ) -> list[GuidanceHistory]:
     existing = db.scalars(
         select(GuidanceHistory)
@@ -304,12 +329,12 @@ def _generate_guidance(
                     scope=link.scope if link else {},
                     hints=[item.model_dump(mode="json") for item in evaluation.hints],
                 ),
-                is_test_data=diagnosis_result.is_test_data,
+                is_test_data=derive_test_flag(diagnosis_result.is_test_data),
                 created_at=utc_now(),
             )
             db.add(record)
             records.append(record)
-    db.commit()
+    db.commit() if commit else db.flush()
     for record in records:
         db.refresh(record)
     return records

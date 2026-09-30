@@ -24,7 +24,9 @@ from app.services.data_scope import (
     ScopeViolation,
     assert_student_assignment_access,
     assert_student_session_access,
+    authorize_teacher_class,
     is_demo_device,
+    protect_student_scope,
 )
 from app.services.experiment_packages import load_experiment_package_runtime
 
@@ -32,7 +34,7 @@ _LOCAL_COMMAND_LOCK = RLock()
 
 
 @contextmanager
-def _command_lock(db, actor):
+def _command_lock(db, actor, permission="assignment.read"):
     # All session commands take actor then device row locks in the same order.
     # PostgreSQL holds them until the command + audit + receipt commit together.
     with _LOCAL_COMMAND_LOCK if db.get_bind().dialect.name == "sqlite" else nullcontext():
@@ -44,6 +46,9 @@ def _command_lock(db, actor):
         )
         if user is None or not user.is_active:
             raise ScopeViolation("account is no longer active")
+        from app.services.auth import authorize_actor, current_actor
+
+        user = authorize_actor(db, current_actor(actor), permission)
         yield user
 
 
@@ -131,10 +136,31 @@ def start_session(db, actor, *, request_id, device_key, assignment_id):
         )
         if device is None or not device.is_active:
             raise ScopeViolation("device is not available")
-        assignment = db.get(ExperimentAssignment, assignment_id)
+        assignment = db.scalar(
+            select(ExperimentAssignment)
+            .where(ExperimentAssignment.id == assignment_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+        if assignment is not None:
+            from app.models import Enrollment
+
+            db.scalar(
+                select(Classroom)
+                .where(Classroom.id == assignment.class_id)
+                .with_for_update(read=True)
+                .execution_options(populate_existing=True)
+            )
+            db.scalar(
+                select(Enrollment)
+                .where(Enrollment.class_id == assignment.class_id, Enrollment.user_id == user.id)
+                .with_for_update(read=True)
+                .execution_options(populate_existing=True)
+            )
         assert_student_assignment_access(db, user, assignment)
         binding = db.scalar(
-            select(DeviceBinding).where(
+            select(DeviceBinding)
+            .where(
                 DeviceBinding.device_id == device.id,
                 DeviceBinding.class_id == assignment.class_id,
                 DeviceBinding.student_user_id == user.id,
@@ -144,6 +170,7 @@ def start_session(db, actor, *, request_id, device_key, assignment_id):
                     DeviceBinding.experiment_assignment_id.is_(None),
                 ),
             )
+            .with_for_update(read=True)
         )
         if binding is None:
             raise ScopeViolation("device is not assigned to this student and task")
@@ -155,7 +182,14 @@ def start_session(db, actor, *, request_id, device_key, assignment_id):
             )
         ):
             raise ScopeConflict("device already has an active experiment session")
-        test_data = bool(user.is_test_data or assignment.is_test_data or is_demo_device(device))
+        from app.services.provenance import derive_test_flag
+
+        test_data = derive_test_flag(
+            user.is_test_data,
+            assignment.is_test_data,
+            is_demo_device(device),
+            db.get(Classroom, assignment.class_id).is_test_data,
+        )
         if assignment.experiment_version_id:
             runtime = load_experiment_package_runtime(db, assignment.experiment_version_id)
             if not assignment.is_test_data and runtime.version.is_test_data:
@@ -199,7 +233,7 @@ def end_session(db, actor, *, session_id, request_id, expected_version, reason):
         db.refresh(session)
         # Students can end their own work after a deadline, but cannot access a
         # revoked enrollment or modify an already closed session.
-        assert_student_session_access(db, user, session, require_active=False)
+        protect_student_scope(db, user, session)
         if session.version_no != expected_version or session.status != "active" or session.ended_at:
             raise ScopeConflict("session state changed; refresh before ending")
         session.status = reason
@@ -275,7 +309,7 @@ def release_session(db, actor, *, session_id, request_id, expected_version, reas
             "reason": reason,
         }
     )
-    with _command_lock(db, actor) as user:
+    with _command_lock(db, actor, "assignment.manage") as user:
         replay = _replay(db, user, request_id, digest, managed=True)
         if replay is not None:
             db.commit()
@@ -286,6 +320,10 @@ def release_session(db, actor, *, session_id, request_id, expected_version, reas
         db.refresh(session)
         # Recheck authority after waiting; ownership never comes from today's binding.
         assert_session_management(db, user, session)
+        from app.services.auth import current_actor
+
+        assignment = db.get(ExperimentAssignment, session.experiment_assignment_id)
+        authorize_teacher_class(db, current_actor(user), assignment.class_id, "assignment.manage")
         if session.version_no != expected_version or session.status != "active" or session.ended_at:
             raise ScopeConflict("session state changed; refresh before releasing")
         old_version = session.version_no

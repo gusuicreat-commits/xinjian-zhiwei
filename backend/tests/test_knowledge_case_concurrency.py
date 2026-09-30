@@ -14,6 +14,7 @@ from app.knowledge import case_drafting
 from app.main import app
 from app.models.classroom import TeachingAssignment, User
 from app.models.knowledge import KnowledgeCase, KnowledgeCaseDraft
+from app.services.auth import current_actor, resolve_session
 
 
 @pytest.fixture(params=["sqlite", "postgres"])
@@ -195,7 +196,13 @@ def test_approved_draft_cannot_be_resubmitted_or_published_twice(race_scope):
         draft = db.get(KnowledgeCaseDraft, draft_id)
         assert draft.version_no == 2
         with pytest.raises(case_drafting.CaseDraftError, match="resubmitted"):
-            case_drafting.submit_case_draft_for_review(db, draft)
+            case_drafting.submit_case_draft_for_review(
+                db,
+                draft,
+                actor_context=current_actor(
+                    resolve_session(db, headers["Authorization"].split()[1])
+                ),
+            )
         assert draft.status == "approved"
         original_case = db.get(KnowledgeCase, "once")
         assert original_case.source_draft_id == draft_id

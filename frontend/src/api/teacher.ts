@@ -1,4 +1,4 @@
-import { isAxiosError } from 'axios'
+import { assertCommandRecoverable, recordCommandFailure, completeCommand } from './commandOutcome'
 import { apiClient } from '@/api/client'
 import { newRequestId } from '@/api/feedbackRetry'
 import { createUserSession } from '@/api/auth'
@@ -64,12 +64,49 @@ export async function reviewDiagnosisWorkflow(
     }
   },
 ): Promise<TeacherDiagnosisWorkflow> {
-  const response = await apiClient.post<TeacherDiagnosisWorkflow>(
-    `/api/v1/diagnosis-workflows/${encodeURIComponent(workflowId)}/review`,
-    payload,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  )
-  return response.data
+  const auth = JSON.parse(
+    sessionStorage.getItem('xinjian-teacher-session') ?? 'null',
+  ) as UserSession | null
+  if (!auth || auth.access_token !== accessToken) throw new Error('TEACHER_SESSION_REQUIRED')
+  const key = `xinjian-workflow-review:${auth.user_id}:${workflowId}`
+  const identity = sessionStorage.getItem('xinjian-teacher-session')
+  const recoveryRaw = sessionStorage.getItem(`${key}:recovery`)
+  if (recoveryRaw) {
+    const current = await apiClient.get<TeacherDiagnosisWorkflow>(
+      `/api/v1/diagnosis-workflows/${encodeURIComponent(workflowId)}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+    if (
+      sessionStorage.getItem('xinjian-teacher-session') !== identity ||
+      sessionStorage.getItem(`${key}:recovery`) !== recoveryRaw
+    )
+      throw new Error('TEACHER_SESSION_REQUIRED')
+    if (['completed', 'rejected'].includes(current.data.status)) {
+      completeCommand(key, workflowId)
+      return current.data
+    }
+  }
+  assertCommandRecoverable(key)
+  try {
+    const response = await apiClient.post<TeacherDiagnosisWorkflow>(
+      `/api/v1/diagnosis-workflows/${encodeURIComponent(workflowId)}/review`,
+      payload,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+    completeCommand(key, workflowId)
+    return response.data
+  } catch (error) {
+    recordCommandFailure(key, 'reviewDiagnosisWorkflow', workflowId, error)
+    // This endpoint has no command receipt ID. Require an explicit read-only
+    // review of workflow history before any further manual review submission.
+    if (sessionStorage.getItem(`${key}:uncertain`)) {
+      sessionStorage.setItem(
+        `${key}:recovery`,
+        JSON.stringify({ operation: 'reviewDiagnosisWorkflow', workflow_id: workflowId }),
+      )
+    }
+    throw error
+  }
 }
 
 export async function getTeacherDashboard(accessToken: string): Promise<TeacherDashboard> {
@@ -77,6 +114,40 @@ export async function getTeacherDashboard(accessToken: string): Promise<TeacherD
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   return response.data
+}
+
+async function recoverInterventionCommand(
+  accessToken: string,
+  userId: string,
+  caseId: string,
+  key: string,
+): Promise<boolean> {
+  const raw = sessionStorage.getItem(`${key}:recovery`)
+  if (!raw) return false
+  const bookmark = JSON.parse(raw) as { request_id: string }
+  const response = await apiClient.get<
+    Array<{ actor_user_id: string; metadata: { request_id?: string } }>
+  >(`/api/v1/teacher-workflow/interventions/${encodeURIComponent(caseId)}/timeline`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  const auth = JSON.parse(
+    sessionStorage.getItem('xinjian-teacher-session') ?? 'null',
+  ) as UserSession | null
+  if (auth?.user_id !== userId || auth?.access_token !== accessToken)
+    throw new Error('TEACHER_SESSION_REQUIRED')
+  if (sessionStorage.getItem(`${key}:recovery`) !== raw)
+    throw new Error('恢复请求已变化，请重新查询。')
+  if (
+    response.data.some(
+      (event) =>
+        event.actor_user_id === userId && event.metadata.request_id === bookmark.request_id,
+    )
+  ) {
+    completeCommand(key, bookmark.request_id)
+    return true
+  }
+  assertCommandRecoverable(key)
+  return false
 }
 
 export async function actOnTeacherIntervention(
@@ -95,6 +166,13 @@ export async function actOnTeacherIntervention(
   ) as UserSession | null
   if (!auth || auth.access_token !== accessToken) throw new Error('TEACHER_SESSION_REQUIRED')
   const key = `xinjian-intervention:${auth.user_id}:${caseId}`
+  if (await recoverInterventionCommand(accessToken, auth.user_id, caseId, key)) return
+  const currentAuth = JSON.parse(
+    sessionStorage.getItem('xinjian-teacher-session') ?? 'null',
+  ) as UserSession | null
+  if (currentAuth?.access_token !== accessToken || currentAuth?.user_id !== auth.user_id)
+    throw new Error('TEACHER_SESSION_REQUIRED')
+  assertCommandRecoverable(key)
   const previous = sessionStorage.getItem(key)
   const pending = previous
     ? (JSON.parse(previous) as {
@@ -116,11 +194,10 @@ export async function actOnTeacherIntervention(
       { headers: { Authorization: `Bearer ${accessToken}` } },
     )
   } catch (error) {
-    // A received conflict is a definite rejection; retain only uncertain outcomes.
-    if (isAxiosError(error) && error.response?.status === 409) sessionStorage.removeItem(key)
+    recordCommandFailure(key, 'actOnTeacherIntervention', pending.request_id, error)
     throw error
   }
-  sessionStorage.removeItem(key)
+  completeCommand(key, pending.request_id)
 }
 
 export function pendingInterventionCommand(
@@ -140,7 +217,19 @@ export async function reportTeacherProblemResolved(
   caseId: string,
   revision: number,
 ): Promise<void> {
+  const auth = JSON.parse(
+    sessionStorage.getItem('xinjian-teacher-session') ?? 'null',
+  ) as UserSession | null
+  if (auth?.user_id !== userId || auth?.access_token !== accessToken)
+    throw new Error('TEACHER_SESSION_REQUIRED')
   const key = `xinjian-problem-report:${userId}:${caseId}`
+  if (await recoverInterventionCommand(accessToken, userId, caseId, key)) return
+  const currentAuth = JSON.parse(
+    sessionStorage.getItem('xinjian-teacher-session') ?? 'null',
+  ) as UserSession | null
+  if (currentAuth?.access_token !== accessToken || currentAuth?.user_id !== auth.user_id)
+    throw new Error('TEACHER_SESSION_REQUIRED')
+  assertCommandRecoverable(key)
   const previous = sessionStorage.getItem(key)
   const payload = previous
     ? JSON.parse(previous)
@@ -153,8 +242,8 @@ export async function reportTeacherProblemResolved(
       { headers: { Authorization: `Bearer ${accessToken}` } },
     )
   } catch (error) {
-    if (isAxiosError(error) && error.response?.status === 409) sessionStorage.removeItem(key)
+    recordCommandFailure(key, 'reportTeacherProblemResolved', payload.request_id, error)
     throw error
   }
-  sessionStorage.removeItem(key)
+  completeCommand(key, payload.request_id)
 }
