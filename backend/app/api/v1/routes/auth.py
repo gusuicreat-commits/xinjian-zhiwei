@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ from app.schemas.auth import (
     SessionResponse,
 )
 from app.schemas.student import StudentDashboardResponse
-from app.services.auth import create_session, user_access
+from app.services.auth import AuthorizationDenied, create_session, revoke_session, user_access
 from app.services.data_scope import (
     ScopeConflict,
     ScopeViolation,
@@ -90,6 +90,15 @@ def login(payload: LoginRequest, request: Request, db: DatabaseSession) -> Sessi
         permissions=permissions,
         is_test_data=user.is_test_data,
     )
+
+
+@router.delete("/session", status_code=204)
+def logout(request: Request, db: DatabaseSession) -> Response:
+    authorization = request.headers.get("Authorization", "")
+    if not authorization.startswith("Bearer ") or not authorization[7:]:
+        raise AuthorizationDenied(401)
+    revoke_session(db, authorization[7:])
+    return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/me", response_model=CurrentUserResponse)

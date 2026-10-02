@@ -7,8 +7,9 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.db.session import SessionLocal
-from app.models import MemoryEvent
-from app.services.memory_governance import process_stop_cache
+from app.models import MemoryEvent, User
+from app.services.auth import ActorContext
+from app.services.memory_governance import process_stop_cache, require_manager
 from app.services.memory_restore import export_registry, replay_registry
 
 
@@ -18,6 +19,11 @@ def main():
         "operation", choices=["clear-stopped-caches", "export-stops", "replay-stops"]
     )
     parser.add_argument("--file", type=Path)
+    parser.add_argument(
+        "--actor-user-id",
+        required=True,
+        help="Current database administrator for this local maintenance action",
+    )
     parser.add_argument("--isolated-restore", action="store_true")
     args = parser.parse_args()
     if args.operation != "clear-stopped-caches" and not args.file:
@@ -25,6 +31,11 @@ def main():
     if args.operation == "replay-stops" and not args.isolated_restore:
         parser.error("replay-stops requires an explicitly selected isolated restore database")
     with SessionLocal() as db:
+        actor = db.get(User, args.actor_user_id)
+        if actor is None:
+            parser.error("Administrator not found")
+        actor._actor_context = ActorContext(actor.id, mode="local_admin")
+        require_manager(db, actor)
         if args.operation == "export-stops":
             # Refuse accidental overwrite of the independently retained restore registry.
             with args.file.open("x", encoding="utf-8") as destination:
@@ -39,6 +50,7 @@ def main():
                 )
             )
         else:
+            db.rollback()  # cache commands recheck after their own domain locks
             ids = list(
                 db.scalars(
                     select(MemoryEvent.id)
@@ -47,7 +59,10 @@ def main():
                     .limit(100)
                 )
             )
-            results = [process_stop_cache(db, db.get(MemoryEvent, event_id)) for event_id in ids]
+            results = [
+                process_stop_cache(db, db.get(MemoryEvent, event_id), actor=actor)
+                for event_id in ids
+            ]
             print(
                 json.dumps(
                     {

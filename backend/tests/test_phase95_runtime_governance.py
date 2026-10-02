@@ -284,7 +284,7 @@ def test_safe_context_removes_identity_secrets_and_unrelated_logs() -> None:
     assert payload.sensor_readings[0]["maximum"] == 22
     audit = json.dumps(audit_snapshot(payload), ensure_ascii=False)
     assert "device-secret-value" not in audit
-    assert "provider-allowlist-v3" in audit
+    assert "provider-allowlist-v4" in audit
 
 
 def test_single_deepseek_route_cache_and_timeout_fallback(
@@ -331,6 +331,7 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
             settings,
             ai_client=timeout,
             user_question="这是另一个不会命中缓存的问题。",
+            operation_request_id="new-question-explicit-test-request",
         )
         assert failed.status == "failed"
         assert failed.mode == "rules_only"
@@ -348,6 +349,7 @@ def test_single_deepseek_route_cache_and_timeout_fallback(
             settings,
             ai_client=invalid_json,
             user_question="这是专门验证非法 JSON 降级的不同问题。",
+            operation_request_id="invalid-json-explicit-new-request",
         )
         assert invalid.status == "failed"
         assert invalid.mode == "rules_only"
@@ -390,7 +392,11 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                 metadata={"fixture": True},
                 is_test_data=False,
             ),
-        )
+         actor_context=identities["knowledge_organizer"])
+        from app.models.knowledge_access import KnowledgeSourceGrant
+        db.add(KnowledgeSourceGrant(source_id=source.id,
+            user_id=identities["formal_approver"].user_id, capability="review"))
+        db.commit()
         document = import_text_document(
             db,
             source.id,
@@ -403,7 +409,7 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                 is_test_data=False,
             ),
             settings,
-        )
+         actor_context=identities["knowledge_organizer"])
         assert document.review_status == "draft"
         assert document.chunks[0].metadata["applicable_hardware"] == ["fixture-board-v1"]
         with pytest.raises(KnowledgeServiceError) as direct_approval:
@@ -470,7 +476,7 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                 content_origin="ai_generated",
             ),
             settings,
-        )
+         actor_context=identities["knowledge_organizer"])
         assert ai_draft.review_status == "draft"
         assert ai_draft.chunks[0].metadata["content_origin"] == "ai_generated"
 
@@ -485,7 +491,7 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                 authorization_scope="仅用于自动化测试",
                 is_test_data=False,
             ),
-        )
+         actor_context=identities["knowledge_organizer"])
         with pytest.raises(KnowledgeServiceError) as missing_case_fields:
             import_text_document(
                 db,
@@ -497,7 +503,7 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                     organizer_ref="phase95-case-organizer",
                 ),
                 settings,
-            )
+             actor_context=identities["knowledge_organizer"])
         assert missing_case_fields.value.code == "FINAL_FIX_ACTION_REQUIRED"
         governed_case = import_text_document(
             db,
@@ -513,6 +519,6 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                 organizer_ref="phase95-case-organizer",
             ),
             settings,
-        )
+         actor_context=identities["knowledge_organizer"])
         assert governed_case.chunks[0].metadata["final_fix_action"]
         assert governed_case.chunks[0].metadata["root_cause_confidence"] == "high"

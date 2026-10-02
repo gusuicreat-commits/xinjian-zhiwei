@@ -1,7 +1,17 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -13,6 +23,7 @@ class AIUsageReservation(UuidPrimaryKeyMixin, Base):
 
     __tablename__ = "ai_usage_reservations"
     __table_args__ = (
+        UniqueConstraint("operation_id", "attempt_no", name="uq_ai_usage_operation_attempt"),
         Index("ix_ai_usage_device_created", "device_id", "created_at"),
         Index("ix_ai_usage_created", "created_at"),
     )
@@ -20,6 +31,10 @@ class AIUsageReservation(UuidPrimaryKeyMixin, Base):
     diagnosis_result_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("diagnosis_results.id", ondelete="CASCADE"), nullable=False
     )
+    operation_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("ai_operations.id", ondelete="RESTRICT"), index=True
+    )
+    attempt_no: Mapped[Optional[int]] = mapped_column(Integer)
     device_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False
     )

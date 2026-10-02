@@ -1092,7 +1092,13 @@ def route_after_review(
 
 
 def _approved_result(state: DiagnosisState) -> dict[str, Any]:
+    from app.ai.output_contract import diagnosis_summary, project_reasoning
+
     base = dict(state.get("ai_result") or state.get("deterministic_result") or {})
+    if state.get("ai_result"):
+        base["summary"] = diagnosis_summary(
+            state.get("rule_hits") or [], state.get("reasoning_status")
+        )
     base["context_delivery"] = state.get("context_delivery")
     review = state.get("teacher_review") or {}
     edited = review.get("edited_result") or {}
@@ -1111,7 +1117,7 @@ def _approved_result(state: DiagnosisState) -> dict[str, Any]:
     base["guidance_level"] = base["hint_level"]
     base["need_teacher_help"] = bool(state.get("need_teacher_help"))
     base["student_feedback"] = state.get("student_feedback")
-    base["ai_reasoning"] = {
+    base["ai_reasoning"] = project_reasoning({
         "mode": state.get("reasoning_mode"),
         "status": state.get("reasoning_status"),
         "summary": state.get("reasoning_summary"),
@@ -1119,7 +1125,7 @@ def _approved_result(state: DiagnosisState) -> dict[str, Any]:
         "missing_evidence": state.get("missing_evidence", []),
         "next_verification_action": state.get("next_verification_action"),
         "conflict": bool(state.get("evidence_conflict")),
-    }
+    })
     base["knowledge_validation"] = state.get("knowledge_validation") or {}
     base["teacher_reviewed"] = bool(review)
     base["candidate_causes"] = state.get("possible_causes", state.get("fault_tree_candidates", []))

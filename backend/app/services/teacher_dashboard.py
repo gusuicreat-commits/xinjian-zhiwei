@@ -27,7 +27,7 @@ from app.schemas.teacher import (
 )
 from app.services.data_scope import diagnosis_session
 from app.services.device_ingest import calculate_device_status
-from app.services.knowledge import get_knowledge_status
+from app.services.knowledge import get_global_knowledge_status
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -39,10 +39,11 @@ def build_teacher_dashboard(
     *,
     allowed_device_ids: Optional[set[str]] = None,
     allowed_class_ids: Optional[set[str]] = None,
+    actor_context=None,
 ) -> TeacherDashboardResponse:
     now = datetime.now(timezone.utc)
     settings = get_settings()
-    knowledge_status = get_knowledge_status(db, settings)
+    knowledge_status = get_global_knowledge_status(db, settings, actor_context=actor_context)
     device_query = select(Device).order_by(Device.device_key)
     diagnosis_query = select(DiagnosisResult).order_by(
         DiagnosisResult.created_at.desc(), DiagnosisResult.id.desc()

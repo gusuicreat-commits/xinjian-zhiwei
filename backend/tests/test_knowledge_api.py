@@ -1,14 +1,40 @@
 from typing import Any
 
-from app.api.dependencies import require_review_access
 from app.core.security import hash_password
-from app.main import app
 from app.models import User
 from app.services.rbac import assign_role, ensure_rbac_catalog
 
 
-def allow_review_access() -> None:
-    app.dependency_overrides[require_review_access] = lambda: None
+def authenticate_workspace(api_context) -> None:
+    api_context["client"].headers.update(_review_headers(api_context)["organizer"])
+
+
+def grant_fixture_review_scope(api_context, document_id):
+    from app.models import KnowledgeDocument
+    from app.models.knowledge_access import KnowledgeSourceGrant
+    from app.services.auth import resolve_session
+
+    headers = _review_headers(api_context)
+    with api_context["session_factory"]() as db:
+        document = db.get(KnowledgeDocument, document_id)
+        for role, cap in [("organizer", "organize"), ("formal_approver", "review")]:
+            actor = resolve_session(db, headers[role]["Authorization"][7:])
+            from sqlalchemy import select
+
+            grant = db.scalar(
+                select(KnowledgeSourceGrant).where(
+                    KnowledgeSourceGrant.source_id == document.source_id,
+                    KnowledgeSourceGrant.user_id == actor.id,
+                    KnowledgeSourceGrant.capability == cap,
+                )
+            )
+            if grant is None:
+                db.add(
+                    KnowledgeSourceGrant(
+                        source_id=document.source_id, user_id=actor.id, capability=cap
+                    )
+                )
+        db.commit()
 
 
 def _review_headers(api_context: dict[str, Any]) -> dict[str, dict[str, str]]:
@@ -50,6 +76,7 @@ def _review_headers(api_context: dict[str, Any]) -> dict[str, dict[str, str]]:
 def approve_test_document(api_context: dict[str, Any], document_id: str, prefix: str) -> None:
     client = api_context["client"]
     headers = _review_headers(api_context)
+    grant_fixture_review_scope(api_context, document_id)
     steps = (
         ("pending", "organizer", f"{prefix}-organizer"),
         ("approved", "formal_approver", f"{prefix}-formal-approver"),
@@ -73,12 +100,12 @@ def test_knowledge_endpoints_fail_closed_without_review_access(
 ) -> None:
     response = api_context["client"].get("/api/v1/knowledge/status")
 
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "REVIEW_ACCESS_NOT_CONFIGURED"
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "SESSION_REQUIRED"
 
 
 def test_empty_knowledge_status_is_explicit(api_context: dict[str, Any]) -> None:
-    allow_review_access()
+    authenticate_workspace(api_context)
 
     response = api_context["client"].get("/api/v1/knowledge/status")
 
@@ -92,7 +119,7 @@ def test_empty_knowledge_status_is_explicit(api_context: dict[str, Any]) -> None
 
 
 def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -> None:
-    allow_review_access()
+    authenticate_workspace(api_context)
     client = api_context["client"]
     headers = _review_headers(api_context)
     source = client.post(
@@ -113,6 +140,7 @@ def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -
             "is_test_data": True,
         },
     ).json()
+    grant_fixture_review_scope(api_context, document["id"])
     client.patch(
         f"/api/v1/knowledge/documents/{document['id']}/review",
         headers=headers["organizer"],
@@ -139,7 +167,7 @@ def test_approval_requires_recorded_authorization(api_context: dict[str, Any]) -
 def test_test_knowledge_import_and_review_are_traceable_without_rag(
     api_context: dict[str, Any],
 ) -> None:
-    allow_review_access()
+    authenticate_workspace(api_context)
     client = api_context["client"]
     source_response = client.post(
         "/api/v1/knowledge/sources",
@@ -205,7 +233,7 @@ def test_test_knowledge_import_and_review_are_traceable_without_rag(
 def test_embedding_endpoint_is_not_part_of_the_mvp(
     api_context: dict[str, Any],
 ) -> None:
-    allow_review_access()
+    authenticate_workspace(api_context)
     client = api_context["client"]
     source = client.post(
         "/api/v1/knowledge/sources",
@@ -244,7 +272,7 @@ def test_embedding_endpoint_is_not_part_of_the_mvp(
 def test_ordinary_teacher_cannot_impersonate_knowledge_reviewer(
     api_context: dict[str, Any],
 ) -> None:
-    allow_review_access()
+    authenticate_workspace(api_context)
     client = api_context["client"]
     headers = _review_headers(api_context)
     source = client.post(

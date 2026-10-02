@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_session_token, verify_password
+from app.core.security import hash_password, hash_session_token, verify_password
 from app.models.base import utc_now
 from app.models.classroom import (
     AuditEvent,
@@ -45,6 +45,10 @@ def user_access(db: Session, user_id: str) -> tuple[list[str], list[str]]:
     return roles, permissions
 
 
+# Generated once; nonexistent users perform the current password-policy KDF too.
+_DUMMY_PASSWORD_HASH = hash_password(secrets.token_urlsafe(32))
+
+
 def create_session(
     db: Session,
     username: str,
@@ -54,7 +58,10 @@ def create_session(
     finalize_success: Optional[Callable[[], None]] = None,
 ) -> Optional[tuple[User, str, AuthSession, list[str], list[str]]]:
     user = db.scalar(select(User).where(User.username == username))
-    if user is None or not user.is_active or not verify_password(password, user.password_hash):
+    valid_password = verify_password(
+        password, user.password_hash if user is not None else _DUMMY_PASSWORD_HASH
+    )
+    if user is None or not user.is_active or not valid_password:
         return None
     raw_token = secrets.token_urlsafe(48)
     now = utc_now()
@@ -198,3 +205,37 @@ def authorize_actor(db: Session, actor: ActorContext, permission: str) -> User:
         raise AuthorizationDenied()
     user._actor_context = actor
     return user
+
+
+def revoke_session(db: Session, raw_token: str) -> None:
+    """Revoke only the presented session; repeats grant no other authorization."""
+    identity = db.execute(
+        select(AuthSession.id, AuthSession.user_id).where(
+            AuthSession.token_hash == hash_session_token(raw_token)
+        )
+    ).first()
+    if identity is None:
+        raise AuthorizationDenied(401)
+    user = db.scalar(select(User).where(User.id == identity.user_id).with_for_update())
+    session = db.scalar(
+        select(AuthSession)
+        .where(AuthSession.id == identity.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if user is None or session is None:
+        raise AuthorizationDenied(401)
+    if session.revoked_at is None:
+        session.revoked_at = utc_now()
+        db.add(
+            AuditEvent(
+                actor_user_id=user.id,
+                action="auth.logout",
+                resource_type="auth_session",
+                resource_id=session.id,
+                details_json={},
+                is_test_data=user.is_test_data,
+                created_at=utc_now(),
+            )
+        )
+    db.commit()

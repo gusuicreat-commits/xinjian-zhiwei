@@ -251,8 +251,8 @@ def test_cache_invalidation_uses_exact_source_and_can_retry(memory_task):
     db.commit()
     _stop(db, actor, case)
     event = db.query(MemoryEvent).one()
-    assert process_stop_cache(db, event)["deleted"] == 1
-    assert process_stop_cache(db, event)["deleted"] == 0
+    assert process_stop_cache(db, event, actor=actor)["deleted"] == 1
+    assert process_stop_cache(db, event, actor=actor)["deleted"] == 0
     assert db.get(AIExplanationCache, unrelated.id) is not None
     assert db.get(DiagnosisResult, diagnosis.id) is not None
 
@@ -393,6 +393,7 @@ def test_teacher_cannot_review_or_discover_another_class(memory_task):
     db.add(outsider)
     db.flush()
     assign_role(db, outsider, roles["teacher"])
+    authorize_write_fixture(db, outsider, "teacher")
     db.commit()
     event = db.query(MemoryEvent).one()
     assert event_page(db, outsider)["items"] == []
@@ -448,6 +449,7 @@ def test_ordinary_teacher_sees_own_event_and_can_review(memory_task):
     db.add(teacher)
     db.flush()
     assign_role(db, teacher, roles["teacher"])
+    authorize_write_fixture(db, teacher, "teacher")
     assignment = db.get(ExperimentAssignment, workflow.experiment_session.experiment_assignment_id)
     db.add(TeachingAssignment(user_id=teacher.id, class_id=assignment.class_id))
     db.commit()

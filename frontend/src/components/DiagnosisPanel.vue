@@ -263,6 +263,15 @@ const requiredLimitations = computed(() => {
   return [...byText.values()]
 })
 const workflowReasoning = computed(() => props.workflow?.final_result?.ai_reasoning)
+const verificationRequests = computed(
+  () =>
+    workflowReasoning.value?.verification_requests ??
+    (workflowReasoning.value?.missing_evidence ?? []).map((text) => ({
+      text,
+      source: 'model' as const,
+      status: 'unverified' as const,
+    })),
+)
 const workflowNeedsAttention = computed(
   () =>
     props.workflow?.status === 'waiting_teacher' ||
@@ -350,12 +359,10 @@ function formatReviewTime(value?: string | null): string {
         <p v-if="workflowReasoning?.conflict" class="required-notice">
           本次证据存在冲突，暂不能确认原因。
         </p>
-        <ul
-          v-if="workflowReasoning?.missing_evidence?.length"
-          class="required-limitations"
-          aria-label="待补充证据"
-        >
-          <li v-for="item in workflowReasoning.missing_evidence" :key="item">尚缺：{{ item }}</li>
+        <ul v-if="verificationRequests.length" class="required-limitations" aria-label="待核验事项">
+          <li v-for="item in verificationRequests" :key="item.text">
+            建议核验（尚未确认）：{{ item.text }}
+          </li>
         </ul>
         <p v-if="workflowNeedsAttention" class="required-notice">
           {{ workflowStatus.label }}：{{ workflowStatusMessage }}

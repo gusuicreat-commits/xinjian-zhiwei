@@ -1,4 +1,5 @@
 from typing import Any, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
@@ -166,4 +167,5 @@ class AIStatusResponse(StrictAIModel):
 
 
 class AIExplanationRequest(StrictAIModel):
+    request_id: Optional[UUID] = None
     user_question: Optional[str] = Field(default=None, min_length=1, max_length=2000)

@@ -7,7 +7,7 @@
 | 对象 | 当前代码/内容版本 | 核对来源 |
 | --- | --- | --- |
 | 应用 | `1.0.0` | `VERSION`、应用配置与 `scripts/check_version.py` |
-| 数据库迁移 Head | `20260930_0036` | `backend/migrations/versions`；不是运行库版本 |
+| 数据库迁移 Head | `20261002_0038` | `backend/migrations/versions`；不是运行库版本 |
 | 诊断引擎兼容契约 | `2.2.0` | `experiment_packages/loader.py`；与应用版本分开 |
 | DHT11 工作区资料包 | `dht11_temperature_humidity@2.0.11` | 包 metadata.yaml；测试草稿 |
 | LED 工作区资料包 | `gpio_led_output@2.0.4` | 包 metadata.yaml；测试草稿 |
@@ -27,7 +27,7 @@
 | 新数据检查 | 固定输入与请求身份；恢复原请求；新回执复用证据时读取问题当前处理状态，旧回执不改写，不额外调用模型 | `services/diagnosis_checks.py`；[重新检查规则](development-guidelines.md#recheck) |
 | 学生反馈与教师处置 | 等待锁后、工作流恢复和长操作交付时重验当前权限；401/403不包装成503；合法历史回执仍可重放。409不换身份重试；反馈、工单和硬件恢复分开，私密备注按角色投影 | `services/student_feedback.py`、`diagnosis_workflow.py`、`interventions.py` |
 | 教学资料与案例 | 新指导保存 concepts/steps 的明确关联快照；故障树提示决定动作。草稿审批/润色采用状态与版本约束，来源唯一、审批同事务；实验包版本化发布并绑定快照 | `experiment_packages/teaching.py`、`knowledge/case_drafting.py`；[包设计](experiment-package-design.md) |
-| AI | 默认关闭；候选排序/解释/润色共享外发清洗、预算预留、缓存重验和调用审计，失败降级。`evidence-reasoning-v2.8` 保留分步证据核对并接入完整上下文准备，沿用原 Schema/图、开关和 thinking 设置；新增6项语义条目仍未审阅 | `ai/governance.py`、`context_sanitizer.py`、`reasoning.py`；[AI 设计](ai-diagnosis-design.md) |
+| AI | 默认关闭；候选排序/解释/润色共享外发清洗、预算预留、缓存重验和调用审计，失败降级。`evidence-reasoning-v2.9` 保留分步证据核对并接入完整上下文准备，沿用原 Schema/图、开关和 thinking 设置；新增6项语义条目仍未审阅 | `ai/governance.py`、`context_sanitizer.py`、`reasoning.py`；[AI 设计](ai-diagnosis-design.md) |
 | 记忆 | 事实（固定包配置）、经验（受审案例）、工作（当前任务投影）分开；来源版本与用途留痕，召回/恢复/交付重验，停用后阻断旧建议并支持教师影响复核；过期缓存按固定计划清理 | `services/memory.py`、`memory_governance.py`、`memory_restore.py`；[记忆设计](ai-diagnosis-design.md#memory-lifecycle-design) |
 | 前端 | 学生和教师各三类任务视图；切页保留对象与待确认请求；教师旧请求隔离、分区错误提示、就绪统计按范围表达；内部代码中文投影，离线审核可演示 | `frontend/src` 的两端 Dashboard、`userLanguage.ts`；[界面规则](development-guidelines.md#ui) |
 | 固件与运维 | 64位运行时钟；DHT11前次转换语义；配置持久存储后先保存单批、存储失败暂停、重试预算持久化、确认后仅重试清理。备份恢复核对同一数据库快照的内容与关系约束，模拟器提供实际场景清单 | [固件](../firmware/esp32_dht11/README.md)、[部署](deployment.md)、[模拟器](../simulator/README.md) |
@@ -87,6 +87,14 @@ DHT11工作区2.0.8、固件0.2.4：新增[内部实验指南](experiments/dht11
 
 ## 共享校验修复（2026-09-30）
 
-按[共享校验方案](shared-validation-repair-plan.md)修复本轮九项缺陷及同规则相邻入口：最终授权、当前建议资格、实验身份、来源清理、测试标记、命令恢复、权限失效页面、安全扫描和就绪探针统一对应校验。当前是未提交工作区，没有部署或改写业务历史。
+按[共享校验方案](shared-validation-repair-plan.md)修复本轮九项缺陷及同规则相邻入口：最终授权、当前建议资格、实验身份、来源清理、测试标记、命令恢复、权限失效页面、安全扫描和就绪探针统一对应校验。修复已记录于提交 `2084274`；没有部署或改写业务历史。
 
 本轮本地验收分阶段完成：后端1004、模拟器32、PostgreSQL流程25、前端单元153、模拟浏览器19、真实数据库浏览器10、离线页面1项通过；固件、静态检查和独立容器断库恢复通过。完整脚本在新浏览器测试的重复文案定位处退出1，修正为正文定位后，浏览器三组及前端静态检查补跑退出0；不宣称单次全绿。中途失败、原因、最终源码指纹和未验收范围见[修复效果报告](../output/audits/shared-validation-fix-20260930/report.md)，不与历史数量累计。真实Provider语义、实物、部署和课堂效果仍未验证。
+
+## 2026-10-02 Agent安全修复验收
+
+按[15项修复方案](agent-security-repair-plan.md)完成本地实现与软件验收，覆盖最终授权、服务端退出、知识来源范围、AI事实投影与持久调用、文件资源预算、配置和异常响应边界。最终单轮 `scripts/verify.sh` 退出0：后端1058通过、11项Linux专用跳过；模拟器32、PostgreSQL流程25、前端单元157、模拟浏览器19、真实后端/隔离数据库浏览器11、离线页面1项通过；静态检查、安全扫描、固件及文件系统构建通过。
+
+Linux独立解析专项28通过、15项PG专用跳过，覆盖主机跳过的全部11项解析用例；PG用例由主机门禁执行。真实Nginx/直连传输12场景通过。数量有交叉，不累计为独立总数。中间失败、修正原因、命令和源码指纹见[本轮修复报告](../output/audits/agent-security-fix-20261002/report.md)。
+
+原生macOS/Windows后端文件解析明确503，需使用Linux服务，文本导入仍可用；旧知识来源须显式授权，缺可信提交人的旧待审核资料须重新提交。0037/0038仅在一次性隔离库验证，业务库未迁移；源码提交状态以Git历史为准；未部署。真实Provider语义、硬件和课堂效果未验收。

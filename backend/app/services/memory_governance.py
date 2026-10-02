@@ -17,8 +17,8 @@ from app.models import (
     MemoryUse,
 )
 from app.models.base import utc_now
-from app.services.auth import user_access
-from app.services.data_scope import diagnosis_session, teacher_has_class_access
+from app.services.auth import AuthorizationDenied, authorize_actor, current_actor, user_access
+from app.services.data_scope import authorize_workflow_review
 from app.services.memory import digest
 
 
@@ -27,27 +27,35 @@ class MemoryConflict(ValueError):
 
 
 def require_manager(db, actor):
-    db.refresh(actor)
+    actor = authorize_actor(db, current_actor(actor), "user.manage")
     roles, _ = user_access(db, actor.id)
-    if not actor.is_active or "admin" not in roles:
-        raise PermissionError("memory maintenance requires an active administrator")
+    if "admin" not in roles:
+        raise AuthorizationDenied()
 
 
 def can_review_diagnosis(db, actor, diagnosis):
-    db.refresh(actor)
+    from app.models import DiagnosisWorkflowRun
+
+    actor = authorize_actor(db, current_actor(actor), "intervention.manage")
     roles, _ = user_access(db, actor.id)
-    if not actor.is_active:
-        return False
     if "admin" in roles:
         return True
-    session = diagnosis_session(db, diagnosis)
-    assignment = db.get(ExperimentAssignment, session.experiment_assignment_id) if session else None
-    return bool(assignment and teacher_has_class_access(db, actor, assignment.class_id))
+    workflow = db.scalar(
+        select(DiagnosisWorkflowRun).where(
+            DiagnosisWorkflowRun.diagnosis_result_id == diagnosis.id,
+            DiagnosisWorkflowRun.device_id == diagnosis.device_id,
+        )
+    )
+    if workflow is None:
+        return False
+    authorize_workflow_review(db, current_actor(actor), workflow)
+    return True
 
 
 def _scoped_diagnoses(db, actor):
     from app.models import DiagnosisWorkflowRun, TeachingAssignment
 
+    actor = authorize_actor(db, current_actor(actor), "intervention.manage")
     roles, permissions = user_access(db, actor.id)
     if not actor.is_active or not {"teacher", "admin"}.intersection(roles):
         raise PermissionError("classroom review authority is required")
@@ -209,7 +217,11 @@ def review_impact(db, actor, event, diagnosis, *, expected_version, decision, no
     return review
 
 
-def process_stop_cache(db, event):
+def clear_event_caches(db, actor, event):
+    return process_stop_cache(db, event, actor=actor)
+
+
+def process_stop_cache(db, event, *, actor):
     """Retryable outbox work. Read gates already block use while this is pending."""
     event = db.scalar(
         select(MemoryEvent)
@@ -225,9 +237,16 @@ def process_stop_cache(db, event):
         )
     )
     count = 0
-    for row in db.scalars(
-        select(AIExplanationCache).where(AIExplanationCache.fingerprint.in_(keys)).with_for_update()
-    ):
+    rows = list(
+        db.scalars(
+            select(AIExplanationCache)
+            .where(AIExplanationCache.fingerprint.in_(keys))
+            .order_by(AIExplanationCache.id)
+            .with_for_update()
+        )
+    )
+    require_manager(db, actor)
+    for row in rows:
         db.delete(row)
         count += 1
     # Old cache rows lack exact scope. Source gates protect them; do not guess ID substrings.
@@ -308,6 +327,17 @@ def execute_cleanup(db, actor, plan, *, expected_hash):
         .with_for_update()
         .execution_options(populate_existing=True)
     )
+    # Acquire all domain locks before the final authorization boundary.
+    rows = {
+        row.id: row
+        for row in db.scalars(
+            select(AIExplanationCache)
+            .where(AIExplanationCache.id.in_([t["id"] for t in plan.targets]))
+            .order_by(AIExplanationCache.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    }
     require_manager(db, actor)
     if plan.actor_user_id != actor.id:
         raise PermissionError("cleanup plan belongs to another operator")
@@ -317,12 +347,7 @@ def execute_cleanup(db, actor, plan, *, expected_hash):
         return plan
     results = []
     for target in plan.targets:
-        row = db.scalar(
-            select(AIExplanationCache)
-            .where(AIExplanationCache.id == target["id"])
-            .with_for_update()
-            .execution_options(populate_existing=True)
-        )
+        row = rows.get(target["id"])
         result = "already_absent"
         if row is not None:
             if (

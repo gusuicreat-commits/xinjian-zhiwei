@@ -58,6 +58,10 @@ class KnowledgeDocument(UuidPrimaryKeyMixin, TimestampMixin, Base):
     )
     is_test_data: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    submitted_by_user_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     source = relationship("KnowledgeSource", back_populates="documents")
     chunks = relationship("KnowledgeChunk", back_populates="document", cascade="all, delete-orphan")
     reviews = relationship(

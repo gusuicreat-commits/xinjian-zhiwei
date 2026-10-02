@@ -12,7 +12,7 @@ from app.core.config import Settings
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 
-PRIVACY_PROFILE = "provider-allowlist-v3"
+PRIVACY_PROFILE = "provider-allowlist-v4"
 SENSITIVE_KEY_PARTS = {
     "authorization",
     "apikey",
@@ -175,6 +175,13 @@ def _safe_value(
             )
         ]
     if isinstance(value, dict):
+        # A dynamic key is also outbound text. Renaming it can change a metric
+        # or collapse two evidence entries, so reject the enhancement instead.
+        for key in value:
+            if not _is_sensitive_key(key) and sanitize_text(
+                key, sensitive_values=sensitive_values, max_chars=None
+            ) != str(key):
+                raise ProviderInputError("AI_INPUT_UNSAFE_KEY")
         return {
             str(key): _safe_value(
                 item,

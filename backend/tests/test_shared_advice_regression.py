@@ -64,11 +64,24 @@ def test_detached_current_call_fails_closed(advice_task):
 
 
 def test_teacher_edit_preserved_and_later_call_cannot_replace_it(advice_task, api_context):
+    from sqlalchemy import select
     from test_current_advice import add_call
+
+    from app.models.base import utc_now
+    from app.models.classroom import User
+    from app.models.diagnosis_workflow import DiagnosisWorkflowReview
+
     db, diagnosis, workflow = advice_task
     make_ai_result(db, diagnosis, workflow, current=True)
     workflow.final_result = {**workflow.final_result, 'teacher_reviewed': True,
                              'summary': 'CURRENT TEACHER EDIT'}
+    # Current teacher prose is backed by a persisted review, as in production;
+    # a historical boolean alone must not authorize arbitrary model prose.
+    db.add(DiagnosisWorkflowReview(
+        workflow_run_id=workflow.id, reviewer_user_id=db.scalar(select(User.id)),
+        action='edit', edited_result={'summary': 'CURRENT TEACHER EDIT'},
+        created_at=utc_now(),
+    ))
     later = add_call(db, diagnosis, workflow, 'explanation:feedback:later', current=True)
     later.output_json = {**later.output_json, 'summary': 'LATER UNBOUND OUTPUT'}
     diagnosis.ai_enhancement = {'call_record_id': later.id}

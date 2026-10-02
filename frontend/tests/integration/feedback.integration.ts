@@ -224,7 +224,7 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
   ).toBe(true)
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20260930_0036')
+  expect(persisted.migration).toBe('20261002_0038')
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,
@@ -909,4 +909,49 @@ test('a minimal end-command bookmark is resolved by a real authorized receipt wi
       session.id,
     ),
   ).toBeNull()
+})
+
+test('explicit logout revokes only the current account token on the real backend', async ({
+  page,
+  backend,
+}) => {
+  await page.goto('/login')
+  await page.getByPlaceholder('学生账号', { exact: true }).fill(backend.manifest.student_username)
+  await page.getByPlaceholder('学生密码', { exact: true }).fill(backend.manifest.student_password)
+  const authenticated = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/auth/session') && response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: '验证学生账号', exact: true }).click()
+  const account = await (await authenticated).json()
+  const otherLogin = await page.request.post(`${backendURL}/api/v1/auth/session`, {
+    data: {
+      username: backend.manifest.student_username,
+      password: backend.manifest.student_password,
+    },
+  })
+  expect(otherLogin.status()).toBe(200)
+  const other = await otherLogin.json()
+  await page.getByRole('button', { name: '进入所选实验', exact: true }).click()
+  await expect(page).toHaveURL(/\/student$/)
+  const revoked = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/auth/session') && response.request().method() === 'DELETE',
+  )
+  await page.getByRole('button', { name: '退出登录', exact: true }).click()
+  expect((await revoked).status()).toBe(204)
+  await expect(page).toHaveURL(/\/login$/)
+  expect(
+    await page.evaluate(() => sessionStorage.getItem('xinjian-student-device-session')),
+  ).toBeNull()
+  const old = await page.request.get(`${backendURL}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${account.access_token}` },
+  })
+  expect(old.status()).toBe(401)
+  const valid = await page.request.get(`${backendURL}/api/v1/auth/me`, {
+    headers: { Authorization: `Bearer ${other.access_token}` },
+  })
+  expect(valid.status()).toBe(200)
+  await page.reload()
+  await expect(page).toHaveURL(/\/login$/)
 })

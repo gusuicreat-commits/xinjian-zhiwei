@@ -234,8 +234,9 @@ function navigateWithKeyboard(event: KeyboardEvent, index: number): void {
 }
 
 async function logout(): Promise<void> {
-  sessionStore.logout()
+  const revocation = sessionStore.logout()
   dashboardStore.clear()
+  await revocation
   await router.replace('/login')
 }
 

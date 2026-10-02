@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import sys
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -18,7 +19,6 @@ from shared_write_authorization import authorize_write_fixture
 from sqlalchemy import delete, select, text
 from test_teaching_materials import start
 
-from app.api.dependencies import require_review_access
 from app.evaluation.workflow_environment import LOGIN_PASSWORD, workflow_environment
 from app.models import DiagnosisResult, InterventionCase, TeachingAssignment, User
 from app.models.experiment import ExperimentTemplateVersion
@@ -171,11 +171,19 @@ def test_stale_draft_cannot_overwrite_published_content(audit_env):
         stale = editor.get(ExperimentTemplateVersion, version_id)
         published = publisher.get(ExperimentTemplateVersion, version_id)
         for state in ("pending", "approved", "published"):
-            transition(publisher, authorize_write_fixture(
-                publisher, publisher.get(User, actor_id), "teacher"), published, state)
+            transition(
+                publisher,
+                authorize_write_fixture(publisher, publisher.get(User, actor_id), "teacher"),
+                published,
+                state,
+            )
         with pytest.raises(ValueError):
-            update_content(editor, authorize_write_fixture(
-                editor, editor.get(User, actor_id), "teacher"), stale, {"objective": "unreviewed"})
+            update_content(
+                editor,
+                authorize_write_fixture(editor, editor.get(User, actor_id), "teacher"),
+                stale,
+                {"objective": "unreviewed"},
+            )
         editor.rollback()
     with env.sessions() as db:
         version = db.get(ExperimentTemplateVersion, version_id)
@@ -233,8 +241,11 @@ def test_parallel_failed_logins_are_bounded(audit_env, monkeypatch):
 
 
 @pytest.mark.parametrize("unsupported", [False, True])
+@pytest.mark.skipif(sys.platform != "linux", reason="Bounded parsing verified in Linux container")
 def test_empty_or_unsupported_docx_is_client_error(api_context, unsupported):
     import struct
+
+    from test_knowledge_api import _review_headers
 
     from app.main import app
 
@@ -249,10 +260,22 @@ def test_empty_or_unsupported_docx_is_client_error(api_context, unsupported):
     if unsupported:
         struct.pack_into("<H", raw, raw.index(b"PK\x03\x04") + 8, 99)
         struct.pack_into("<H", raw, raw.index(b"PK\x01\x02") + 10, 99)
-    app.dependency_overrides[require_review_access] = lambda: None
+    headers = _review_headers(api_context)["organizer"]
     with TestClient(app, raise_server_exceptions=False) as client:
+        source = client.post(
+            "/api/v1/knowledge/sources",
+            headers=headers,
+            json={
+                "source_key": "bad-docx",
+                "source_type": "synthetic",
+                "title": "test",
+                "is_test_data": True,
+            },
+        )
+        assert source.status_code == 201
         response = client.post(
-            "/api/v1/knowledge/sources/audit/documents/file",
+            f"/api/v1/knowledge/sources/{source.json()['id']}/documents/file",
+            headers=headers,
             json={
                 "filename": "empty.docx",
                 "content_base64": base64.b64encode(raw).decode(),
@@ -436,6 +459,7 @@ def test_concurrent_template_publications_leave_one_current(audit_env):
         assert sorted(statuses) == ["published", "superseded"]
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Bounded parsing verified in Linux container")
 def test_expanded_docx_is_bounded_before_parsing():
     from app.services.knowledge import KnowledgeServiceError
     from app.services.knowledge_files import decode_and_extract
@@ -451,12 +475,15 @@ def test_expanded_docx_is_bounded_before_parsing():
 
 @pytest.mark.parametrize("length, expected", [(100, 404), (101, 422), (150, 422)])
 def test_file_media_type_matches_internal_storage_limit(api_context, length, expected):
+    from test_knowledge_api import _review_headers
+
     from app.main import app
 
-    app.dependency_overrides[require_review_access] = lambda: None
+    headers = _review_headers(api_context)["organizer"]
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post(
             "/api/v1/knowledge/sources/missing/documents/file",
+            headers=headers,
             json={
                 "filename": "valid.txt",
                 "content_base64": base64.b64encode(b"valid text").decode(),

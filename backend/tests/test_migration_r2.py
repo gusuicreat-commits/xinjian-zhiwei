@@ -59,7 +59,7 @@ def test_empty_database_upgrade_matches_models(migration_db):
     engine, migrate = migration_db
     migrate("upgrade", "head")
     with engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260930_0036"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20261002_0038"
     migrate("check")
 
 
@@ -162,8 +162,7 @@ def test_0032_upgrade_preserves_history_and_receipts_block_destructive_downgrade
             student_user_id=user["id"],
             experiment_assignment_id=task["id"],
         )
-    migrate("upgrade", "head")
-    migrate("check")
+    migrate("upgrade", "20260930_0036")
     with engine.begin() as conn:
         table = Table("diagnosis_results", MetaData(), autoload_with=conn)
         assert dict(conn.execute(table.select()).mappings().one()) == before
@@ -181,6 +180,8 @@ def test_0032_upgrade_preserves_history_and_receipts_block_destructive_downgrade
     with engine.connect() as conn:
         assert conn.scalar(text("SELECT count(*) FROM diagnosis_checks")) == 1
         assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260930_0036"
+    migrate("upgrade", "head")
+    migrate("check")
 
 
 def test_login_limit_migration_preserves_history_and_live_security_window(migration_db):
@@ -188,8 +189,7 @@ def test_login_limit_migration_preserves_history_and_live_security_window(migrat
     migrate("upgrade", "20260927_0035")
     with engine.begin() as conn:
         user = _seed(conn, "users")
-    migrate("upgrade", "head")
-    migrate("check")
+    migrate("upgrade", "20260930_0036")
     with engine.begin() as conn:
         table = Table("users", MetaData(), autoload_with=conn)
         assert dict(conn.execute(table.select()).mappings().one()) == user

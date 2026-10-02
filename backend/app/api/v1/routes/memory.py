@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.diagnosis.schemas import StrictModel
 from app.models import DiagnosisResult, MemoryCleanupPlan, MemoryEvent, User
 from app.services import memory_governance as service
+from app.services.auth import AuthorizationDenied
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 Database = Annotated[Session, Depends(get_db)]
@@ -31,6 +32,9 @@ class CleanupExecution(StrictModel):
 def _run(db, action):
     try:
         return action()
+    except AuthorizationDenied:
+        db.rollback()
+        raise
     except PermissionError as exc:
         db.rollback()
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -86,6 +90,8 @@ def review_impact(
     diagnosis = db.get(DiagnosisResult, diagnosis_id)
     if diagnosis is None or not service.can_review_diagnosis(db, actor, diagnosis):
         raise HTTPException(status_code=404, detail="diagnosis not found in current scope")
+    # End preflight locks before waiting for domain locks; service reauthorizes.
+    db.rollback()
     review = _run(
         db,
         lambda: service.review_impact(
@@ -102,8 +108,7 @@ def review_impact(
 
 @router.post("/events/{event_id}/clear-caches")
 def clear_event_caches(event_id: str, db: Database, actor: Actor):
-    _run(db, lambda: service.require_manager(db, actor))
-    return _run(db, lambda: service.process_stop_cache(db, _event(db, event_id)))
+    return _run(db, lambda: service.clear_event_caches(db, actor, _event(db, event_id)))
 
 
 @router.post("/cleanup-plans", status_code=201)
@@ -128,6 +133,7 @@ def execute_cleanup_plan(plan_id: str, payload: CleanupExecution, db: Database, 
     plan = db.get(MemoryCleanupPlan, plan_id)
     if plan is None:
         raise HTTPException(status_code=404, detail="cleanup plan not found")
+    db.rollback()  # release preflight authorization before waiting for plan lock
     return service.cleanup_manifest(
         _run(db, lambda: service.execute_cleanup(db, actor, plan, expected_hash=payload.plan_hash))
     )

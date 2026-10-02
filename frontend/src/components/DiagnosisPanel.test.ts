@@ -629,31 +629,50 @@ it('keeps saved AI provenance separate from current disabled configuration and e
   ).toBeDefined()
 })
 
-it('keeps unknown, conflicts and all required limitations visible before supporting records are opened', () => {
-  const wrapper = mountPanel({
-    diagnosis: { ...diagnosis, explanation: { limitations: ['规则限制一', '规则限制二'] } },
-    workflow: {
-      ...workflow,
-      final_result: {
-        summary: '工作流说明',
-        limitations: ['工作流限制一', '工作流限制二'],
-        ai_reasoning: { status: 'unknown', conflict: true, missing_evidence: ['独立电压测量'] },
+it.each([false, true])(
+  'keeps unknown and unverified requests visible (structured=%s)',
+  (structured) => {
+    const wrapper = mountPanel({
+      diagnosis: { ...diagnosis, explanation: { limitations: ['规则限制一', '规则限制二'] } },
+      workflow: {
+        ...workflow,
+        final_result: {
+          summary: '工作流说明',
+          limitations: ['工作流限制一', '工作流限制二'],
+          ai_reasoning: {
+            status: 'unknown',
+            conflict: true,
+            ...(structured
+              ? {
+                  verification_requests: [
+                    {
+                      text: '独立电压测量',
+                      source: 'model' as const,
+                      status: 'unverified' as const,
+                    },
+                  ],
+                }
+              : { missing_evidence: ['独立电压测量'] }),
+          },
+        },
       },
-    },
-  })
-  const focus = wrapper.get('[aria-label="现在该做什么"]')
-  for (const value of [
-    '规则限制一',
-    '规则限制二',
-    '工作流限制一',
-    '工作流限制二',
-    '仍为未知',
-    '证据存在冲突',
-    '独立电压测量',
-  ])
-    expect(focus.text()).toContain(value)
-  expect(focus.element.closest('details')).toBeNull()
-})
+    })
+    const focus = wrapper.get('[aria-label="现在该做什么"]')
+    for (const value of [
+      '规则限制一',
+      '规则限制二',
+      '工作流限制一',
+      '工作流限制二',
+      '仍为未知',
+      '证据存在冲突',
+      '独立电压测量',
+    ])
+      expect(focus.text()).toContain(value)
+    expect(focus.text()).toContain('建议核验（尚未确认）：独立电压测量')
+    expect(focus.text()).not.toContain('尚缺：')
+    expect(focus.element.closest('details')).toBeNull()
+  },
+)
 
 it('does not show a feedback record for another selected problem', async () => {
   const wrapper = mountPanel({

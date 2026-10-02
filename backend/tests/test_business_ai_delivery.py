@@ -33,8 +33,14 @@ def test_one_model_attempt_is_charged_once_and_attributed_to_both_problems(api_c
         reservation = db.query(AIUsageReservation).one()
         assert set(reservation.attribution["episode_ids"]) == {i["id"] for i in result["issues"]}
         assert all(db.get(DiagnosisEpisode, i["id"]).ai_call_count == 1 for i in result["issues"])
-        with pytest.raises(AIQuotaDenied):
-            governor.complete_json(Provider(), system_prompt="s", user_prompt="u")
+        replay = governor.complete_json(Provider(), system_prompt="s", user_prompt="u")
+        assert replay.content == "{}"
+        independent = GovernedAIInvocation(
+            db, diagnosis, settings, call_stage="synthetic",
+            operation_key="explicit-new-business-operation",
+        )
+        with pytest.raises(AIQuotaDenied, match="EPISODE_CALL_LIMIT"):
+            independent.complete_json(Provider(), system_prompt="s", user_prompt="u")
         assert db.query(AIUsageReservation).count() == 1
 
 

@@ -51,6 +51,7 @@ def _worker(
             governor = GovernedAIInvocation(
                 db, diagnosis, Settings(_env_file=None, **settings_values),
                 call_stage="concurrent-test", episode=None if infer_episode else episode,
+                operation_key=f"quota-independent:{os.getpid()}",
             )
             messages.put(("ready", None))
             if not start.wait(15):

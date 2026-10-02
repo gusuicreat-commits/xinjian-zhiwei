@@ -89,7 +89,7 @@ def test_evidence_review_request_and_audit_keep_versioned_contract(evidence_revi
     provider, _, _, record, _, _ = evidence_review_run
     system, user = provider.requests[0]
     document = json.loads(user)
-    assert document["prompt_version"] == record.prompt_version == "evidence-reasoning-v2.8"
+    assert document["prompt_version"] == record.prompt_version == "evidence-reasoning-v2.9"
     assert record.prompt_hash == hashlib.sha256(f"{system}\n{user}".encode()).hexdigest()
     assert set(document) == {
         "prompt_version", "error_type", "device_status", "experiment_context",
@@ -148,7 +148,8 @@ def test_competing_reasoning_record_cannot_bypass_current_policy(evidence_review
     assert hidden
     assert mode == "deterministic_fallback"
     assert replay != result
-    assert len(provider.requests) == 2  # One competing attempt, never a recovery re-call.
+    # Durable operation replay does not send a competing attempt.
+    assert len(provider.requests) == 1
     db.refresh(record)
     assert record.input_snapshot == {"legacy": True}
     assert record.output_json == result.model_dump(mode="json")

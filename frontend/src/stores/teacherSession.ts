@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
+import { revokeUserSession } from '@/api/auth'
 import { createTeacherSession } from '@/api/teacher'
 import { REVIEW_MODE, reviewTeacherSession } from '@/review/fixtures'
 import { useTeacherDashboardStore } from './teacherDashboard'
@@ -37,7 +38,9 @@ export const useTeacherSessionStore = defineStore('teacher-session', () => {
   const errorMessage = ref('')
 
   async function login(username: string, password: string): Promise<void> {
-    logout()
+    const previousToken = accessToken.value
+    resetLocal()
+    if (previousToken && !REVIEW_MODE) void revokeUserSession(previousToken)
     const request = revision
     loading.value = true
     errorMessage.value = ''
@@ -47,7 +50,10 @@ export const useTeacherSessionStore = defineStore('teacher-session', () => {
         return
       }
       const result = await createTeacherSession(username, password)
-      if (request !== revision) return
+      if (request !== revision) {
+        await revokeUserSession(result.access_token)
+        return
+      }
       session.value = result
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session.value))
     } catch (error) {
@@ -62,7 +68,7 @@ export const useTeacherSessionStore = defineStore('teacher-session', () => {
     }
   }
 
-  function logout(): void {
+  function resetLocal(): void {
     revision += 1
     loading.value = false
     useTeacherDashboardStore().clear()
@@ -71,5 +77,15 @@ export const useTeacherSessionStore = defineStore('teacher-session', () => {
     sessionStorage.removeItem(STORAGE_KEY)
   }
 
-  return { session, accessToken, loading, errorMessage, login, logout }
+  async function logout(): Promise<void> {
+    const token = accessToken.value
+    resetLocal()
+    const request = revision
+    const confirmed = !token || REVIEW_MODE || await revokeUserSession(token)
+    if (!confirmed && request === revision) {
+      errorMessage.value = '本机已退出，服务端退出未确认。'
+    }
+  }
+
+  return { session, accessToken, loading, errorMessage, login, logout, resetLocal }
 })

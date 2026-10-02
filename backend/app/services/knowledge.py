@@ -14,6 +14,7 @@ from app.models.knowledge import (
     KnowledgeReview,
     KnowledgeSource,
 )
+from app.models.knowledge_access import KnowledgeSourceGrant
 from app.schemas.knowledge import (
     KnowledgeChunkResponse,
     KnowledgeChunkWorkspaceItem,
@@ -26,7 +27,14 @@ from app.schemas.knowledge import (
     KnowledgeTextImportRequest,
     KnowledgeWorkspaceResponse,
 )
-from app.services.auth import ActorContext, authorize_actor
+from app.services.auth import ActorContext, AuthorizationDenied
+from app.services.knowledge_access import (
+    audit_workspace,
+    document_scope,
+    source_scope,
+    visible_sources,
+    workspace_actor,
+)
 from app.services.provenance import derive_test_flag
 
 FORMAL_SOURCE_TYPES = {
@@ -144,7 +152,10 @@ def _document_response(
     )
 
 
-def create_source(db: Session, payload: KnowledgeSourceCreate) -> KnowledgeSourceResponse:
+def create_source(
+    db: Session, payload: KnowledgeSourceCreate, *, actor_context=None
+) -> KnowledgeSourceResponse:
+    workspace_actor(db, actor_context, "organize")
     if not payload.is_test_data:
         if payload.source_type not in FORMAL_SOURCE_TYPES:
             raise KnowledgeServiceError(
@@ -171,6 +182,20 @@ def create_source(db: Session, payload: KnowledgeSourceCreate) -> KnowledgeSourc
     )
     db.add(source)
     try:
+        db.flush()
+        db.add(
+            KnowledgeSourceGrant(
+                source_id=source.id, user_id=actor_context.user_id, capability="organize"
+            )
+        )
+        audit_workspace(
+            db,
+            actor_context,
+            "source_created",
+            "knowledge_source",
+            source.id,
+            is_test_data=source.is_test_data,
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -181,8 +206,16 @@ def create_source(db: Session, payload: KnowledgeSourceCreate) -> KnowledgeSourc
     return _source_response(source)
 
 
-def list_sources(db: Session) -> list[KnowledgeSourceResponse]:
-    sources = db.scalars(select(KnowledgeSource).order_by(KnowledgeSource.created_at.desc())).all()
+def list_sources(
+    db: Session, *, actor_context=None, after_id="", limit=100
+) -> list[KnowledgeSourceResponse]:
+    allowed = visible_sources(db, actor_context)
+    sources = db.scalars(
+        select(KnowledgeSource)
+        .where(KnowledgeSource.id.in_(allowed), KnowledgeSource.id > after_id)
+        .order_by(KnowledgeSource.id)
+        .limit(min(max(limit, 1), 100))
+    ).all()
     return [_source_response(source) for source in sources]
 
 
@@ -191,8 +224,11 @@ def import_text_document(
     source_id: str,
     payload: KnowledgeTextImportRequest,
     settings: Settings,
+    *,
+    actor_context=None,
 ) -> KnowledgeDocumentResponse:
-    source = db.get(KnowledgeSource, source_id)
+    source = source_scope(db, actor_context, source_id)
+    payload = payload.model_copy(update={"organizer_ref": actor_context.user_id})
     if source is None:
         raise KnowledgeServiceError(404, "KNOWLEDGE_SOURCE_NOT_FOUND", "Knowledge source not found")
     if payload.media_type not in {
@@ -303,6 +339,14 @@ def import_text_document(
                 },
             )
         )
+    audit_workspace(
+        db,
+        actor_context,
+        "document_import",
+        "knowledge_document",
+        document.id,
+        is_test_data=document.is_test_data,
+    )
     db.commit()
     document = db.scalar(
         select(KnowledgeDocument)
@@ -316,7 +360,10 @@ def import_text_document(
     return _document_response(document)
 
 
-def get_document_workspace(db: Session, document_id: str) -> KnowledgeWorkspaceResponse:
+def get_document_workspace(
+    db: Session, document_id: str, *, actor_context=None
+) -> KnowledgeWorkspaceResponse:
+    document_scope(db, actor_context, document_id, "view")
     document = db.scalar(
         select(KnowledgeDocument)
         .where(KnowledgeDocument.id == document_id)
@@ -348,10 +395,15 @@ def get_document_workspace(db: Session, document_id: str) -> KnowledgeWorkspaceR
     )
 
 
-def _editable_chunk(db: Session, chunk_id: str) -> KnowledgeChunk:
+def _editable_chunk(db: Session, chunk_id: str, actor_context) -> KnowledgeChunk:
+    if actor_context is None:
+        raise AuthorizationDenied(401)
+    document_id = db.scalar(select(KnowledgeChunk.document_id).where(KnowledgeChunk.id == chunk_id))
+    document_scope(db, actor_context, document_id)
     chunk = db.scalar(
         select(KnowledgeChunk)
         .where(KnowledgeChunk.id == chunk_id)
+        .execution_options(populate_existing=True)
         .options(joinedload(KnowledgeChunk.document))
     )
     if chunk is None:
@@ -371,8 +423,9 @@ def update_chunk(
     *,
     content: Optional[str],
     metadata: Optional[dict[str, Any]],
+    actor_context=None,
 ) -> KnowledgeWorkspaceResponse:
-    chunk = _editable_chunk(db, chunk_id)
+    chunk = _editable_chunk(db, chunk_id, actor_context)
     if content is not None:
         normalized = _normalize_text(content)
         if not normalized:
@@ -381,10 +434,11 @@ def update_chunk(
         chunk.content_hash = _hash_text(normalized)
         chunk.char_count = len(normalized)
     if metadata is not None:
-        chunk.metadata_json = metadata
+        chunk.metadata_json = {**metadata, "organizer_ref": actor_context.user_id}
     document_id = chunk.document_id
+    audit_workspace(db, actor_context, "chunk_update", "knowledge_chunk", chunk.id)
     db.commit()
-    return get_document_workspace(db, document_id)
+    return get_document_workspace(db, document_id, actor_context=actor_context)
 
 
 def _reindex_chunks(db: Session, chunks: list[KnowledgeChunk]) -> None:
@@ -399,8 +453,10 @@ def split_chunk_at(
     db: Session,
     chunk_id: str,
     offset: int,
+    *,
+    actor_context=None,
 ) -> KnowledgeWorkspaceResponse:
-    chunk = _editable_chunk(db, chunk_id)
+    chunk = _editable_chunk(db, chunk_id, actor_context)
     if offset >= len(chunk.content):
         raise KnowledgeServiceError(422, "INVALID_CHUNK_SPLIT", "Split offset is outside content")
     left = chunk.content[:offset].strip()
@@ -426,14 +482,27 @@ def split_chunk_at(
     chunks.insert(position, new_chunk)
     db.add(new_chunk)
     _reindex_chunks(db, chunks)
+    audit_workspace(db, actor_context, "chunks_changed", "knowledge_document", document.id)
     db.commit()
-    return get_document_workspace(db, document.id)
+    return get_document_workspace(db, document.id, actor_context=actor_context)
 
 
 def merge_chunks(
     db: Session,
     chunk_ids: list[str],
+    *,
+    actor_context=None,
 ) -> KnowledgeWorkspaceResponse:
+    if not chunk_ids:
+        raise KnowledgeServiceError(422, "EMPTY_CHUNKS", "Select chunks to merge")
+    documents = list(
+        db.scalars(select(KnowledgeChunk.document_id).where(KnowledgeChunk.id.in_(chunk_ids)))
+    )
+    # A merge is one document operation. Reject mixed/missing targets uniformly
+    # before acquiring any actor lock, avoiding source -> actor -> source cycles.
+    if len(documents) != len(set(chunk_ids)) or len(set(documents)) != 1:
+        raise KnowledgeServiceError(404, "KNOWLEDGE_CHUNK_NOT_FOUND", "A chunk was not found")
+    document_scope(db, actor_context, documents[0])
     chunks = list(
         db.scalars(
             select(KnowledgeChunk)
@@ -464,12 +533,13 @@ def merge_chunks(
         db.delete(item)
     db.flush()
     _reindex_chunks(db, all_chunks)
+    audit_workspace(db, actor_context, "chunks_merged", "knowledge_document", document.id)
     db.commit()
-    return get_document_workspace(db, document.id)
+    return get_document_workspace(db, document.id, actor_context=actor_context)
 
 
-def delete_chunk(db: Session, chunk_id: str) -> KnowledgeWorkspaceResponse:
-    chunk = _editable_chunk(db, chunk_id)
+def delete_chunk(db: Session, chunk_id: str, *, actor_context=None) -> KnowledgeWorkspaceResponse:
+    chunk = _editable_chunk(db, chunk_id, actor_context)
     document = chunk.document
     chunks = sorted(document.chunks, key=lambda item: item.chunk_index)
     if len(chunks) == 1:
@@ -483,19 +553,21 @@ def delete_chunk(db: Session, chunk_id: str) -> KnowledgeWorkspaceResponse:
     db.delete(chunk)
     db.flush()
     _reindex_chunks(db, chunks)
+    audit_workspace(db, actor_context, "chunks_changed", "knowledge_document", document.id)
     db.commit()
-    return get_document_workspace(db, document.id)
+    return get_document_workspace(db, document.id, actor_context=actor_context)
 
 
 def review_document(
-    db: Session, document_id: str, payload: KnowledgeReviewRequest,
-    *, actor_context: ActorContext | None = None,
+    db: Session,
+    document_id: str,
+    payload: KnowledgeReviewRequest,
+    *,
+    actor_context: ActorContext | None = None,
 ) -> KnowledgeReviewResponse:
-    db.scalar(select(KnowledgeDocument.id).where(KnowledgeDocument.id == document_id)
-              .with_for_update())
-    actor = authorize_actor(db, actor_context,
-                            "knowledge.review.approve" if payload.reviewer_role == "formal_approver"
-                            else "knowledge.organize")
+    capability = "review" if payload.reviewer_role == "formal_approver" else "organize"
+    document_scope(db, actor_context, document_id, capability)
+    actor = workspace_actor(db, actor_context, capability)
     payload = payload.model_copy(update={"reviewer_ref": actor.id})
     document = db.scalar(
         select(KnowledgeDocument)
@@ -512,6 +584,12 @@ def review_document(
             404, "KNOWLEDGE_DOCUMENT_NOT_FOUND", "Knowledge document not found"
         )
     required_role = REVIEW_TRANSITIONS.get((document.review_status, payload.decision))
+    if (
+        document.review_status == "pending"
+        and payload.decision == "draft"
+        and document.submitted_by_user_id is None
+    ):
+        required_role = "organizer"  # legacy unverified submission must be explicitly resubmitted
     if required_role is None:
         raise KnowledgeServiceError(
             409,
@@ -524,8 +602,13 @@ def review_document(
             "KNOWLEDGE_REVIEW_ROLE_MISMATCH",
             f"Transition requires reviewer role {required_role}",
         )
-    metadata = document.chunks[0].metadata_json if document.chunks else {}
-    organizer_ref = metadata.get("organizer_ref")
+    organizer_ref = document.submitted_by_user_id
+    if payload.reviewer_role == "formal_approver" and organizer_ref is None:
+        raise KnowledgeServiceError(
+            409,
+            "KNOWLEDGE_SUBMITTER_UNVERIFIED",
+            "A current organizer must submit this document first",
+        )
     if (
         payload.reviewer_role == "formal_approver"
         and organizer_ref
@@ -543,6 +626,7 @@ def review_document(
             "Authorization scope must be recorded before approval",
         )
     if payload.reviewer_role == "organizer" and payload.decision == "pending":
+        document.submitted_by_user_id = actor.id
         for chunk in document.chunks:
             chunk.metadata_json = {
                 **chunk.metadata_json,
@@ -571,25 +655,27 @@ def review_document(
     )
 
 
-def get_knowledge_status(db: Session, settings: Settings) -> KnowledgeStatusResponse:
-    source_count = db.scalar(select(func.count()).select_from(KnowledgeSource)) or 0
-    document_count = db.scalar(select(func.count()).select_from(KnowledgeDocument)) or 0
-    pending_review_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(KnowledgeCase)
-            .where(KnowledgeCase.review_status.in_(("draft", "pending")))
-        )
-        or 0
-    )
-    approved_chunk_count = (
-        db.scalar(
-            select(func.count())
-            .select_from(KnowledgeChunk)
-            .where(KnowledgeChunk.review_status == "approved")
-        )
-        or 0
-    )
+def get_global_knowledge_status(
+    db: Session, settings: Settings, *, actor_context=None
+) -> KnowledgeStatusResponse:
+    # Case availability belongs to the diagnosis contract; workspace totals must
+    # use the same explicit source grants as workspace APIs.
+    from app.services.auth import authorize_actor, user_access
+    from app.services.knowledge_access import CAPABILITIES
+
+    workspace_counts = None
+    if isinstance(actor_context, ActorContext):
+        authorize_actor(db, actor_context, "dashboard.read")
+        roles, permissions = user_access(db, actor_context.user_id)
+        if any(
+            role in roles and permission in permissions
+            for permission, role in CAPABILITIES.values()
+        ):
+            workspace_counts = get_knowledge_status(db, settings, actor_context=actor_context)
+    source_count = workspace_counts.source_count if workspace_counts else 0
+    document_count = workspace_counts.document_count if workspace_counts else 0
+    approved_chunk_count = workspace_counts.approved_chunk_count if workspace_counts else 0
+    pending_review_count = workspace_counts.pending_review_count if workspace_counts else 0
     case_count = db.scalar(select(func.count()).select_from(KnowledgeCase)) or 0
     approved_case_count = (
         db.scalar(
@@ -609,6 +695,11 @@ def get_knowledge_status(db: Session, settings: Settings) -> KnowledgeStatusResp
         notice = "案例已同步，但尚无通过审核的非测试结构化案例。"
     else:
         notice = "已启用基于实验类型、错误类型和证据的结构化案例匹配。"
+    notice += (
+        " 工作区统计仅包含当前授权资料。"
+        if workspace_counts
+        else " 工作区资料访问受限，未显示其统计。"
+    )
     return KnowledgeStatusResponse(
         content_available=content_available,
         source_count=source_count,
@@ -618,4 +709,54 @@ def get_knowledge_status(db: Session, settings: Settings) -> KnowledgeStatusResp
         case_count=case_count,
         approved_case_count=approved_case_count,
         notice=notice,
+    )
+
+
+def get_knowledge_status(
+    db: Session, settings: Settings, *, actor_context=None
+) -> KnowledgeStatusResponse:
+    allowed = visible_sources(db, actor_context)
+    docs = select(KnowledgeDocument.id).where(KnowledgeDocument.source_id.in_(allowed))
+    source_count = (
+        db.scalar(
+            select(func.count()).select_from(KnowledgeSource).where(KnowledgeSource.id.in_(allowed))
+        )
+        or 0
+    )
+    document_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(KnowledgeDocument)
+            .where(KnowledgeDocument.id.in_(docs))
+        )
+        or 0
+    )
+    approved = (
+        db.scalar(
+            select(func.count())
+            .select_from(KnowledgeChunk)
+            .where(KnowledgeChunk.document_id.in_(docs), KnowledgeChunk.review_status == "approved")
+        )
+        or 0
+    )
+    pending = (
+        db.scalar(
+            select(func.count())
+            .select_from(KnowledgeDocument)
+            .where(
+                KnowledgeDocument.id.in_(docs),
+                KnowledgeDocument.review_status.in_(["draft", "pending"]),
+            )
+        )
+        or 0
+    )
+    return KnowledgeStatusResponse(
+        source_count=source_count,
+        document_count=document_count,
+        approved_chunk_count=approved,
+        pending_review_count=pending,
+        case_count=0,
+        approved_case_count=0,
+        content_available=False,
+        notice="仅统计当前授权资料；尚未评估诊断案例的可用性。",
     )

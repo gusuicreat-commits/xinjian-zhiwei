@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     app_name: str = "芯鉴知微 API"
     app_version: str = "1.0.0"
-    app_env: str = "development"
+    app_env: Literal["development", "test", "staging", "production"] = "development"
     api_v1_prefix: str = "/api/v1"
     log_level: str = "INFO"
     api_cors_origins: str = (
@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     knowledge_chunk_overlap_chars: int = 150
     knowledge_max_document_chars: int = 500_000
     knowledge_max_file_bytes: int = 10_485_760
+    knowledge_request_metadata_bytes: int = Field(default=65_536, ge=1024, le=1_048_576)
+    knowledge_parser_memory_bytes: int = Field(default=268_435_456, ge=67_108_864)
+    knowledge_parser_cpu_seconds: int = Field(default=5, ge=1, le=60)
+    knowledge_parser_wall_seconds: int = Field(default=10, ge=1, le=120)
+    knowledge_parser_max_pages: int = Field(default=200, ge=1, le=2000)
+    knowledge_parser_concurrency: int = Field(default=2, ge=1, le=16)
     ai_transport: Literal["disabled", "openai-compatible"] = "openai-compatible"
     ai_provider: Optional[str] = "deepseek"
     ai_base_url: Optional[str] = "https://api.deepseek.com"
@@ -48,6 +54,8 @@ class Settings(BaseSettings):
     ai_api_key: Optional[str] = None
     ai_thinking_enabled: bool = False
     ai_timeout_seconds: float = 30.0
+    ai_total_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
+    ai_response_max_bytes: int = Field(default=1048576, ge=1024, le=4194304)
     ai_max_retries: int = 1
     ai_prompt_version: str = "phase9.5-v3"
     ai_require_knowledge: bool = True
@@ -328,6 +336,14 @@ class Settings(BaseSettings):
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]
 
+    @field_validator("app_env", mode="before")
+    @classmethod
+    def normalize_environment(cls, value):
+        if isinstance(value, str):
+            value = value.strip().lower()
+            return "production" if value == "prod" else value
+        return value
+
     @model_validator(mode="after")
     def validate_checkpoint_backend(self) -> "Settings":
         if self.diagnosis_checkpoint_backend == "postgres" and not self.diagnosis_checkpoint_dsn:
@@ -342,7 +358,7 @@ class Settings(BaseSettings):
             raise ValueError("DIAGNOSIS_CHECKPOINT_DSN must be a Psycopg postgresql:// DSN")
         if (
             self.diagnosis_workflow_enabled
-            and self.app_env.lower() in {"production", "prod"}
+            and self.app_env not in {"development", "test"}
             and self.diagnosis_checkpoint_backend != "postgres"
         ):
             raise ValueError(

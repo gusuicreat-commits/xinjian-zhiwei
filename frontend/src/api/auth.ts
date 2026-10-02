@@ -24,3 +24,14 @@ export async function getMyClasses(token: string): Promise<ClassroomSummary[]> {
   })
   return response.data
 }
+
+// A 401 means this token is already unusable. Other failures remain unconfirmed.
+export async function revokeUserSession(token: string): Promise<boolean> {
+  if (!token) return true
+  try {
+    await apiClient.delete('/api/v1/auth/session', { headers: bearer(token) })
+    return true
+  } catch (error) {
+    return (error as { response?: { status?: number } }).response?.status === 401
+  }
+}

@@ -85,6 +85,8 @@
 - 结束阻止新操作，当前仍有权限的原学生可确认原回执；恢复不得消费新操作。迟到上报保留原采集归属，不归给下一位学生。课后历史需单独本人授权。
 - 撤权在请求及长任务交付时重验；反馈锁、生命周期锁、旧模板发布锁、工作流恢复行锁等待后，写入/继续前复用完整授权。新反馈、pending恢复、applied重放均适用；登录失效401、资格/权限不足403，不伪装为可重试503。审计保留原执行人，详情/列表/搜索/导出/缓存/通知/错误响应均不得泄露无权内容。
 
+主动退出必须撤销服务端当前登录，重复退出不重复审计、不撤销其他会话；本地状态重置与主动退出分开。记忆复核、缓存清理和计划执行在目标锁后重验真实身份与当前范围；本地维护CLI须显式指定当前管理员。知识来源工作区用真实账号与逐来源整理/审核授权，旧资料不猜归属；提交人与批准人使用服务器身份判定，元数据不能自证权限。
+
 ### 3.2 设备记录与事实语义（BR-EVIDENCE）
 
 - 记录来源、会话、发生/接收时间、时间可信度、单位、测量语义、测试/模拟/重放性质。原始载荷与版本化规范值分开；服务器接收时间不冒充实测时间，设备内容不能伪造服务器记录的时间质量。
@@ -151,6 +153,9 @@
 
 <a id="ai-boundary"></a>
 ## 4. AI调用、外发和预算（BR-AI）
+
+- 外发检查同时覆盖动态键和值；含敏感信息的动态键取消增强，不能仅改键导致引用碰撞。当前事实摘要由服务端投影，模型补充建议独立标记待核验；旧缓存、Checkpoint和成功重放也走当前合同。
+- 逻辑操作与物理尝试分开持久化：冻结操作身份、输入指纹和版本，发送前提交状态与额度；成功只重放，发送结果未知禁止自动重发/退款。等待Provider不持业务行锁。统一总期限及响应字节预算，429遵守Retry-After，确定请求错误不盲重试。
 
 - 推理、解释、案例润色每次实际尝试共用治理入口：开关、次数、输入长度、原子额度预留和外发许可；各入口有最小字段白名单，共用文本清洗。模型关闭不依赖外发投影构造，投影失败不拖垮确定性诊断。
 - 清洗覆盖日志、标签、单位、反馈、嵌套知识及任意字段名；已标敏感的非空短字符串不因长度忽略。数值保留类型，不全局替换数字；不得给任意`id`豁免。引用须同时验证路径、真实来源、允许值和关联性；必需引用与秘密冲突则取消增强，不偷改证据编号。
@@ -270,6 +275,10 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 | OPS/R7、R8：安全扫描与运行就绪 | `scripts/security_scan.sh`→`security_scan.py`、`health.py::readiness` | 扫描输出仅路径/行号/规则，错误非通过；Compose使用ready探针，独立容器断库/恢复验收；`test_security_scan_contract.py`及当次容器报告。 |
 | AUTH：持久化归属/当前授权 | `services/data_scope.py`、`api/dependencies.py` | 仪表盘/诊断/解释/反馈/工单/读取；换学生、跨班、多角色、无/多会话、未知归属；`test_student_scope_r2.py`、`test_diagnosis_scope_r2.py`、`test_business_identity.py` |
 | AUTH：反馈等待后重验 | `api/dependencies.py::revalidate_student_access`由`student_feedback`/`diagnosis_workflow`调用 | 新反馈、pending恢复、applied重放、反馈/生命周期/恢复行锁；`test_feedback_authorization_wait.py`、`test_feedback_recovery.py`、`test_feedback_reliability.py` |
+| AUTH：退出与记忆最终授权 | `services/auth.py::revoke_session`、`memory_governance.py` | 主动退出/迟到登录、复核/清理/CLI、撤权先提交/写入先提交；`test_session_security_repair.py`、`test_security_repair_postgres.py`、浏览器真实退出。 |
+| KNOWLEDGE：来源范围 | `services/knowledge_access.py` | 列表/统计/工作区/导入/编辑/批量合并/审核/授撤权；共享token拒绝、跨来源无副作用、旧资料不猜归属、审核身份不可伪造；`test_knowledge_scope_repair.py`、`test_security_repair_postgres.py`。 |
+| AI：逻辑操作与当前事实 | `ai/governance.py`、`clients.py`、`output_contract.py` | 推理/解释/润色、发送前后中断、成功重放、未知费用、键名泄密、旧缓存当前投影；`test_ai_operation*`、`test_ai_transport_lifecycle.py`、`test_ai_semantic_delivery.py`。 |
+| OPS：配置和异常边界 | `core/config.py`、`api/http_boundary.py` | 环境拼写错误、staging内存checkpoint拒绝、Compose默认与显式覆盖、500安全头和追踪ID；`test_runtime_boundary_repair.py`。 |
 | AUTH：共享登录准入 | `services/login_limits.py`、`services/auth.py`、`api/v1/routes/auth.py` | 在途+失败原子限额、成功不清其他在途、过期不签令牌、独立进程共享、容量与迁移回撤；`test_audit_remediation.py`、`test_migration_r2.py` |
 | SESSION：独占、释放、回执 | `services/experiment_sessions.py` | 开始/学生结束/教师列表详情释放/原命令确认；双占用、撤权、原班归属、旧会话不关新会话；`test_business_sessions*.py`、`test_session_release.py`、`test_simulation_fixes_postgres.py` |
 | EVIDENCE：摄入校验/容量/共享限额 | `services/device_protocol.py`、`services/device_ingest.py`、`api/v1/routes/device.py::BoundedTelemetryRoute`、`schemas/device.py` | ingest/logs/readings/heartbeat及协议脚本；半批、重传/乱序、单位、缺值、NaN/Inf、整数极值、流式大小、并发最后额度；`test_ingestion*.py`、`test_development_gates.py` |

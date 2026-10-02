@@ -111,7 +111,7 @@ def test_late_polish_cannot_overwrite_review_or_new_polish(
                     response = client.post(
                         f"/api/v1/knowledge/case-drafts/{draft_id}/ai-polish", headers=headers
                     )
-                    assert response.status_code == 200
+                    assert response.status_code == 409  # same version is one logical operation
                 else:
                     with ctx["session_factory"]() as db:
                         teacher = db.query(User).filter_by(username="own-teacher").one()
@@ -133,9 +133,27 @@ def test_late_polish_cannot_overwrite_review_or_new_polish(
     InterleavedProviderSingleton = InterleavedProvider()
     app.dependency_overrides[get_settings] = lambda: Settings(ai_enabled=True)
     response = client.post(f"/api/v1/knowledge/case-drafts/{draft_id}/ai-polish", headers=headers)
-    assert response.status_code == (403 if concurrent_action == "revoke_scope" else 409)
+    expected_status = 200 if concurrent_action == "polish" else (
+        403 if concurrent_action == "revoke_scope" else 409
+    )
+    assert response.status_code == expected_status
     with ctx["session_factory"]() as db:
         draft = db.get(KnowledgeCaseDraft, draft_id)
+        if concurrent_action == "polish":
+            from app.models.ai_usage_reservation import AIUsageReservation
+
+            assert db.query(AIUsageReservation).count() == 1
+            assert draft.version_no == 2
+            db.commit()
+            # A completed new draft version is a distinct authorized action.
+            next_result = client.post(
+                f"/api/v1/knowledge/case-drafts/{draft_id}/ai-polish", headers=headers
+            )
+            assert next_result.status_code == 200
+            db.expire_all()
+            assert db.get(KnowledgeCaseDraft, draft_id).version_no == 3
+            assert db.query(AIUsageReservation).count() == 2
+            return
         assert (
             draft.status,
             draft.quality_checks,

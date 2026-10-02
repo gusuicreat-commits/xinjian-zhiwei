@@ -1,9 +1,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user, require_review_access
+from app.api.dependencies import get_current_user
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.knowledge.case_drafting import (
@@ -55,7 +56,6 @@ from app.services.knowledge_files import decode_and_extract
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
-ReviewAccess = Annotated[None, Depends(require_review_access)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AppSettings = Annotated[Settings, Depends(get_settings)]
 
@@ -81,6 +81,7 @@ def _require_case_reviewer(db: Session, actor: User) -> set[str]:
 
 
 _reviewable_case_drafts = reviewable_case_drafts
+
 
 def _require_case_scope(db: Session, actor: User, roles: set[str], draft_id: str) -> None:
     if (
@@ -275,24 +276,26 @@ def withdraw_knowledge_case(
 
 @router.get("/status", response_model=KnowledgeStatusResponse)
 def read_knowledge_status(
-    _: ReviewAccess, db: DatabaseSession, settings: AppSettings
+    actor: CurrentUser, db: DatabaseSession, settings: AppSettings
 ) -> KnowledgeStatusResponse:
-    return get_knowledge_status(db, settings)
+    return get_knowledge_status(db, settings, actor_context=current_actor(actor))
 
 
 @router.get("/sources", response_model=list[KnowledgeSourceResponse])
-def read_knowledge_sources(_: ReviewAccess, db: DatabaseSession) -> list[KnowledgeSourceResponse]:
-    return list_sources(db)
+def read_knowledge_sources(
+    actor: CurrentUser, db: DatabaseSession, after_id: str = "", limit: int = 100
+) -> list[KnowledgeSourceResponse]:
+    return list_sources(db, actor_context=current_actor(actor), after_id=after_id, limit=limit)
 
 
 @router.post(
     "/sources", response_model=KnowledgeSourceResponse, status_code=status.HTTP_201_CREATED
 )
 def register_knowledge_source(
-    payload: KnowledgeSourceCreate, _: ReviewAccess, db: DatabaseSession
+    payload: KnowledgeSourceCreate, actor: CurrentUser, db: DatabaseSession
 ) -> KnowledgeSourceResponse:
     try:
-        return create_source(db, payload)
+        return create_source(db, payload, actor_context=current_actor(actor))
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
 
@@ -305,12 +308,14 @@ def register_knowledge_source(
 def import_knowledge_text(
     source_id: str,
     payload: KnowledgeTextImportRequest,
-    _: ReviewAccess,
+    actor: CurrentUser,
     db: DatabaseSession,
     settings: AppSettings,
 ) -> KnowledgeDocumentResponse:
     try:
-        return import_text_document(db, source_id, payload, settings)
+        return import_text_document(
+            db, source_id, payload, settings, actor_context=current_actor(actor)
+        )
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
 
@@ -323,15 +328,20 @@ def import_knowledge_text(
 def import_knowledge_file(
     source_id: str,
     payload: KnowledgeFileImportRequest,
-    _: ReviewAccess,
+    actor: CurrentUser,
     db: DatabaseSession,
     settings: AppSettings,
 ) -> KnowledgeDocumentResponse:
     try:
+        from app.services.knowledge_access import source_scope
+
+        source_scope(db, current_actor(actor), source_id)
+        db.rollback()  # no authorization/domain locks across parsing
         content, parser_name = decode_and_extract(
             payload.filename,
             payload.content_base64,
             settings.knowledge_max_file_bytes,
+            settings=settings,
         )
         if not content.strip():
             raise KnowledgeServiceError(422, "KNOWLEDGE_FILE_EMPTY", "File has no usable text")
@@ -349,7 +359,9 @@ def import_knowledge_file(
             content_origin=payload.content_origin,
             is_test_data=payload.is_test_data,
         )
-        return import_text_document(db, source_id, extracted, settings)
+        return import_text_document(
+            db, source_id, extracted, settings, actor_context=current_actor(actor)
+        )
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
 
@@ -360,11 +372,11 @@ def import_knowledge_file(
 )
 def read_document_workspace(
     document_id: str,
-    _: ReviewAccess,
+    actor: CurrentUser,
     db: DatabaseSession,
 ) -> KnowledgeWorkspaceResponse:
     try:
-        return get_document_workspace(db, document_id)
+        return get_document_workspace(db, document_id, actor_context=current_actor(actor))
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
 
@@ -373,7 +385,7 @@ def read_document_workspace(
 def edit_knowledge_chunk(
     chunk_id: str,
     payload: KnowledgeChunkUpdate,
-    _: ReviewAccess,
+    actor: CurrentUser,
     db: DatabaseSession,
 ) -> KnowledgeWorkspaceResponse:
     try:
@@ -382,6 +394,7 @@ def edit_knowledge_chunk(
             chunk_id,
             content=payload.content,
             metadata=payload.metadata,
+            actor_context=current_actor(actor),
         )
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
@@ -391,11 +404,11 @@ def edit_knowledge_chunk(
 def split_knowledge_chunk(
     chunk_id: str,
     payload: KnowledgeChunkSplitRequest,
-    _: ReviewAccess,
+    actor: CurrentUser,
     db: DatabaseSession,
 ) -> KnowledgeWorkspaceResponse:
     try:
-        return split_chunk_at(db, chunk_id, payload.offset)
+        return split_chunk_at(db, chunk_id, payload.offset, actor_context=current_actor(actor))
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
 
@@ -403,11 +416,11 @@ def split_knowledge_chunk(
 @router.post("/chunks/merge", response_model=KnowledgeWorkspaceResponse)
 def merge_knowledge_chunks(
     payload: KnowledgeChunkMergeRequest,
-    _: ReviewAccess,
+    actor: CurrentUser,
     db: DatabaseSession,
 ) -> KnowledgeWorkspaceResponse:
     try:
-        return merge_chunks(db, payload.chunk_ids)
+        return merge_chunks(db, payload.chunk_ids, actor_context=current_actor(actor))
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
 
@@ -415,11 +428,11 @@ def merge_knowledge_chunks(
 @router.delete("/chunks/{chunk_id}", response_model=KnowledgeWorkspaceResponse)
 def remove_knowledge_chunk(
     chunk_id: str,
-    _: ReviewAccess,
+    actor: CurrentUser,
     db: DatabaseSession,
 ) -> KnowledgeWorkspaceResponse:
     try:
-        return delete_chunk(db, chunk_id)
+        return delete_chunk(db, chunk_id, actor_context=current_actor(actor))
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
 
@@ -451,3 +464,75 @@ def review_knowledge_document(
         )
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
+
+
+@router.put("/sources/{source_id}/grants/{user_id}/{capability}", status_code=204)
+def grant_source(
+    source_id: str, user_id: str, capability: str, actor: CurrentUser, db: DatabaseSession
+):
+    from fastapi import Response
+
+    from app.services.knowledge_access import set_source_grant
+
+    set_source_grant(db, current_actor(actor), source_id, user_id, capability, True)
+    return Response(status_code=204)
+
+
+@router.delete("/sources/{source_id}/grants/{user_id}/{capability}", status_code=204)
+def revoke_source(
+    source_id: str, user_id: str, capability: str, actor: CurrentUser, db: DatabaseSession
+):
+    from fastapi import Response
+
+    from app.services.knowledge_access import set_source_grant
+
+    set_source_grant(db, current_actor(actor), source_id, user_id, capability, False)
+    return Response(status_code=204)
+
+
+@router.get("/source-access-inventory")
+def source_access_inventory(
+    actor: CurrentUser, db: DatabaseSession, after_id: str = "", limit: int = 100
+):
+    from sqlalchemy import func
+
+    from app.models import KnowledgeSource, KnowledgeSourceGrant
+    from app.services.auth import AuthorizationDenied, authorize_actor
+
+    authorize_actor(db, current_actor(actor), "user.manage")
+    if "admin" not in user_access(db, actor.id)[0]:
+        raise AuthorizationDenied()
+    rows = list(
+        db.scalars(
+            select(KnowledgeSource)
+            .where(KnowledgeSource.id > after_id)
+            .order_by(KnowledgeSource.id)
+            .limit(min(max(limit, 1), 100))
+        )
+    )
+    counts = {
+        (source_id, capability): count
+        for source_id, capability, count in db.execute(
+            select(
+                KnowledgeSourceGrant.source_id,
+                KnowledgeSourceGrant.capability,
+                func.count(),
+            )
+            .where(KnowledgeSourceGrant.source_id.in_([row.id for row in rows]))
+            .group_by(KnowledgeSourceGrant.source_id, KnowledgeSourceGrant.capability)
+        )
+    }
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "source_key": row.source_key,
+                "grant_counts": {
+                    capability: counts.get((row.id, capability), 0)
+                    for capability in ("organize", "review")
+                },
+            }
+            for row in rows
+        ],
+        "next_cursor": rows[-1].id if rows else None,
+    }

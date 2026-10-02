@@ -40,7 +40,7 @@ def test_counter_upgrade_preserves_rows_and_ingests_full_large_batch(migration_d
             originals[name] = _seed(
                 conn, name, device_id=device["id"], sequence_no=2147483647, uptime_ms=2147483647
             )
-    migrate("upgrade", "head")
+    migrate("upgrade", "20260930_0036")
     with engine.connect() as conn:
         for name, old in originals.items():
             table = Table(name, MetaData(), autoload_with=conn)
@@ -73,6 +73,7 @@ def test_counter_upgrade_preserves_rows_and_ingests_full_large_batch(migration_d
         migrate("downgrade", "20260919_0031")
     with engine.connect() as conn:
         assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20260930_0036"
+    migrate("upgrade", "head")
     migrate("check")
 
 

@@ -336,6 +336,14 @@ def test_explanation_actual_requests_manifest_cache_and_retry(api_context, monke
             db, device, diagnosis, settings, ai_client=provider, retrieved_knowledge=refs
         )
         assert changed.enhancement_status != "cache_hit"
+        assert changed.mode == "rules_only"
+        assert len(provider.requests) == prior_attempts
+        # Policy changes cannot silently re-execute an existing logical operation.
+        changed = explain_diagnosis(
+            db, device, diagnosis, settings, ai_client=provider, retrieved_knowledge=refs,
+            operation_request_id="explicit-new-policy-request",
+        )
+        assert changed.status == "succeeded"
         assert len(provider.requests) == prior_attempts + 1
         # Known damaged legacy reference JSON is not delivered or rewritten.
         from app.services.ai_diagnosis import serialize_ai_call

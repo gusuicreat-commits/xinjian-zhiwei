@@ -8,7 +8,7 @@
 ## 1. 迁移与存储基线
 
 - 标准环境使用 PostgreSQL 16；历史初始迁移要求 `vector` 扩展，当前诊断不使用向量检索。
-- Alembic 代码 Head 为 `20260930_0036`。这是仓库结构版本，不代表运行数据库已升级。
+- Alembic 代码 Head 为 `20261002_0038`。这是仓库结构版本，不代表运行数据库已升级。
 - 容器入口 `app.startup` 先执行迁移再启动 API；手工迁移、备份与回滚按 [部署说明](deployment.md) 执行。
 - LangGraph checkpoint 表由 PostgreSQL saver 的 `setup()` 管理，不在 Alembic 中重复定义。
 - 结构变更与历史数据处理遵守[数据变更要求](development-guidelines.md#data-change)。
@@ -148,3 +148,9 @@
 `login_attempts` 是有界、短期安全预留：UUID主键、`key_hash`（来源IP与用户名的SHA-256）、`status`（pending/failed）、带时区的 `expires_at`。联合键/到期索引支持查询，状态CHECK不含不稳定的数组隐式转换，保持pg_dump/restore严格结构校验一致。准入持有短暂PG事务锁，先清理最多500条到期记录，再核对每键额度和10000行总容量；密码校验在锁外。成功与AuthSession提交同事务，失败重置其窗口；存储中没有原始密码、用户名或IP。
 
 迁移不回填或修改原业务记录。存在未过期预留时拒绝降级，避免意外清空限流窗口。SQLite只供单进程测试/开发；多个正式worker须共用PostgreSQL。
+
+## 来源授权与AI操作（0037–0038）
+
+`knowledge_source_grants` 用 `(source_id,user_id,capability)` 唯一约束表达逐来源整理/审核权限，用户+来源索引用于可见列表。`knowledge_documents.submitted_by_user_id` 保存服务器认证的提交人，历史为空，不从旧元数据推断。
+
+`ai_operations` 以唯一 operation_key 防止同逻辑动作重复发送，保存冻结输入hash、版本、状态、期限、尝试数和有界结果；诊断ID索引用于阶段恢复，状态索引用于未决排查。`ai_usage_reservations.operation_id/attempt_no` 关联物理尝试并以二者唯一约束防重复；操作状态枚举和非负尝试数由CHECK约束保护。旧预留保持空关联和原费用，不猜测归属。0037/0038拒绝丢弃授权、操作及费用状态的降级，回退先关闭受影响增强、保留表与历史。代码Head不代表业务数据库已迁移。

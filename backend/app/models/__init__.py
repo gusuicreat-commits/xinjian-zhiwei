@@ -1,5 +1,6 @@
 from app.models.ai_call_record import AICallRecord
 from app.models.ai_explanation_cache import AIExplanationCache
+from app.models.ai_operation import AIOperation
 from app.models.ai_usage_reservation import AIUsageReservation
 from app.models.classroom import (
     AuditEvent,
@@ -44,11 +45,14 @@ from app.models.knowledge import (
     KnowledgeReview,
     KnowledgeSource,
 )
+from app.models.knowledge_access import KnowledgeSourceGrant
 from app.models.login_attempt import LoginAttempt
 from app.models.memory import MemoryCleanupPlan, MemoryEvent, MemoryImpactReview, MemoryUse
 from app.models.sensor_reading import SensorReading
 
 __all__ = [
+    "AIOperation",
+    "KnowledgeSourceGrant",
     "LoginAttempt",
     "MemoryUse",
     "MemoryEvent",

@@ -135,7 +135,7 @@ export const useTeacherDashboardStore = defineStore('teacher-dashboard', () => {
     const kind = classifyRequestFailure(error)
     if (kind === 'unauthorized') {
       const auth = useTeacherSessionStore()
-      if (auth.accessToken === accessToken) auth.logout()
+      if (auth.accessToken === accessToken) auth.resetLocal()
       else clear()
     } else if (kind === 'forbidden' && affected === 'view') {
       // The action response does not identify a safe remaining class scope.

@@ -1,7 +1,7 @@
 import { assertCommandRecoverable, recordCommandFailure, completeCommand } from './commandOutcome'
 import { apiClient } from '@/api/client'
 import { newRequestId } from '@/api/feedbackRetry'
-import { createUserSession } from '@/api/auth'
+import { createUserSession, revokeUserSession } from '@/api/auth'
 import type { UserSession } from '@/types/auth'
 import type {
   DiagnosisWorkflowMetrics,
@@ -15,6 +15,7 @@ export async function createTeacherSession(
 ): Promise<UserSession> {
   const session = await createUserSession(username, password)
   if (!session.roles.some((role) => role === 'teacher' || role === 'admin')) {
+    await revokeUserSession(session.access_token)
     throw new Error('TEACHER_ROLE_REQUIRED')
   }
   return session

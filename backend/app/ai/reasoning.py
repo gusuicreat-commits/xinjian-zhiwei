@@ -30,7 +30,7 @@ from app.core.config import Settings
 from app.models.ai_call_record import AICallRecord
 from app.models.diagnosis_result import DiagnosisResult
 
-REASONING_PROMPT_VERSION = "evidence-reasoning-v2.8"
+REASONING_PROMPT_VERSION = "evidence-reasoning-v2.9"
 REASONING_SYSTEM_PROMPT = """你是受约束的嵌入式实验原因排序器。
 error_type 是规则引擎已经确定的事实，不得修改。
 只能使用 candidate_causes 中已有的 cause_id，不得创造新故障。
@@ -141,15 +141,17 @@ def _fallback_reasoning(state: dict[str, Any], *, limitation: str) -> AIReasonin
                 reason="沿用故障树的证据关联；候选原因仍需独立验证。",
             )
         )
+    from app.ai.output_contract import project_reasoning
+
+    summary = project_reasoning({
+        "status": "ranked" if ranked else "unknown", "ranked_causes": ranked,
+        "conflict": bool(state.get("evidence_conflict")),
+    })["summary"]
     return AIReasoningResult(
         error_type=state.get("error_type"),
         conclusion="ranked" if ranked else "unknown",
         ranked_causes=ranked,
-        summary=(
-            "当前沿用故障树候选原因排序，根因尚待验证。"
-            if ranked
-            else "现有证据不足以形成候选原因排序。"
-        ),
+        summary=summary,
         limitations=[limitation]
         + (["受输出数量限制，仅展示部分候选或关联证据；完整记录保留。"] if truncated else []),
         missing_evidence=[] if ranked else ["缺少可关联到候选原因的有效证据。"],
@@ -230,7 +232,10 @@ def _validate_reasoning(
     ]
     support_rank = {"high": 3, "medium": 2, "low": 1, "unknown": 0}
     normalized.sort(key=lambda item: (-support_rank[item.support_level], item.cause_id))
-    return result.model_copy(update={"ranked_causes": normalized})
+    from app.ai.output_contract import project_reasoning
+
+    summary = project_reasoning({**result.model_dump(), "ranked_causes": normalized})["summary"]
+    return result.model_copy(update={"ranked_causes": normalized, "summary": summary})
 
 
 def _reasoning_prompt(
@@ -370,7 +375,8 @@ def reason_about_causes(
     memory_sources = sources_for_references(db, diagnosis, state.get("knowledge_context") or [])
     governor = GovernedAIInvocation(
         db, diagnosis, settings, call_stage=call_stage, knowledge_case_ids=case_ids,
-        source_snapshot=memory_sources
+        source_snapshot=memory_sources,
+        operation_key=f"workflow:{workflow_run_id}:{call_stage}",
     )
 
     existing = db.scalar(
@@ -456,9 +462,9 @@ def reason_about_causes(
                 break
             except Exception as exc:  # Provider and schema failures share one safe fallback.
                 error = exc
-                if isinstance(exc, AIQuotaDenied):
+                if not governor.retry(exc):
                     break
-        if result is not None or isinstance(error, AIQuotaDenied):
+        if result is not None or (error is not None and not governor.retry(error)):
             break
     attempts = governor.attempts
     if isinstance(error, AIQuotaDenied):

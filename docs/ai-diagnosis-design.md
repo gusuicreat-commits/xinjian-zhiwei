@@ -78,11 +78,11 @@ HTTP 响应使用 snake_case，实验包 camelCase 不另构成 HTTP 契约。
 最终 `steps` 逐字选择工作流允许动作，显式空列表保持为空；没有该字段的旧调用只能选择
 已持久化故障树指导的 hints，不能从任意知识正文补步骤。`hint_level/need_teacher_help` 取确定性升级结果。
 `summary/limitations` 由后端解释契约生成，自由文字不直接升格为事实。当前契约
-`explanation-boundary-v2` 列出规则异常和 unknown 状态，保留证据冲突；推理提出的补充信息
+`explanation-boundary-v4` 列出规则异常和 unknown 状态，保留证据冲突；推理提出的补充信息
 以“待核验项（未确认）”呈现，不作为已确认缺失。解释模型自行补写的确定性限制不直接采纳。
 
 响应、持久化解释和回放使用同一契约。缓存纳入实际 Prompt 哈希并重新校验；旧 v1 审计不改写，
-缺当前契约或校验失败时返回 `rules_only`，不再次付费调用，不作为新建议展示；未增加迁移或完整模型原文存储。
+缺当前契约或校验失败时返回 `rules_only`，不再次付费调用，不作为新建议展示。输出投影本身不回填历史；调用恢复的0038另保存有界Provider结果，不保存完整原始私有输入。
 校验覆盖身份、关联集合、冲突和动作；自由 `reason/summary`、教师编辑、完整因果与电气安全
 仍需独立审阅，代码通过和模板保护均不能代替。
 
@@ -128,7 +128,7 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 ## CoT 分步证据核对
 
-用户确认实施后，第一版已接入 `ai/reasoning.py`，当前Prompt版本为 `evidence-reasoning-v2.8`（案例适用条件升级；原分步核对从v2.6引入）。在原有一次推理调用内，模型按下面的顺序核对材料，只返回现有 JSON 字段中的简洁结果，不输出完整思维过程。
+用户确认实施后，第一版已接入 `ai/reasoning.py`，当前Prompt版本为 `evidence-reasoning-v2.9`（案例适用条件升级；原分步核对从v2.6引入）。在原有一次推理调用内，模型按下面的顺序核对材料，只返回现有 JSON 字段中的简洁结果，不输出完整思维过程。
 
 | 顺序 | 要做什么 | 谁负责把关 |
 | --- | --- | --- |
@@ -286,8 +286,14 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 完整受权来源中的敏感值在投影前暂存私有属性；包括确认人、恢复诊断ID及审核秘密的重复值，清洗覆盖Provider正文、标题和Checkpoint引用。私有来源本身不写Checkpoint、公开响应或审计清单。案例及全部条件整条入选或省略，预算不影响独立本地硬约束集合。
 
-当前策略`whole-unit-applicability-v1`、投影`case-applicability-v1`、推理Prompt`evidence-reasoning-v2.8`、解释默认Prompt`phase9.5-v3`；输出JSON Schema不变，服务端输出合同升为`explanation-boundary-v3`。实际payload/Prompt/来源指纹参与缓存，清单记录投影版本。旧阶段结果及唯一约束竞争重放都重验策略、当前来源和权限，不补造历史清单或收费重调。
+当前策略`whole-unit-applicability-v1`、投影`case-applicability-v1`、推理Prompt`evidence-reasoning-v2.9`、解释默认Prompt`phase9.5-v3`；输出JSON Schema不变，服务端输出合同升为`explanation-boundary-v4`。实际payload/Prompt/来源指纹参与缓存，清单记录投影版本。旧阶段结果及唯一约束竞争重放都重验策略、当前来源和权限，不补造历史清单或收费重调。
 
 新工作流结果及等待反馈/教师审核快照冻结`context_delivery.explanation_call_id`，并校验对应推理阶段。读取不能用诊断上后来更新的latest调用替旧正文证明；缺冻结身份或旧策略AI结果只读降级到原确定性核心。检查幂等、反馈后读取、学生当前页共用投影；原final_result、调用审计及业务回执不修改。明确历史复核接口保留原文，标历史用途和策略状态。
 
 资料来源登记、包格式兼容见[实验包设计](experiment-package-design.md)，只读预检见[测试指南](evaluation.md#package-context-preview)。P4概念解释未实施：concepts/steps全文仍不进Provider，不新增调用或自由RAG。
+
+## 当前输出与调用恢复边界（2026-10-02）
+
+`provider-allowlist-v4` 拒绝含私密信息的动态键，值继续最小化清洗。`reasoning-facts-v1` 将当前摘要投影为未知/候选待验证，模型自由摘要不能成为事实；`verification_requests` 显式记录text、source和unverified状态。模型missing_evidence只作为待核验建议，服务器观测缺失仍按独立来源显示；保留经过授权的教师编辑。旧缓存与Checkpoint交付前重投影，不额外调用Provider。
+
+调用治理新增持久逻辑操作，具体状态与失败恢复合同见[修复方案G4](agent-security-repair-plan.md#6-g4一次逻辑操作与每次物理请求分开记录)，数据字段见[数据库设计](database-design.md)。本地恶意输出与故障注入只能验证程序合同，不能证明真实模型的语义质量。

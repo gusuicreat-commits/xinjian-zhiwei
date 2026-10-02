@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from app.ai.context_contract import current_context_policy
-from app.ai.output_contract import OUTPUT_CONTRACT_VERSION
-from app.ai.schemas import AIKnowledgeReference, AIStructuredExplanation
+from app.ai.output_contract import OUTPUT_CONTRACT_VERSION, project_reasoning
+from app.ai.schemas import AIKnowledgeReference, AIReasoningResult, AIStructuredExplanation
 from app.diagnosis.lightweight_schemas import DiagnosisCore
 from app.models import AICallRecord, DiagnosisResult
 from app.services.lightweight_diagnosis import (
@@ -58,6 +58,7 @@ def assess_current_advice(db, record, *, explanation=True):
         if not current_context_policy(record.input_snapshot):
             return AdviceAssessment(False, "invalid_context_policy")
         if not explanation:
+            AIReasoningResult.model_validate(record.output_json)
             return AdviceAssessment(True, "eligible")
         output = AIStructuredExplanation.model_validate(record.output_json)
         contract = (record.input_snapshot or {}).get("output_contract") or {}
@@ -185,7 +186,21 @@ def project_current_advice(db, workflow):
     final = deepcopy(workflow.final_result)
     request = deepcopy(workflow.review_request)
     if final is not None:
+        if isinstance(final.get("ai_reasoning"), dict):
+            final["ai_reasoning"] = project_reasoning(final["ai_reasoning"])
         diagnosis, _, invalid = _inspection(db, workflow, final)
+        if not invalid and db is not None:
+            anchor = bound_explanation_call(db, workflow, final)
+            assessment = assess_current_advice(db, anchor)
+            if assessment.eligible and assessment.explanation is not None:
+                edited_fields = {
+                    key for review in getattr(workflow, "reviews", [])
+                    if review.action == "edit"
+                    for key in (review.edited_result or {})
+                }
+                for key in ("summary", "limitations"):
+                    if key not in edited_fields:
+                        final[key] = deepcopy(getattr(assessment.explanation, key))
         if invalid:
             previous = final
             final = _deterministic(diagnosis, workflow)
@@ -196,7 +211,18 @@ def project_current_advice(db, workflow):
                 if previous.get("teacher_reviewed"):
                     final["limitations"].append("原教师编辑保留为历史，不视为对当前回退说明的新审核。")
     if request is not None:
+        if isinstance((request.get("ai_result") or {}).get("ai_reasoning"), dict):
+            request["ai_result"]["ai_reasoning"] = project_reasoning(
+                request["ai_result"]["ai_reasoning"]
+            )
         diagnosis, _, invalid = _inspection(db, workflow, request, interrupt=True)
+        if not invalid and request.get("ai_result") is not None:
+            assessment = assess_current_advice(db, bound_explanation_call(db, workflow, request))
+            if assessment.eligible and assessment.explanation is not None:
+                request["ai_result"].update(
+                    summary=assessment.explanation.summary,
+                    limitations=deepcopy(assessment.explanation.limitations),
+                )
         if invalid:
             request.update(
                 ai_result=None, deterministic_result=_deterministic(diagnosis, workflow),

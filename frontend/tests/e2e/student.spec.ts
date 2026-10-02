@@ -382,6 +382,10 @@ test('shows workflow provenance, missing evidence and teacher review history', a
       'persist_result',
     ],
     final_result: {
+      ai_reasoning: {
+        status: 'unknown',
+        verification_requests: [{ text: '复核传感器型号', source: 'model', status: 'unverified' }],
+      },
       summary: '建议检查连接',
       limitations: ['缺少供电电压读数'],
       rule_hits: [
@@ -424,6 +428,8 @@ test('shows workflow provenance, missing evidence and teacher review history', a
   })
 
   await login(page)
+  await expect(page.getByText('建议核验（尚未确认）：复核传感器型号')).toBeVisible()
+  await expect(page.getByText('尚缺：复核传感器型号')).toHaveCount(0)
   await page.getByText('本次诊断依据与记录', { exact: true }).click()
   await expect(page.getByText('辅助诊断进度')).toBeVisible()
   await expect(page.getByText('本工作流记录的判断', { exact: true })).toBeVisible()

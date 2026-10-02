@@ -287,6 +287,7 @@ def run_ai_explanation(
         settings,
         student_actor=identity,
         user_question=payload.user_question if payload else None,
+        operation_request_id=str(payload.request_id) if payload and payload.request_id else None,
     )
     revalidate_student_access(request, db)
     if diagnosis_result.experiment_version_id:

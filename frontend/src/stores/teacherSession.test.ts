@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { createTeacherSession } from '@/api/teacher'
 import { useTeacherSessionStore } from './teacherSession'
 import type { UserSession } from '@/types/auth'
+vi.mock('@/api/auth', () => ({ revokeUserSession: vi.fn().mockResolvedValue(true) }))
 vi.mock('@/api/teacher', async (original) => ({
   ...(await original<typeof import('@/api/teacher')>()),
   createTeacherSession: vi.fn(),

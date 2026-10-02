@@ -58,6 +58,9 @@ def add_call(db, diagnosis, workflow, stage="explanation", *, current=False):
     record.status = "succeeded"
     record.input_snapshot = policy_snapshot(current)
     record.output_json = {"summary": "model explanation"}
+    if current and stage.startswith("reasoning"):
+        record.output_json = {"error_type": "SENSOR_READ_FAILED", "conclusion": "unknown",
+                              "ranked_causes": [], "summary": "model reasoning"}
     if current and stage.startswith("explanation"):
         from app.ai.output_contract import OUTPUT_CONTRACT_VERSION
         record.output_json = {
@@ -140,7 +143,11 @@ def test_current_bound_calls_keep_current_result(advice_task):
     db, diagnosis, workflow = advice_task
     make_ai_result(db, diagnosis, workflow, current=True)
     original = deepcopy(workflow.final_result)
-    assert serialize_workflow(workflow, audience="student").final_result == original
+    current = serialize_workflow(workflow, audience="student").final_result
+    assert current["summary"] == "server summary"
+    assert current["ai_reasoning"]["summary"] != "OLD MODEL PRIVATE REASONING"
+    assert current["steps"] == original["steps"]
+    assert workflow.final_result == original
     assert not db.dirty
 
 
@@ -160,7 +167,11 @@ def test_new_feedback_pair_does_not_get_blocked_by_old_initial_calls(advice_task
                              "student_feedback": {"id": "resolved-later", "action": "resolved"}}
     db.commit()
     original = deepcopy(workflow.final_result)
-    assert serialize_workflow(workflow, audience="student").final_result == original
+    current = serialize_workflow(workflow, audience="student").final_result
+    assert current["summary"] == "server summary"
+    assert current["ai_reasoning"]["summary"] != "OLD MODEL PRIVATE REASONING"
+    assert current["steps"] == original["steps"]
+    assert workflow.final_result == original
 
 
 def test_unrelated_current_feedback_record_cannot_revalidate_old_bound_output(advice_task):
@@ -218,7 +229,10 @@ def test_pure_deterministic_teacher_edit_is_preserved(advice_task):
     }
     workflow.review_request = None
     db.commit()
-    assert serialize_workflow(workflow).final_result == workflow.final_result
+    current = serialize_workflow(workflow).final_result
+    assert current["summary"] == workflow.final_result["summary"]
+    assert current["teacher_reviewed"] is True
+    assert current["ai_reasoning"]["mode"] == "deterministic_fallback"
 
 
 def test_legacy_ai_teacher_edit_remains_history_not_new_review(advice_task):
@@ -278,7 +292,10 @@ def test_current_waiting_snapshot_uses_its_frozen_binding(advice_task):
     workflow.review_request = request
     diagnosis.ai_enhancement = {"status": "failed_fallback", "call_record_id": "later-missing"}
     db.commit()
-    assert serialize_workflow(workflow, audience="student").review_request == request
+    current = serialize_workflow(workflow, audience="student").review_request
+    assert current["ai_result"]["summary"] == "server summary"
+    assert current["ai_result"]["steps"] == request["ai_result"]["steps"]
+    assert workflow.review_request == request
 
 
 def test_result_and_interrupt_bindings_are_checked_independently(advice_task):
@@ -291,5 +308,27 @@ def test_result_and_interrupt_bindings_are_checked_independently(advice_task):
     workflow.review_request = request
     db.commit()
     response = serialize_workflow(workflow, audience="student")
-    assert response.final_result == workflow.final_result
+    assert response.final_result["summary"] == "server summary"
+    assert response.final_result["steps"] == workflow.final_result["steps"]
+    assert workflow.final_result["summary"] == "OLD MODEL PRIVATE RESULT"
     assert response.review_request["ai_result"] is None
+
+
+def test_current_projection_preserves_persisted_teacher_edit(advice_task):
+    from app.models.base import utc_now
+    from app.models.classroom import User
+    from app.models.diagnosis_workflow import DiagnosisWorkflowReview
+    db, diagnosis, workflow = advice_task
+    make_ai_result(db, diagnosis, workflow, current=True)
+    workflow.final_result = {**workflow.final_result, 'summary': '教师已核对的编辑意见',
+                             'teacher_reviewed': True}
+    db.add(DiagnosisWorkflowReview(workflow_run_id=workflow.id,
+           reviewer_user_id=db.scalar(select(User.id)), action='edit',
+           edited_result={'summary': '教师已核对的编辑意见'}, created_at=utc_now()))
+    db.commit()
+    original = deepcopy(workflow.final_result)
+    current = serialize_workflow(workflow, audience='student').final_result
+    assert current['summary'] == '教师已核对的编辑意见'
+    assert current['ai_reasoning']['summary'] != 'OLD MODEL PRIVATE REASONING'
+    assert workflow.final_result == original
+    assert not db.dirty

@@ -380,8 +380,9 @@ async function handleWorkflowReview(
   }
 }
 async function logout(): Promise<void> {
-  sessionStore.logout()
+  const revocation = sessionStore.logout()
   dashboardStore.clear()
+  await revocation
   await router.replace('/teacher/login')
 }
 onMounted(() => {

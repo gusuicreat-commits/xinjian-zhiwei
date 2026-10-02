@@ -15,7 +15,7 @@ import {
   startStudentExperiment,
   endStudentExperiment,
 } from '@/api/student'
-import { createUserSession } from '@/api/auth'
+import { createUserSession, revokeUserSession } from '@/api/auth'
 import { newRequestId } from '@/api/feedbackRetry'
 import { REVIEW_MODE, reviewStudentCredentials, reviewStudentSession } from '@/review/fixtures'
 import type {
@@ -102,17 +102,28 @@ export const useStudentSessionStore = defineStore('student-session', () => {
       await login({ ...reviewStudentCredentials })
       return
     }
-    logout()
+    const previousToken = accountToken.value || credentials.value?.accessToken
+    resetLocal()
+    if (previousToken) void revokeUserSession(previousToken)
     const revision = authRevision
     loading.value = true
+    let issuedToken = ''
     try {
       const account = await createUserSession(username, password)
+      issuedToken = account.access_token
+      if (revision !== authRevision) {
+        await revokeUserSession(issuedToken)
+        return
+      }
       if (!account.roles.includes('student')) throw new Error('student role required')
       const [sessions, tasks] = await Promise.all([
         getStudentExperimentSessions(account.access_token),
         getStudentAssignments(account.access_token),
       ])
-      if (revision !== authRevision) return
+      if (revision !== authRevision) {
+        await revokeUserSession(issuedToken)
+        return
+      }
       availableSessions.value = sessions
       assignments.value = tasks
       accountToken.value = account.access_token
@@ -121,6 +132,7 @@ export const useStudentSessionStore = defineStore('student-session', () => {
         errorMessage.value = '账号已验证，尚无有效实验。请在任务开放后开始实验或联系教师。'
       }
     } catch {
+      if (issuedToken) await revokeUserSession(issuedToken)
       if (revision !== authRevision) return
       errorMessage.value = '账号、密码或学生资格无效，请检查后重试。'
       throw new Error(errorMessage.value)
@@ -178,7 +190,7 @@ export const useStudentSessionStore = defineStore('student-session', () => {
       const { status } = commandOutcome('beginExperiment', error)
       if (status === 401) {
         sessionStorage.removeItem(key)
-        logout()
+        resetLocal()
         errorMessage.value = '登录已失效，请重新登录后选择实验。'
       } else if (status === 403) {
         revision = ++authRevision
@@ -229,7 +241,7 @@ export const useStudentSessionStore = defineStore('student-session', () => {
     )
     if (revision !== authRevision) return
     if (recovered) {
-      logout()
+      resetLocal()
       return
     }
     assertCommandRecoverable(key)
@@ -251,7 +263,7 @@ export const useStudentSessionStore = defineStore('student-session', () => {
       if (revision !== authRevision) return
       const outcome = commandOutcome('finishExperiment', error)
       if (outcome.permission) {
-        logout()
+        resetLocal()
         errorMessage.value = '登录或实验权限已变化，请重新登录核对会话状态。'
       } else if (!outcome.retainPayload) {
         errorMessage.value = '结束请求被拒绝，请刷新实验状态后核对参数。'
@@ -259,7 +271,7 @@ export const useStudentSessionStore = defineStore('student-session', () => {
       throw new Error(errorMessage.value)
     }
     completeCommand(key, pending.requestId)
-    if (credentials.value === current) logout()
+    if (credentials.value === current) resetLocal()
   }
 
   async function selectExperiment(id: string): Promise<void> {
@@ -273,7 +285,7 @@ export const useStudentSessionStore = defineStore('student-session', () => {
     })
   }
 
-  function logout(): void {
+  function resetLocal(): void {
     authRevision += 1
     credentials.value = null
     session.value = null
@@ -286,7 +298,18 @@ export const useStudentSessionStore = defineStore('student-session', () => {
     sessionStorage.removeItem(STORAGE_KEY)
   }
 
+  async function logout(): Promise<void> {
+    const token = accountToken.value || credentials.value?.accessToken
+    resetLocal()
+    const revision = authRevision
+    const confirmed = !token || REVIEW_MODE || await revokeUserSession(token)
+    if (!confirmed && revision === authRevision) {
+      errorMessage.value = '本机已退出，服务端退出未确认。'
+    }
+  }
+
   return {
+    resetLocal,
     credentials,
     session,
     loading,

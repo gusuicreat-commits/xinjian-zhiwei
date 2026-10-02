@@ -1,15 +1,14 @@
 import base64
 import binascii
-import csv
-import io
-import zipfile
-import zlib
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from xml.etree import ElementTree
 
-from pypdf import PdfReader
-from pypdf.errors import PdfReadError
-
+from app.core.config import Settings
 from app.services.knowledge import KnowledgeServiceError
 
 SUPPORTED_SUFFIXES = {".txt", ".md", ".csv", ".docx", ".pdf"}
@@ -19,6 +18,8 @@ def decode_and_extract(
     filename: str,
     content_base64: str,
     max_bytes: int,
+    *,
+    settings: Settings | None = None,
 ) -> tuple[str, str]:
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
@@ -45,62 +46,86 @@ def decode_and_extract(
             "KNOWLEDGE_FILE_TOO_LARGE",
             "Knowledge file exceeds the configured byte limit",
         )
-    try:
-        if suffix in {".txt", ".md"}:
-            return raw.decode("utf-8"), f"{suffix[1:]}-utf8"
-        if suffix == ".csv":
-            rows = csv.reader(io.StringIO(raw.decode("utf-8-sig")))
-            return "\n".join(" | ".join(cell.strip() for cell in row) for row in rows), "csv-v1"
-        if suffix == ".docx":
-            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-                info = archive.getinfo("word/document.xml")
-                if info.file_size > max_bytes:
-                    raise KnowledgeServiceError(
-                        413,
-                        "KNOWLEDGE_FILE_TOO_LARGE",
-                        "Expanded DOCX XML exceeds byte limit",
-                    )
-                with archive.open(info) as document:
-                    document_xml = document.read(max_bytes + 1)
-                if len(document_xml) > max_bytes:
-                    raise KnowledgeServiceError(
-                        413,
-                        "KNOWLEDGE_FILE_TOO_LARGE",
-                        "Expanded DOCX XML exceeds byte limit",
-                    )
-            root = ElementTree.fromstring(document_xml)
-            namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-            paragraphs = []
-            for paragraph in root.iter(f"{namespace}p"):
-                text = "".join(node.text or "" for node in paragraph.iter(f"{namespace}t"))
-                if text.strip():
-                    paragraphs.append(text)
-            return "\n".join(paragraphs), "docx-xml-v1"
-        reader = PdfReader(io.BytesIO(raw))
-        pages = [page.extract_text() or "" for page in reader.pages]
-        text = "\n\n".join(page.strip() for page in pages if page.strip())
-        if not text:
-            raise KnowledgeServiceError(
-                422,
-                "PDF_TEXT_NOT_EXTRACTABLE",
-                "PDF has no extractable text; OCR is not enabled",
-            )
-        return text, "pypdf-v1"
-    except KnowledgeServiceError:
-        raise
-    except (
-        UnicodeDecodeError,
-        csv.Error,
-        KeyError,
-        zipfile.BadZipFile,
-        NotImplementedError,
-        RuntimeError,
-        zlib.error,
-        ElementTree.ParseError,
-        PdfReadError,
-    ) as error:
+    settings = settings or Settings(_env_file=None)
+    if sys.platform != "linux":
         raise KnowledgeServiceError(
-            422,
-            "KNOWLEDGE_FILE_PARSE_FAILED",
-            "Knowledge file could not be parsed safely",
-        ) from error
+            503, "KNOWLEDGE_PARSER_UNAVAILABLE", "Bounded file parsing requires the Linux service"
+        )
+    config = {
+        "max_bytes": max_bytes,
+        "max_chars": settings.knowledge_max_document_chars,
+        "max_pages": settings.knowledge_parser_max_pages,
+        "memory": settings.knowledge_parser_memory_bytes,
+        "cpu": settings.knowledge_parser_cpu_seconds,
+        "wall": settings.knowledge_parser_wall_seconds,
+        "output_bytes": settings.knowledge_max_document_chars * 12 + 4096,
+    }
+    with (
+        _parser_slot(settings.knowledge_parser_concurrency),
+        tempfile.TemporaryDirectory(prefix="xinjian-parser-") as directory,
+    ):
+        source = Path(directory) / "input"
+        target = Path(directory) / "output"
+        source.write_bytes(raw)
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-I",
+                str(Path(__file__).with_name("knowledge_parser_worker.py")),
+                str(source),
+                str(target),
+                suffix,
+                json.dumps(config),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={"PATH": os.defpath, "LANG": "C.UTF-8"},
+            close_fds=True,
+        )
+        try:
+            process.wait(timeout=settings.knowledge_parser_wall_seconds)
+        except subprocess.TimeoutExpired as error:
+            process.kill()
+            process.wait()
+            raise KnowledgeServiceError(
+                413, "KNOWLEDGE_PARSE_LIMIT", "Parsing budget exceeded"
+            ) from error
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        if process.returncode != 0 or not target.exists():
+            raise KnowledgeServiceError(413, "KNOWLEDGE_PARSE_LIMIT", "Parsing budget exceeded")
+        with target.open("rb") as handle:
+            encoded = handle.read(config["output_bytes"] + 1)
+        if len(encoded) > config["output_bytes"]:
+            raise KnowledgeServiceError(413, "KNOWLEDGE_PARSE_LIMIT", "Parsing budget exceeded")
+        result = json.loads(encoded)
+        if "status" in result:
+            raise KnowledgeServiceError(result["status"], result["code"], "File parsing rejected")
+        return result["text"], result["parser"]
+
+
+@contextmanager
+def _parser_slot(limit):
+    """Nonblocking, cross-worker admission on this service host."""
+    import fcntl
+
+    directory = Path(tempfile.gettempdir()) / f"xinjian-parser-slots-{os.getuid()}"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    descriptor = None
+    for index in range(limit):
+        candidate = os.open(directory / str(index), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            fcntl.flock(candidate, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            descriptor = candidate
+            break
+        except BlockingIOError:
+            os.close(candidate)
+    if descriptor is None:
+        raise KnowledgeServiceError(503, "KNOWLEDGE_PARSER_BUSY", "Parser capacity is occupied")
+    try:
+        yield
+    finally:
+        os.close(descriptor)

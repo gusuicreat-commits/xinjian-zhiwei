@@ -1,6 +1,6 @@
 # 芯鉴知微 API 设计
 
-代码核对日期：2026-09-30。本文按使用入口解释契约；精确字段与枚举见对应版本的 FastAPI OpenAPI（`/docs`）及 `backend/app/schemas/`、`backend/app/diagnosis/workflow_schemas.py`。服务层权限、幂等和跨字段约束不能仅从 OpenAPI 推断。权限与状态规则见[开发准则](development-guidelines.md#business-rules)，部署与实际验收见 [实现状态](implementation-status.md)。
+代码核对日期：2026-10-02。本文按使用入口解释契约；精确字段与枚举见对应版本的 FastAPI OpenAPI（`/docs`）及 `backend/app/schemas/`、`backend/app/diagnosis/workflow_schemas.py`。服务层权限、幂等和跨字段约束不能仅从 OpenAPI 推断。权限与状态规则见[开发准则](development-guidelines.md#business-rules)，部署与实际验收见 [实现状态](implementation-status.md)。
 
 ## 通用约定
 
@@ -11,6 +11,8 @@
 - 原始请求：入库到对应记录的 `raw_payload`，用于追溯；认证头不会写入原始载荷。
 
 ## 登录与明确拒绝
+
+`DELETE /auth/session` 使用 Bearer 撤销当前登录，成功或重复撤销返回204，不影响其他登录会话；缺失/未知令牌401。学生和教师主动退出立即清空本地内容，再确认服务端注销；网络失败显示“本机已退出，服务端退出未确认”。权限失效导致的本地重置不等于主动注销。不存在/停用账号也进行一次密码派生校验，统一失败语义。
 
 `POST /auth/session` 在校验密码前为“连接来源 IP＋小写用户名”的哈希键原子预留额度；失败和在途请求共同受 `AUTH_LOGIN_MAX_FAILURES`（默认5）限制。PostgreSQL 的 `login_attempts` 表供多个 worker 和重启后的实例共享；不保存明文用户名、IP 或密码。预留有效期和失败后窗口均使用 `AUTH_LOGIN_WINDOW_SECONDS`（默认300秒）。过期检查不得签发令牌；成功与会话创建一起提交，只清理自身预留及已完成失败，不清理其他在途请求。全表最多10000条，每次准入最多清理500条过期记录，容量不足返回429。SQLite只用于单进程开发/测试。代理部署须正确配置可信代理，不能无条件信任客户端转发头。
 
@@ -87,7 +89,7 @@ X-Device-Token: <secret token>
 ### GET `/diagnosis/interventions`
 
 返回达到 Level 4 的设备与故障树记录。该兼容查询仍使用环境变量
-`REVIEW_ACCESS_TOKEN` 和 `X-Review-Token` 作为默认关闭的知识/运维工作区边界；未配置
+`REVIEW_ACCESS_TOKEN` 和 `X-Review-Token` 作为默认关闭的旧运维兼容查询边界；未配置
 返回 503，凭据错误返回 401。教师前端不再调用此兼容接口，而是使用正式 Bearer 会话的
 `/teacher/dashboard`。
 
@@ -99,7 +101,7 @@ X-Device-Token: <secret token>
 
 使用学生身份和有效会话，只能解释属于当前会话的诊断结果；设备令牌仅限测试兼容。请求体可选 `user_question`。响应保留确定性错误类型，AI 仅解释当前允许的证据、原因和知识。
 
-Provider 输入通过 `phase9.5-allowlist-v1` 最小化和清洗，不返回或审计完整敏感 Prompt；字段白名单、输出校验与契约版本见[AI 工作流设计](ai-diagnosis-design.md)。
+Provider 输入通过 `provider-allowlist-v4` 最小化和清洗，不返回或审计完整敏感 Prompt；字段白名单、输出校验与契约版本见[AI 工作流设计](ai-diagnosis-design.md)。
 
 未配置密钥、知识未就绪、预算受限、知识查询失败、AI 超时或输出校验失败时仍返回确定性结果；`enhancement_status` 和 `route_path` 记录缓存、Provider、降级或跳过原因。
 
@@ -258,13 +260,13 @@ expected_state是预期，不是实测。读取不生成新指导、反馈或模
 
 ## 知识库接口
 
-来源登记、文件导入、知识块编辑和检索管理接口仍使用临时 `X-Review-Token` 工作区
-边界；文档审核状态流转使用 `/auth/session` 签发的 Bearer 会话，并校验知识整理人、
-正式批准人两个独立 RBAC 角色。仓库没有预置正式审核账号。
+来源登记、文件导入、工作区、知识块编辑和文档审核统一使用真实 Bearer 会话。整理需要 `knowledge_organizer` 角色及来源的 `organize` 授权，批准需要 `formal_approver` 角色及 `review` 授权；读取允许其中任一当前有效能力。共享 Review-Token 不再授予这些入口权限。无会话401，无角色403，来源不存在或超出授权范围统一404。仓库没有预置正式审核账号。
+
+新建来源自动授予创建整理人该来源的整理能力；旧来源不猜测所有者、默认不授权。管理员通过 `GET /knowledge/source-access-inventory` 分页查询来源ID/标识，再用 `PUT/DELETE /knowledge/sources/{source_id}/grants/{user_id}/{capability}` 显式授予/撤销；capability 为 organize/review，变更留审计，管理员角色本身不自动读取正文。来源列表支持 `after_id` 游标、`limit`（1–100），按ID升序，仅返回可访问来源。
 
 ### GET `/knowledge/status`
 
-返回结构化知识模式、来源/文档数量、案例数量、已审核案例和待审核案例数量。第一阶段不返回或依赖向量、Embedding Provider 与维度。
+返回当前来源范围内的文档与知识块统计。未具备来源范围的旧案例不混入工作区统计；教师仪表盘的资料数量也按逐来源授权过滤，诊断案例可用性按独立合同计算。第一阶段不依赖向量检索。
 
 ### GET `/knowledge/case-drafts/pending`
 
@@ -288,7 +290,7 @@ expected_state是预期，不是实测。读取不生成新指导、反馈或模
 
 ### PATCH `/knowledge/documents/{document_id}/review`
 
-接受目标状态、审核角色、审核人引用和备注。正式流程为：
+接受目标状态、审核角色和备注，审核人由服务器当前身份决定。提交人记录于 `submitted_by_user_id`，不能靠客户端元数据修改；提交人与批准人不能相同。旧待审核文档缺可信提交人时返回409，需先退回draft再由整理人重新提交，历史审核不改写。正式流程为：
 
 ```text
 draft --organizer--> pending

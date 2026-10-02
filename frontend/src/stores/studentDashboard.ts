@@ -276,7 +276,7 @@ export const useStudentDashboardStore = defineStore('student-dashboard', () => {
               commandOutcome('sendFeedback', error).status === 401 &&
               session.credentials?.accessToken === credentials.accessToken
             )
-              session.logout()
+              session.resetLocal()
             state.value = 'error'
             failureKind.value = classifyRequestFailure(error)
             errorMessage.value = failureMessage(failureKind.value)

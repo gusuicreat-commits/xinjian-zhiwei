@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.models.classroom import DeviceBinding, TeachingAssignment, User
 from app.schemas.student import ExperimentSessionRelease
 from app.schemas.teacher import TeacherDashboardResponse
-from app.services.auth import user_access
+from app.services.auth import current_actor, user_access
 from app.services.teacher_dashboard import build_teacher_dashboard
 
 router = APIRouter(prefix="/teacher", tags=["teacher"])
@@ -24,7 +24,7 @@ def get_teacher_dashboard(
 ) -> TeacherDashboardResponse:
     roles, _ = user_access(db, actor.id)
     if "admin" in roles:
-        return build_teacher_dashboard(db)
+        return build_teacher_dashboard(db, actor_context=current_actor(actor))
     device_ids = set(
         db.scalars(
             select(DeviceBinding.device_id)
@@ -44,7 +44,10 @@ def get_teacher_dashboard(
             select(TeachingAssignment.class_id).where(TeachingAssignment.user_id == actor.id)
         )
     )
-    return build_teacher_dashboard(db, allowed_device_ids=device_ids, allowed_class_ids=class_ids)
+    return build_teacher_dashboard(
+        db, allowed_device_ids=device_ids, allowed_class_ids=class_ids,
+        actor_context=current_actor(actor),
+    )
 
 
 @router.get("/experiment-sessions")

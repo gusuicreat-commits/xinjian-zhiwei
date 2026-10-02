@@ -87,10 +87,10 @@ docker compose exec -T backend python -m app.cli.retention_dry_run --days 30
 部署新代码前迁移到仓库当前Head；本轮没有替运行库执行迁移。治理表应与业务库一起备份，另外独立保存最新停用登记。以下命令使用显式选择的 `DATABASE_URL`，从backend目录执行；先在隔离副本验证。
 
 ```bash
-python -m app.cli.memory_maintenance clear-stopped-caches
-python -m app.cli.memory_maintenance export-stops --file /safe/new-memory-stops.json
+python -m app.cli.memory_maintenance clear-stopped-caches --actor-user-id <current-admin-uuid>
+python -m app.cli.memory_maintenance export-stops --actor-user-id <current-admin-uuid> --file /safe/new-memory-stops.json
 # 仅在隔离恢复库，迁移到当前Head后执行；不要连正在提供服务的库。
-python -m app.cli.memory_maintenance replay-stops --file /safe/latest-memory-stops.json --isolated-restore
+python -m app.cli.memory_maintenance replay-stops --actor-user-id <current-admin-uuid> --file /safe/latest-memory-stops.json --isolated-restore
 ```
 
 缓存维护每批最多100个待处理停用事件，可重复运行，不删除事实或Checkpoint。导出拒绝覆盖已有文件，只包含必要来源标识；文件哈希校验完整性，不证明文件来自可信操作者或已经最新。恢复重放会重新停用精确来源并使解释缓存到期；对象、内容或操作人无法核验时失败，不猜测对应关系。重放不自动授权上线，仍需核对Checkpoint和实际读取路径；跨存储保留/删除策略、第三方及离线副本尚未确认，不能宣称所有副本已清除。
@@ -122,7 +122,7 @@ curl --fail -I http://127.0.0.1:8080/student
 
 ## 登录准入迁移（2026-09-30）
 
-当前源码迁移Head为 `20260930_0036`，追加 `login_attempts` 表。部署新版登录接口前需在选定目标库执行并核对迁移，不能仅重启旧结构的服务。本轮修复只在隔离测试库执行，未迁移业务库。多worker必须连接同一PostgreSQL并使用一致的限流配置；代理链应仅信任受控代理。短时预留失败会在窗口后释放，不能通过重启绕过限流。
+共享登录准入由0036追加 `login_attempts` 表；当前源码Head为 `20261002_0038`，还包含来源授权和持久AI操作。部署新版登录接口前需在选定目标库执行并核对迁移，不能仅重启旧结构的服务。本轮修复只在隔离测试库执行，未迁移业务库。多worker必须连接同一PostgreSQL并使用一致的限流配置；代理链应仅信任受控代理。短时预留失败会在窗口后释放，不能通过重启绕过限流。
 
 回撤可以保留这张短期表；若执行降级，存在未过期预留时迁移会拒绝，先停新登录并等待窗口结束。降级不会修改诊断、会话或实验历史。API文档使用FastAPI默认CDN，目标网络须能访问；离线查看OpenAPI JSON不依赖该CDN。
 
@@ -130,3 +130,21 @@ curl --fail -I http://127.0.0.1:8080/student
 ### 2026-09-30 容器就绪探针
 
 后端Compose健康检查使用`/api/v1/health/ready`，含数据库连通性；`/api/v1/health`继续仅表示进程存活。`depends_on: service_healthy`只约束启动顺序，不能据此声称运行中数据库故障会自动重启后端或停止前端。断库/恢复证据见本轮共享校验修复报告。
+
+### 环境与修复版本部署
+
+`APP_ENV` 仅接受 development/test/staging/production（忽略大小写与两端空白，prod为production别名）；未知值拒绝启动。启用工作流的staging/production必须配置PostgreSQL checkpoint，不能用拼写或别名落入内存模式。
+
+Python Settings维护AI_PROMPT_VERSION默认值；Compose仅转交明确覆盖，不注入另一个默认。显式覆盖须与实际Prompt及指纹一起留档。0037–0038只在隔离库完成升级验证，业务部署另行执行。旧知识来源需管理员逐来源授权；旧待审核文档需真实整理人重新提交后由另一批准人审核。回退时关闭AI/受影响入口并保留新表，不能删除未知费用或权限历史。
+
+### 知识文件导入资源边界（2026-10-02）
+
+文件导入目前要求 Linux 服务：解析器在独立 Python 子进程运行，在导入解析库前设置虚拟内存、CPU 和输出文件限制；父进程按墙钟期限终止并回收子进程。macOS/Windows 或资源限制无法设置时返回 `503 KNOWLEDGE_PARSER_UNAVAILABLE`，不会退回无限制的进程内解析。本机仍可使用受字符数限制的文本导入，文件导入请使用 Linux 容器。
+
+默认预算为原文件 10 MiB、文档 500,000 字符、PDF 200 页、单解析进程 256 MiB 虚拟内存、5 秒 CPU、10 秒墙钟、同服务主机 2 个解析槽。并发槽耗尽返回 `503 KNOWLEDGE_PARSER_BUSY`；超资源预算返回 413，坏格式返回 422。TXT/Markdown/CSV/DOCX/PDF 均经过同一进程边界，DOCX 仍有展开 XML 大小限制。CPU/内存等值是软件保护预算，不是已验证的课堂容量。
+
+配置项为 `KNOWLEDGE_PARSER_MEMORY_BYTES`、`KNOWLEDGE_PARSER_CPU_SECONDS`、`KNOWLEDGE_PARSER_WALL_SECONDS`、`KNOWLEDGE_PARSER_MAX_PAGES`、`KNOWLEDGE_PARSER_CONCURRENCY`。本轮正常样本探针为 20 页 PDF、8,043 文件字节、640 字符、约 30 MiB RSS；上限附近文本和恶意资源消耗另在隔离 Linux 测试中验证。
+
+应用在 JSON 解析前限制导入请求的实际字节数，文件请求预算为 `4 × ceil(KNOWLEDGE_MAX_FILE_BYTES / 3) + KNOWLEDGE_REQUEST_METADATA_BYTES`，文本请求预算为 `12 × KNOWLEDGE_MAX_DOCUMENT_CHARS + KNOWLEDGE_REQUEST_METADATA_BYTES`（覆盖 JSON 转义）。上传总时限为 30 秒；导入路径关闭 Nginx 请求缓冲，使后端期限从接收上传时开始，代理另设30秒空闲期限。不支持压缩请求体。默认元数据预算为 65,536 字节。超限、断连或解析失败不会创建半份文档。
+
+Compose 将文件、文档及元数据三项预算通过同一 YAML anchor 传给后端与前端。Nginx 启动脚本据此生成两个导入路径的上限，不改变其他 API 路径。单独启动前端镜像必须显式设置 `KNOWLEDGE_MAX_FILE_BYTES`、`KNOWLEDGE_MAX_DOCUMENT_CHARS`、`KNOWLEDGE_REQUEST_METADATA_BYTES` 三项，并与后端配置一致；缺值启动失败。修改环境后须重建/重启相关服务使生成配置生效。

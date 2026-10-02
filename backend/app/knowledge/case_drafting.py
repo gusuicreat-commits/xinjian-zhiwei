@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient, build_ai_client
 from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_payload
-from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
+from app.ai.governance import GovernedAIInvocation
 from app.core.config import Settings
 from app.models.base import utc_now
 from app.models.classroom import User
@@ -415,7 +415,10 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
     prompt_payload["output_schema"] = AICasePolishFields.model_json_schema()
     user_prompt = json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
     prompt_hash = hashlib.sha256(f"{system_prompt}\n{user_prompt}".encode()).hexdigest()
-    governor = GovernedAIInvocation(db, diagnosis, settings, call_stage="case_polish")
+    governor = GovernedAIInvocation(
+        db, diagnosis, settings, call_stage="case_polish",
+        operation_key=f"case:{draft.id}:version:{expected_version}:polish",
+    )
     for attempt in range(settings.ai_max_retries + 1):
         try:
             completion = governor.complete_json(
@@ -426,7 +429,7 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
             generated = AICasePolishFields.model_validate_json(completion.content)
             break
         except Exception as exc:
-            if isinstance(exc, AIQuotaDenied) or attempt == settings.ai_max_retries:
+            if not governor.retry(exc) or attempt == settings.ai_max_retries:
                 raise CaseDraftError("AI case polish failed validation or quota check") from exc
     polished = deepcopy(draft.template_payload or {})
     polished["aiGeneratedFields"] = generated.model_dump(mode="json", by_alias=True)

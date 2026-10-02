@@ -36,7 +36,7 @@ def _client() -> OpenAICompatibleClient:
 )
 def test_malformed_usage_is_a_safe_provider_error(usage: Any, monkeypatch) -> None:
     client = _client()
-    monkeypatch.setattr(client, "_post_once", lambda *args: {
+    monkeypatch.setattr(client, "_post_once", lambda *args, **kwargs: {
         "choices": [{"message": {"content": "{}"}}], "usage": usage,
     })
     for method in (client.complete_json, client.complete_json_once):
@@ -47,7 +47,7 @@ def test_malformed_usage_is_a_safe_provider_error(usage: Any, monkeypatch) -> No
 @pytest.mark.parametrize("usage", [None, {}, {"prompt_tokens": 12, "completion_tokens": 3.0}])
 def test_optional_and_valid_usage_remain_supported(usage: Any, monkeypatch) -> None:
     client = _client()
-    monkeypatch.setattr(client, "_post_once", lambda *args: {
+    monkeypatch.setattr(client, "_post_once", lambda *args, **kwargs: {
         "choices": [{"message": {"content": "{}"}}], "usage": usage,
     })
     completion = client.complete_json_once(system_prompt="test", user_prompt="test")
@@ -59,11 +59,11 @@ def test_optional_and_valid_usage_remain_supported(usage: Any, monkeypatch) -> N
 def test_single_attempt_transport_does_not_retry(monkeypatch) -> None:
     calls = []
 
-    def fail(*args, **kwargs):
+    async def fail(*args, **kwargs):
         calls.append(1)
         raise httpx.ConnectError("synthetic failure")
 
-    monkeypatch.setattr(httpx.Client, "post", fail)
+    monkeypatch.setattr(httpx.AsyncClient, "send", fail)
     client = _client()
     with pytest.raises(AIProviderError):
         client.complete_json_once(system_prompt="test", user_prompt="test")
@@ -71,7 +71,7 @@ def test_single_attempt_transport_does_not_retry(monkeypatch) -> None:
     calls.clear()
     with pytest.raises(AIProviderError):
         client.complete_json(system_prompt="test", user_prompt="test")
-    assert len(calls) == 3
+    assert len(calls) == 1  # direct client cannot hide unreserved retries
 
 
 def test_malformed_usage_falls_back_in_explanation(api_context, monkeypatch) -> None:
@@ -91,7 +91,7 @@ def test_malformed_usage_falls_back_in_explanation(api_context, monkeypatch) -> 
     client = _client()
     calls = []
 
-    def malformed(*args):
+    def malformed(*args, **kwargs):
         calls.append(1)
         return {"choices": [{"message": {"content": "{}"}}], "usage": ["invalid"]}
 

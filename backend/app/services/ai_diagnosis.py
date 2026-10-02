@@ -54,10 +54,8 @@ from app.models.guidance_history import GuidanceHistory
 from app.services.diagnosis_episode import upsert_episode
 from app.services.experiment_packages import load_experiment_package_runtime
 from app.services.lightweight_diagnosis import (
-    budget_allowed,
     build_diagnosis_core,
     decide_ai_policy,
-    estimate_ai_cost,
     explanation_fingerprint,
     render_deterministic_explanation,
 )
@@ -555,6 +553,7 @@ def _explain_diagnosis(
     retrieved_knowledge: list[AIKnowledgeReference] | None = None,
     workflow_run_id: str | None = None,
     call_stage: str = "explanation",
+    operation_request_id: str | None = None,
 ) -> AIExplanationResponse:
     started = time.monotonic()
     existing = _workflow_ai_record(db, workflow_run_id, call_stage)
@@ -899,34 +898,7 @@ def _explain_diagnosis(
             student_actor=student_actor,
         )
 
-    projected_cost = estimate_ai_cost(
-        estimated_input_tokens, settings.ai_output_token_limit, settings
-    )
-    allowed, budget_reason = budget_allowed(
-        db, device.id, settings, episode, projected_call_cost=projected_cost
-    )
-    if not allowed:
-        return _skipped_response(
-            db,
-            diagnosis=diagnosis,
-            settings=settings,
-            payload=payload,
-            prompt_hash=prompt_hash,
-            knowledge=knowledge,
-            memory_sources=memory_sources,
-            episode=episode,
-            trigger_reason=policy.reason,
-            error_code=budget_reason or "AI_BUDGET_LIMIT",
-            error_message=None,
-            notice="AI 调用预算或频率限制已生效，当前返回确定性诊断。",
-            deterministic_result=deterministic.model_dump(mode="json"),
-            started=started,
-            estimated_cost=projected_cost or 0.0,
-            workflow_run_id=workflow_run_id,
-            call_stage=call_stage,
-            student_actor=student_actor,
-        )
-
+    # The governor checks quota only for new physical attempts, after replay lookup.
     last_error: Exception | None = None
     completion = None
     explanation = None
@@ -941,6 +913,12 @@ def _explain_diagnosis(
         episode=episode,
         knowledge_case_ids=tuple(k.case_id for k in knowledge if k.case_id),
         source_snapshot=memory_sources,
+        execution_context={"context_policy": CONTEXT_POLICY_VERSION,
+                           "context_contract": CONTEXT_CONTRACT_VERSION},
+        operation_key=(
+            f"workflow:{workflow_run_id}:{call_stage}" if workflow_run_id
+            else f"diagnosis:{diagnosis.id}:{operation_request_id or 'legacy'}:{call_stage}"
+        ),
     )
     for candidate_route, candidate in clients:
         route = candidate_route
@@ -960,8 +938,10 @@ def _explain_diagnosis(
                 break
             except (AIProviderError, ValidationError, ValueError, json.JSONDecodeError) as exc:
                 last_error = exc
-                # Retry the sealed request: audit hash and budget cover every attempt.
-        if explanation is not None or isinstance(last_error, AIQuotaDenied):
+                # Retry only known failures; uncertain physical requests are not repeated.
+                if not governor.retry(exc):
+                    break
+        if explanation is not None or (last_error is not None and not governor.retry(last_error)):
             break
     attempts = governor.attempts
     if isinstance(last_error, AIQuotaDenied):
@@ -1019,7 +999,7 @@ def _explain_diagnosis(
             route_path=route_path,
             validation_status="failed",
             fallback_reason=(
-                "LOCAL_AND_CLOUD_FAILED" if len(clients) > 1 else "DETERMINISTIC_TEMPLATE"
+                "LOCAL_AND_CLOUD_FAILED" if len(attempted_routes) > 1 else "DETERMINISTIC_TEMPLATE"
             ),
             estimated_cost=governor.estimated_cost,
             provider=ai.provider,
@@ -1038,7 +1018,7 @@ def _explain_diagnosis(
             "route_path": route_path,
             "cache_status": "miss",
             "fallback_reason": (
-                "LOCAL_AND_CLOUD_FAILED" if len(clients) > 1 else "DETERMINISTIC_TEMPLATE"
+                "LOCAL_AND_CLOUD_FAILED" if len(attempted_routes) > 1 else "DETERMINISTIC_TEMPLATE"
             ),
             "call_record_id": saved.id,
         }

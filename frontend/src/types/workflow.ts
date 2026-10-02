@@ -94,6 +94,8 @@ export interface WorkflowFinalResult extends WorkflowExplanation {
     summary?: string
     ranked_causes?: WorkflowReasonedCause[]
     missing_evidence?: string[]
+    verification_requests?: { text: string; source: 'model' | 'rules'; status: 'unverified' }[]
+    projection_version?: string
     next_verification_action?: string | null
     conflict?: boolean
   }

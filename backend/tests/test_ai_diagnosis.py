@@ -479,5 +479,5 @@ def test_invalid_cached_steps_are_revalidated_and_replaced(api_context):
         second = explain_diagnosis(db, device, diagnosis, settings, ai_client=fake)
         assert second.status == "succeeded"
         assert second.explanation.steps == []
-        assert fake.calls == 2
+        assert fake.calls == 1  # validated durable result repairs cache without another request
         assert db.query(AIExplanationCache).one().explanation_json["steps"] == []
