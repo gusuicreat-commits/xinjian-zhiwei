@@ -26,6 +26,8 @@
 
 当前版本、软件限制和测试证据见[实现状态](docs/implementation-status.md)；硬件、教师资料及真实效果缺口见[真实性看板](docs/project-truth-status.md)。
 
+阅读或审查本仓库时，请注明所读分支与提交号，以该提交的源码和上述状态文档为准。`docs/archive/`、旧发行记录及 Git 历史中的交付包仅代表当时情况；本机未提交的修复不会自动出现在 GitHub。前端以 `frontend/src/` 为准，需要离线演示时从当前源码[构建审核包](frontend/review-package/审核说明.md)，仓库不保存多套生成的 HTML。
+
 ## 第一次体验
 
 已有部署时，向维护者获取地址及测试身份，先查看“就绪状态”。本机启动需 Docker 与 Docker Compose，配置说明见[部署手册](docs/deployment.md)。首次配置：

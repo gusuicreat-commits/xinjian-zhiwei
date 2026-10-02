@@ -11,6 +11,6 @@
 | [截至2026-09-27的实现历史](implementation-history-through-2026-09-27.md) | 从原实现状态页完整保留的逐轮开发与验收日志；新状态不再追加到这里 |
 | [登录页视觉审查](login-layout-review.md) | 原视觉对照、偏移与修复记录，保留对应截图；丢失的临时参考图已注明 |
 
-历史发行记录仍在[CHANGELOG](../../CHANGELOG.md)，前端方案依据仍在[复杂度评估报告](../../output/reports/frontend-complexity-review-2026-09-21.md)，日期命名交付材料保留原目录。
+历史发行记录仍在[CHANGELOG](../../CHANGELOG.md)，前端方案依据仍在[复杂度评估报告](../../output/reports/frontend-complexity-review-2026-09-21.md)，已移除的日期交付包、HTML副本和旧现状报告可从Git历史查阅，不作为当前版本入口。
 
 当前开发请返回[文档索引](../README.md)、[实现状态](../implementation-status.md)和[真实性看板](../project-truth-status.md)。

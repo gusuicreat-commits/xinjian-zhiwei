@@ -62,3 +62,13 @@ firmware/**/.pio/
 
 # Read-only package context reports (generated locally).
 output/package-context-preview/
+
+# Local delivery and presentation exports; source stays in frontend/ and docs/.
+/交付文件/
+/.ppt-build/
+/diagram/
+/infographic/
+/output/cards/
+/output/guizang/
+/output/images/
+/output/ppt/
