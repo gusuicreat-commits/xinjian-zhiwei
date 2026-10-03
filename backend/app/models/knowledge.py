@@ -4,6 +4,7 @@ from typing import Any, Optional
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -73,6 +74,10 @@ class KnowledgeChunk(UuidPrimaryKeyMixin, Base):
     __tablename__ = "knowledge_chunks"
     __table_args__ = (
         UniqueConstraint("document_id", "chunk_index", name="uq_knowledge_chunk_position"),
+        CheckConstraint(
+            "overlap_credit_chars >= 0 AND overlap_credit_chars <= length(content)",
+            name="ck_knowledge_chunk_overlap_credit",
+        ),
         Index("ix_knowledge_chunks_review_document", "review_status", "document_id"),
     )
 
@@ -83,6 +88,10 @@ class KnowledgeChunk(UuidPrimaryKeyMixin, Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     char_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Server-issued allowance for copied import overlap; edits cannot mint credit.
+    overlap_credit_chars: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
     locator_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     review_status: Mapped[str] = mapped_column(

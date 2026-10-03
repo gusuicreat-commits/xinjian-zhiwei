@@ -2,9 +2,11 @@
 
 本文件是持续开发约束的唯一维护位置。2026-09-27 按任务整理，合并重复要求，不改变用户已确认的业务边界。实现、版本和验收结果分别查[实现状态](implementation-status.md)、[真实性看板](project-truth-status.md)和当次报告；文档中的要求不等于能力已实现。
 
+2026-10-02依据三批历史缺陷复盘补充[缺陷预防要求](#defect-prevention)。原因与官方资料单独保存于[AI辅助开发缺陷复盘](development-retrospective-20261002.md)；本轮检查安排见[全项目软件扫描方案](software-scan-plan-20261002.md)，方案存在不表示扫描已执行。
+
 | 正在做什么 | 必读位置 |
 | --- | --- |
-| 开始功能、重构或数据变更 | [开发流程与四项要求](#data-change)，再按[规则对应表](#rule-map)定位模块 |
+| 开始功能、重构或数据变更 | [缺陷预防要求](#defect-prevention)、[开发流程与四项要求](#data-change)，再按[规则对应表](#rule-map)定位模块 |
 | 修复 Bug | [五步修复流程](#fix-bugs) |
 | 改诊断、AI、知识或实验包 | [模型规范内核](#model-core)、对应[业务规则](#business-rules)、[AI边界](#ai-boundary)或[资料包流程](#package-content) |
 | 改页面或用户文案 | [前端规则](#ui) |
@@ -14,6 +16,22 @@
 ## 1. 开发、修复与交付
 
 先核对当前代码、Schema、迁移、配置及实际证据，明确变更所属层次、输入输出、失败路径和授权范围。优先扩展既有模块，跨架构边界的改动须形成可审查决策，同步契约、实现、测试和本文，不能静默放宽规则。用户只要求设计时不实施；已有实施授权时持续推进，不逐步重复索取批准。
+
+<a id="defect-prevention"></a>
+### 缺陷预防与 AI 辅助开发
+
+这些要求适用于人工和AI辅助开发。按变更影响落实到现有方案、PR或修复报告即可，不为每次改动新建一套文档。以下材料与后面的数据、修复和验证要求共同验收；低影响文档或样式改动采用相称检查。
+
+| 开发时需要明确的内容 | 可检查的完成证据 |
+| --- | --- |
+| 规则归属与影响范围 | 修改前明确独立业务预期及规则唯一执行位置；从实际路由、调用方、CLI、恢复入口和前端请求反查适用入口，更新[规则表](#rule-map)。包括旧/新、单条/批量及读取投影，不仅列本次改动文件；AI上下文未覆盖或契约冲突处明确记录，不按默认模式补造要求。 |
+| 时间顺序与副作用 | 有等待、并发、持久化或外部调用时，列出关键变化点和前后两种顺序：撤权、改版本、提交、丢响应、中断和恢复。先明确成功效果、允许审计、禁止业务写入及调用，再验证真实发生情况；用同一请求身份协调未知结果，不把无响应当未执行。 |
+| 跨层含义与来源 | 状态、错误码和证据等级有明确生产方与消费方，检查API、落库、缓存/Checkpoint、旧结果投影、页面和导出的实际含义；未知、拒绝、待核验、已应用、已确认不靠文案或默认值互相替代。 |
+| 独立预期与有效反例 | 实现和测试均对照已确认规则，预期不从被测逻辑生成，测试替身不得绕过待验保护。覆盖关键拒绝的实际副作用、合法对照及有关异常时序；有具体疑点时用有限隔离破坏验证反例能失败。删除/跳过失败测试、放宽断言或修改预期须有独立规则依据，不能仅为通过。 |
+| 整条处理链与交付条件 | 资源上限追到代理、应用、编码/解压、解析、外部请求和取消回收；配置默认有唯一来源，核对直接运行与容器、旧/新数据和平台差异。新增API/依赖核对真实存在、锁定版本、来源和兼容，不凭AI生成的名称或示例认定可用。 |
+| 修复覆盖与结论边界 | 同类遗漏按规则合组，保留各入口反例；复查相邻入口，受影响的共同服务、调用方、契约和验证同步更新。测试与准确源码身份绑定，软件/远端CI/迁移/部署/Provider/硬件分别报告。自审通过、测试数量或换一个Agent均不能单独证明覆盖完整。 |
+
+代码、测试和审查使用相同假设时可能一起遗漏约束，因此独立性取决于预期来源和实际观测，不取决于参与Agent数量。复盘说明见[独立文章](development-retrospective-20261002.md)；执行细则继续使用[四项要求](#data-change)、[五步修复](#fix-bugs)、[验证与交付](#validation)及[AI质检](#ai-quality)，持续规则只在本文维护。
 
 <a id="data-change"></a>
 ### 数据处理的四项要求
@@ -267,15 +285,16 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 
 | 规则 | 唯一执行位置 | 入口与必须保留的反例 |
 | --- | --- | --- |
-| AUTH/R1：短事务最终授权 | `services/auth.py`的`ActorContext/authorize_actor`、`data_scope`、`student_authorization`、`knowledge_authorization` | HTTP/服务/图终结/CLI使用运行时身份引用，不把授权结果或令牌写Checkpoint；权限支持行受事务保护，等待后重验，拒绝无成功副作用；`test_shared_authorization*`、`test_template_authorization.py`、`test_knowledge_final_authorization.py`。已有Review-Token维护接口保持独立契约，不获得个人教师能力。 |
+| AUTH/R1：短事务最终授权 | `services/auth.py`的`ActorContext/authorize_actor`、`data_scope`、`student_authorization`、`knowledge_authorization` | HTTP/服务/图终结/CLI使用运行时身份引用，不把授权结果或令牌写Checkpoint；权限支持行受事务保护，等待后重验，拒绝无成功副作用；`test_shared_authorization*`、`test_template_authorization.py`、`test_knowledge_final_authorization.py`。Review-Token仅沿现有契约用于`GET /diagnosis/interventions`和`GET /ops/status`旧运维查询，不获得个人教师或知识工作区权限；知识工作区按下方来源范围规则执行。 |
 | ADVICE/R2、IDENTITY/R3：当前建议与实验身份 | `services/current_advice.py::assess_current_advice`、`knowledge/applicability.py::context_from_diagnosis` | 工作流/学生状态说明/解释记录共用来源、结构、策略校验；绑定冻结调用，保留教师编辑；未知/冲突实验不匹配，sensor_type不扩大范围；`test_shared_advice_regression.py`。 |
 | SOURCE/R4：原始来源保留 | `services/source_lifecycle.py` | 原始输入引用持久化和测试运行清理共用设备事务锁；校验冻结来源仍存在，全部引用/旧在途情况整次拒绝409，无引用允许清理及空重放；`test_shared_source_cleanup.py`、`test_shared_source_postgres.py`。 |
-| PROVENANCE/R5：测试来源传播 | `services/provenance.py::derive_test_flag` | 消息/导出/诊断/工作流/工单/案例/包/指导的新记录；任一来源为测试或必要来源未知则不能标正式，不批量改历史；`test_provenance_contract.py`。 |
+| PROVENANCE/R5：测试来源传播 | `services/provenance.py::derive_test_flag` | 消息/导出/诊断/工作流/工单/案例/包/指导及知识来源/文档/审计的新记录；任一来源为测试或必要来源未知则不能标正式，不批量改历史；`test_provenance_contract.py`。 |
 | COMMAND/R6：拒绝与未知结果 | `frontend/src/api/commandOutcome.ts`、`api/resilience.ts`和Store权限失效动作 | 区分各操作409；401/403清执行载荷和受保护视图，未知历史只留恢复编号；当前授权GET回执正向恢复，未找到不能推断未执行；迟到请求不能恢复旧数据。 |
 | OPS/R7、R8：安全扫描与运行就绪 | `scripts/security_scan.sh`→`security_scan.py`、`health.py::readiness` | 扫描输出仅路径/行号/规则，错误非通过；Compose使用ready探针，独立容器断库/恢复验收；`test_security_scan_contract.py`及当次容器报告。 |
 | AUTH：持久化归属/当前授权 | `services/data_scope.py`、`api/dependencies.py` | 仪表盘/诊断/解释/反馈/工单/读取；换学生、跨班、多角色、无/多会话、未知归属；`test_student_scope_r2.py`、`test_diagnosis_scope_r2.py`、`test_business_identity.py` |
 | AUTH：反馈等待后重验 | `api/dependencies.py::revalidate_student_access`由`student_feedback`/`diagnosis_workflow`调用 | 新反馈、pending恢复、applied重放、反馈/生命周期/恢复行锁；`test_feedback_authorization_wait.py`、`test_feedback_recovery.py`、`test_feedback_reliability.py` |
 | AUTH：退出与记忆最终授权 | `services/auth.py::revoke_session`、`memory_governance.py` | 主动退出/迟到登录、复核/清理/CLI、撤权先提交/写入先提交；`test_session_security_repair.py`、`test_security_repair_postgres.py`、浏览器真实退出。 |
+| KNOWLEDGE：文档写入性质与预算 | `services/knowledge.py`、`knowledge_access.py`、`api/knowledge_body_limit.py` | 创建/去重/文件转文本/编辑/拆分/合并/删除/审核/审计；账号与来源标记保守传播，测试账号拒写正式文档；锁内整文档预算，服务器重叠额度不增发，旧超限只减量修整；`test_knowledge_boundary_fix.py`、`test_knowledge_boundary_postgres.py`。 |
 | KNOWLEDGE：来源范围 | `services/knowledge_access.py` | 列表/统计/工作区/导入/编辑/批量合并/审核/授撤权；共享token拒绝、跨来源无副作用、旧资料不猜归属、审核身份不可伪造；`test_knowledge_scope_repair.py`、`test_security_repair_postgres.py`。 |
 | AI：逻辑操作与当前事实 | `ai/governance.py`、`clients.py`、`output_contract.py` | 推理/解释/润色、发送前后中断、成功重放、未知费用、键名泄密、旧缓存当前投影；`test_ai_operation*`、`test_ai_transport_lifecycle.py`、`test_ai_semantic_delivery.py`。 |
 | OPS：配置和异常边界 | `core/config.py`、`api/http_boundary.py` | 环境拼写错误、staging内存checkpoint拒绝、Compose默认与显式覆盖、500安全头和追踪ID；`test_runtime_boundary_repair.py`。 |

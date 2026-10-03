@@ -1,13 +1,13 @@
 # 芯鉴知微当前实现状态
 
-核对日期：2026-09-30。本文记录工作区的软件版本、能力、限制及执行证据；开发要求见[开发准则](development-guidelines.md)，外部事实与效果待验项见[真实性看板](project-truth-status.md)。代码存在、测试通过和已部署分别判断。
+核对日期：2026-10-03。本文记录工作区的软件版本、能力、限制及执行证据；开发要求见[开发准则](development-guidelines.md)，外部事实与效果待验项见[真实性看板](project-truth-status.md)。代码存在、测试通过和已部署分别判断。
 
 ## 当前版本
 
 | 对象 | 当前代码/内容版本 | 核对来源 |
 | --- | --- | --- |
 | 应用 | `1.0.0` | `VERSION`、应用配置与 `scripts/check_version.py` |
-| 数据库迁移 Head | `20261002_0038` | `backend/migrations/versions`；不是运行库版本 |
+| 数据库迁移 Head | `20261003_0039` | `backend/migrations/versions`；不是运行库版本 |
 | 诊断引擎兼容契约 | `2.2.0` | `experiment_packages/loader.py`；与应用版本分开 |
 | DHT11 工作区资料包 | `dht11_temperature_humidity@2.0.11` | 包 metadata.yaml；测试草稿 |
 | LED 工作区资料包 | `gpio_led_output@2.0.4` | 包 metadata.yaml；测试草稿 |
@@ -98,3 +98,5 @@ DHT11工作区2.0.8、固件0.2.4：新增[内部实验指南](experiments/dht11
 Linux独立解析专项28通过、15项PG专用跳过，覆盖主机跳过的全部11项解析用例；PG用例由主机门禁执行。真实Nginx/直连传输12场景通过。数量有交叉，不累计为独立总数。中间失败、修正原因、命令和源码指纹见[本轮修复报告](../output/audits/agent-security-fix-20261002/report.md)。
 
 原生macOS/Windows后端文件解析明确503，需使用Linux服务，文本导入仍可用；旧知识来源须显式授权，缺可信提交人的旧待审核资料须重新提交。0037/0038仅在一次性隔离库验证，业务库未迁移；源码提交状态以Git历史为准；未部署。真实Provider语义、硬件和课堂效果未验收。
+
+2026-10-03边界修复：知识资料创建/编辑/审核的测试性质和文档总量约束已接入，新增0039服务器重叠额度计量；受公告影响的Python/npm依赖已兼容升级，更新后公告查询0命中。分阶段软件验收完成：后端1077、模拟器32、PG流程25、前端157、浏览器19/11/1通过；12项主机Linux限定跳过有Linux专项补验。两次门禁曾因旧测试身份和迁移版本断言失败，修正后相关步骤通过，非单次完整脚本全绿。见[应对方案](software-boundary-repair-plan-20261003.md)和[验收报告](../output/audits/software-boundary-fix-20261003/report.md)。业务库/部署状态未改变。

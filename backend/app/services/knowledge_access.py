@@ -10,6 +10,7 @@ from app.models import AuditEvent, KnowledgeDocument, KnowledgeSource, User
 from app.models.base import utc_now
 from app.models.knowledge_access import KnowledgeSourceGrant
 from app.services.auth import ActorContext, AuthorizationDenied, authorize_actor, user_access
+from app.services.provenance import derive_test_flag
 
 CAPABILITIES = {
     "organize": ("knowledge.organize", "knowledge_organizer"),
@@ -103,9 +104,8 @@ def visible_sources(db, actor):
     )
 
 
-def audit_workspace(
-    db, actor, action, resource_type, resource_id, *, details=None, is_test_data=False
-):
+def audit_workspace(db, actor, action, resource_type, resource_id, *, details=None, is_test_data):
+    user = db.get(User, actor.user_id)
     db.add(
         AuditEvent(
             actor_user_id=actor.user_id,
@@ -113,7 +113,7 @@ def audit_workspace(
             resource_type=resource_type,
             resource_id=resource_id,
             details_json=details or {},
-            is_test_data=is_test_data,
+            is_test_data=derive_test_flag(user.is_test_data if user else None, is_test_data),
             created_at=utc_now(),
         )
     )

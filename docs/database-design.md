@@ -8,7 +8,7 @@
 ## 1. 迁移与存储基线
 
 - 标准环境使用 PostgreSQL 16；历史初始迁移要求 `vector` 扩展，当前诊断不使用向量检索。
-- Alembic 代码 Head 为 `20261002_0038`。这是仓库结构版本，不代表运行数据库已升级。
+- Alembic 代码 Head 为 `20261003_0039`。这是仓库结构版本，不代表运行数据库已升级。
 - 容器入口 `app.startup` 先执行迁移再启动 API；手工迁移、备份与回滚按 [部署说明](deployment.md) 执行。
 - LangGraph checkpoint 表由 PostgreSQL saver 的 `setup()` 管理，不在 Alembic 中重复定义。
 - 结构变更与历史数据处理遵守[数据变更要求](development-guidelines.md#data-change)。
@@ -154,3 +154,7 @@
 `knowledge_source_grants` 用 `(source_id,user_id,capability)` 唯一约束表达逐来源整理/审核权限，用户+来源索引用于可见列表。`knowledge_documents.submitted_by_user_id` 保存服务器认证的提交人，历史为空，不从旧元数据推断。
 
 `ai_operations` 以唯一 operation_key 防止同逻辑动作重复发送，保存冻结输入hash、版本、状态、期限、尝试数和有界结果；诊断ID索引用于阶段恢复，状态索引用于未决排查。`ai_usage_reservations.operation_id/attempt_no` 关联物理尝试并以二者唯一约束防重复；操作状态枚举和非负尝试数由CHECK约束保护。旧预留保持空关联和原费用，不猜测归属。0037/0038拒绝丢弃授权、操作及费用状态的降级，回退先关闭受影响增强、保留表与历史。代码Head不代表业务数据库已迁移。
+
+## 知识工作区总量计量（2026-10-03）
+
+`knowledge_chunks.overlap_credit_chars`由服务器导入分块时创建，数据库约束为0至实际正文长度。更新不新增额度，拆分分配原额度，合并合计原额度；文档预算使用正文总长度减额度总和，文档锁内检查。0039迁移为历史块填0，不凭旧locator猜测重叠，不修改历史正文/审核/测试标记；有非零额度时拒绝有损降级。运行库升级另行验收。

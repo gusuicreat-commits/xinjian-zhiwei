@@ -387,6 +387,7 @@ def edit_knowledge_chunk(
     payload: KnowledgeChunkUpdate,
     actor: CurrentUser,
     db: DatabaseSession,
+    settings: AppSettings,
 ) -> KnowledgeWorkspaceResponse:
     try:
         return update_chunk(
@@ -394,6 +395,7 @@ def edit_knowledge_chunk(
             chunk_id,
             content=payload.content,
             metadata=payload.metadata,
+            settings=settings,
             actor_context=current_actor(actor),
         )
     except KnowledgeServiceError as exc:
@@ -418,9 +420,12 @@ def merge_knowledge_chunks(
     payload: KnowledgeChunkMergeRequest,
     actor: CurrentUser,
     db: DatabaseSession,
+    settings: AppSettings,
 ) -> KnowledgeWorkspaceResponse:
     try:
-        return merge_chunks(db, payload.chunk_ids, actor_context=current_actor(actor))
+        return merge_chunks(
+            db, payload.chunk_ids, settings=settings, actor_context=current_actor(actor)
+        )
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)
 
@@ -443,6 +448,7 @@ def review_knowledge_document(
     payload: KnowledgeReviewRequest,
     actor: CurrentUser,
     db: DatabaseSession,
+    settings: AppSettings,
 ) -> KnowledgeReviewResponse:
     required_role = {
         "organizer": "knowledge_organizer",
@@ -460,7 +466,11 @@ def review_knowledge_document(
     authenticated_payload = payload.model_copy(update={"reviewer_ref": actor.id})
     try:
         return review_document(
-            db, document_id, authenticated_payload, actor_context=current_actor(actor)
+            db,
+            document_id,
+            authenticated_payload,
+            settings=settings,
+            actor_context=current_actor(actor),
         )
     except KnowledgeServiceError as exc:
         _raise_http_error(exc)

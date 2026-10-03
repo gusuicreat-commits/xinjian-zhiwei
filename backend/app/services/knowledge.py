@@ -6,7 +6,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
+from app.models import User
 from app.models.knowledge import (
     KnowledgeCase,
     KnowledgeChunk,
@@ -95,7 +96,9 @@ def split_text(content: str, chunk_size: int, overlap: int) -> list[tuple[str, i
                 end = candidate
         chunk = content[start:end].strip()
         if chunk:
-            chunks.append((chunk, start, end))
+            raw = content[start:end]
+            actual_start = start + len(raw) - len(raw.lstrip())
+            chunks.append((chunk, actual_start, actual_start + len(chunk)))
         if end >= length:
             break
         start = max(end - overlap, start + 1)
@@ -155,8 +158,9 @@ def _document_response(
 def create_source(
     db: Session, payload: KnowledgeSourceCreate, *, actor_context=None
 ) -> KnowledgeSourceResponse:
-    workspace_actor(db, actor_context, "organize")
-    if not payload.is_test_data:
+    actor = workspace_actor(db, actor_context, "organize")
+    source_is_test = derive_test_flag(actor.is_test_data, explicit=payload.is_test_data)
+    if not source_is_test:
         if payload.source_type not in FORMAL_SOURCE_TYPES:
             raise KnowledgeServiceError(
                 422,
@@ -178,7 +182,7 @@ def create_source(
         license_name=payload.license_name,
         authorization_scope=payload.authorization_scope,
         metadata_json=payload.metadata,
-        is_test_data=payload.is_test_data,
+        is_test_data=source_is_test,
     )
     db.add(source)
     try:
@@ -252,7 +256,10 @@ def import_text_document(
             "KNOWLEDGE_DOCUMENT_TOO_LARGE",
             "Document text exceeds the configured character limit",
         )
-    document_is_test = derive_test_flag(source.is_test_data, explicit=payload.is_test_data)
+    actor = workspace_actor(db, actor_context, "organize")
+    document_is_test = derive_test_flag(
+        source.is_test_data, actor.is_test_data, explicit=payload.is_test_data
+    )
     if not document_is_test:
         if not payload.organizer_ref:
             raise KnowledgeServiceError(
@@ -300,6 +307,12 @@ def import_text_document(
         .options(selectinload(KnowledgeDocument.chunks))
     )
     if existing is not None:
+        if document_is_test and not existing.is_test_data:
+            raise KnowledgeServiceError(
+                409,
+                "KNOWLEDGE_PROVENANCE_CONFLICT",
+                "Test input cannot be acknowledged as an existing formal document",
+            )
         return _document_response(existing, idempotent_replay=True)
 
     chunk_values = split_text(
@@ -321,6 +334,7 @@ def import_text_document(
     )
     db.add(document)
     db.flush()
+    previous_end = 0
     for index, (chunk_text, start, end) in enumerate(chunk_values):
         locator = dict(payload.locator_prefix)
         locator.update({"chunk_index": index, "start_char": start, "end_char": end})
@@ -331,6 +345,7 @@ def import_text_document(
                 content=chunk_text,
                 content_hash=_hash_text(chunk_text),
                 char_count=len(chunk_text),
+                overlap_credit_chars=min(len(chunk_text), max(0, previous_end - start)),
                 locator_json=locator,
                 metadata_json={
                     **payload.metadata,
@@ -339,6 +354,7 @@ def import_text_document(
                 },
             )
         )
+        previous_end = max(previous_end, end)
     audit_workspace(
         db,
         actor_context,
@@ -395,6 +411,41 @@ def get_document_workspace(
     )
 
 
+def _assert_document_writer(db, actor_context, document):
+    # document_scope has already refreshed and locked the current actor and document.
+    actor = db.get(User, actor_context.user_id)
+    if actor is None or (actor.is_test_data and not document.is_test_data):
+        raise AuthorizationDenied(403)
+
+
+def _document_chars(db, document_id):
+    # Query persisted content under the document lock; never trust client metadata
+    # or an ORM relationship cached before waiting for that lock.
+    return int(
+        db.scalar(
+            select(
+                func.coalesce(
+                    func.sum(
+                        func.length(KnowledgeChunk.content) - KnowledgeChunk.overlap_credit_chars
+                    ),
+                    0,
+                )
+            ).where(KnowledgeChunk.document_id == document_id)
+        )
+        or 0
+    )
+
+
+def _check_document_growth(db, document_id, delta, settings):
+    current = _document_chars(db, document_id)
+    if current + delta > settings.knowledge_max_document_chars and delta >= 0:
+        raise KnowledgeServiceError(
+            413,
+            "KNOWLEDGE_DOCUMENT_TOO_LARGE",
+            "Edited document exceeds the configured character limit",
+        )
+
+
 def _editable_chunk(db: Session, chunk_id: str, actor_context) -> KnowledgeChunk:
     if actor_context is None:
         raise AuthorizationDenied(401)
@@ -408,6 +459,8 @@ def _editable_chunk(db: Session, chunk_id: str, actor_context) -> KnowledgeChunk
     )
     if chunk is None:
         raise KnowledgeServiceError(404, "KNOWLEDGE_CHUNK_NOT_FOUND", "Knowledge chunk not found")
+    _assert_document_writer(db, actor_context, chunk.document)
+    db.expire(chunk.document, ["chunks"])
     if chunk.document.review_status != "draft":
         raise KnowledgeServiceError(
             409,
@@ -423,6 +476,7 @@ def update_chunk(
     *,
     content: Optional[str],
     metadata: Optional[dict[str, Any]],
+    settings: Settings | None = None,
     actor_context=None,
 ) -> KnowledgeWorkspaceResponse:
     chunk = _editable_chunk(db, chunk_id, actor_context)
@@ -430,13 +484,24 @@ def update_chunk(
         normalized = _normalize_text(content)
         if not normalized:
             raise KnowledgeServiceError(422, "EMPTY_KNOWLEDGE_CHUNK", "Chunk cannot be empty")
+        credit = min(chunk.overlap_credit_chars, len(normalized))
+        delta = len(normalized) - credit - (len(chunk.content) - chunk.overlap_credit_chars)
+        _check_document_growth(db, chunk.document_id, delta, settings or get_settings())
+        chunk.overlap_credit_chars = credit
         chunk.content = normalized
         chunk.content_hash = _hash_text(normalized)
         chunk.char_count = len(normalized)
     if metadata is not None:
         chunk.metadata_json = {**metadata, "organizer_ref": actor_context.user_id}
     document_id = chunk.document_id
-    audit_workspace(db, actor_context, "chunk_update", "knowledge_chunk", chunk.id)
+    audit_workspace(
+        db,
+        actor_context,
+        "chunk_update",
+        "knowledge_chunk",
+        chunk.id,
+        is_test_data=chunk.document.is_test_data,
+    )
     db.commit()
     return get_document_workspace(db, document_id, actor_context=actor_context)
 
@@ -465,6 +530,8 @@ def split_chunk_at(
         raise KnowledgeServiceError(422, "INVALID_CHUNK_SPLIT", "Split creates an empty chunk")
     document = chunk.document
     chunks = sorted(document.chunks, key=lambda item: item.chunk_index)
+    credit = chunk.overlap_credit_chars
+    chunk.overlap_credit_chars = min(credit, len(left))
     chunk.content = left
     chunk.content_hash = _hash_text(left)
     chunk.char_count = len(left)
@@ -474,6 +541,7 @@ def split_chunk_at(
         content=right,
         content_hash=_hash_text(right),
         char_count=len(right),
+        overlap_credit_chars=min(credit - chunk.overlap_credit_chars, len(right)),
         locator_json={**chunk.locator_json, "manually_split": True},
         metadata_json=dict(chunk.metadata_json),
         review_status="draft",
@@ -482,7 +550,14 @@ def split_chunk_at(
     chunks.insert(position, new_chunk)
     db.add(new_chunk)
     _reindex_chunks(db, chunks)
-    audit_workspace(db, actor_context, "chunks_changed", "knowledge_document", document.id)
+    audit_workspace(
+        db,
+        actor_context,
+        "chunks_changed",
+        "knowledge_document",
+        document.id,
+        is_test_data=document.is_test_data,
+    )
     db.commit()
     return get_document_workspace(db, document.id, actor_context=actor_context)
 
@@ -491,6 +566,7 @@ def merge_chunks(
     db: Session,
     chunk_ids: list[str],
     *,
+    settings: Settings | None = None,
     actor_context=None,
 ) -> KnowledgeWorkspaceResponse:
     if not chunk_ids:
@@ -507,6 +583,7 @@ def merge_chunks(
         db.scalars(
             select(KnowledgeChunk)
             .where(KnowledgeChunk.id.in_(chunk_ids))
+            .execution_options(populate_existing=True)
             .options(joinedload(KnowledgeChunk.document))
         )
     )
@@ -521,8 +598,12 @@ def merge_chunks(
     if indexes != list(range(indexes[0], indexes[0] + len(indexes))):
         raise KnowledgeServiceError(422, "CHUNKS_NOT_CONSECUTIVE", "Chunks must be consecutive")
     document = chunks[0].document
+    _assert_document_writer(db, actor_context, document)
+    db.expire(document, ["chunks"])
     keeper = chunks[0]
     merged = "\n".join(item.content for item in chunks)
+    _check_document_growth(db, document.id, len(chunks) - 1, settings or get_settings())
+    keeper.overlap_credit_chars = sum(c.overlap_credit_chars for c in chunks)
     keeper.content = merged
     keeper.content_hash = _hash_text(merged)
     keeper.char_count = len(merged)
@@ -533,7 +614,14 @@ def merge_chunks(
         db.delete(item)
     db.flush()
     _reindex_chunks(db, all_chunks)
-    audit_workspace(db, actor_context, "chunks_merged", "knowledge_document", document.id)
+    audit_workspace(
+        db,
+        actor_context,
+        "chunks_merged",
+        "knowledge_document",
+        document.id,
+        is_test_data=document.is_test_data,
+    )
     db.commit()
     return get_document_workspace(db, document.id, actor_context=actor_context)
 
@@ -553,7 +641,14 @@ def delete_chunk(db: Session, chunk_id: str, *, actor_context=None) -> Knowledge
     db.delete(chunk)
     db.flush()
     _reindex_chunks(db, chunks)
-    audit_workspace(db, actor_context, "chunks_changed", "knowledge_document", document.id)
+    audit_workspace(
+        db,
+        actor_context,
+        "chunks_changed",
+        "knowledge_document",
+        document.id,
+        is_test_data=document.is_test_data,
+    )
     db.commit()
     return get_document_workspace(db, document.id, actor_context=actor_context)
 
@@ -563,6 +658,7 @@ def review_document(
     document_id: str,
     payload: KnowledgeReviewRequest,
     *,
+    settings: Settings | None = None,
     actor_context: ActorContext | None = None,
 ) -> KnowledgeReviewResponse:
     capability = "review" if payload.reviewer_role == "formal_approver" else "organize"
@@ -583,6 +679,9 @@ def review_document(
         raise KnowledgeServiceError(
             404, "KNOWLEDGE_DOCUMENT_NOT_FOUND", "Knowledge document not found"
         )
+    _assert_document_writer(db, actor_context, document)
+    if payload.decision in {"pending", "approved"}:
+        _check_document_growth(db, document.id, 0, settings or get_settings())
     required_role = REVIEW_TRANSITIONS.get((document.review_status, payload.decision))
     if (
         document.review_status == "pending"

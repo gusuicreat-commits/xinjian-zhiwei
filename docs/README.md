@@ -9,6 +9,7 @@
 | 了解软件 | [项目简介](../README.md) · [系统架构](architecture.md) |
 | 确认已实现与未验收事项 | [实现状态](implementation-status.md) · [真实性看板](project-truth-status.md) |
 | 开发和修复 | [开发入口](../AGENTS.md) · [开发准则](development-guidelines.md) |
+| 理解反复缺陷与本轮扫描 | [AI辅助开发缺陷复盘](development-retrospective-20261002.md) · [全项目软件扫描方案](software-scan-plan-20261002.md)（已执行，修复进展见[应对方案](software-boundary-repair-plan-20261003.md)；依赖公告风险另列，[本机报告](../output/audits/software-boundary-scan-20261002/report.md)） |
 | 运行和演示 | [部署说明](deployment.md) · [演示手册](demo-runbook.md) |
 | 测试和解读结果 | [测试与评测](evaluation.md) · [测试报告约定](test-reporting.md) |
 

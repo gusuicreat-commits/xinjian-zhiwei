@@ -375,7 +375,8 @@ def test_formal_knowledge_governance_and_rag_status_filter(
                 username="phase95-" + role,
                 display_name="Synthetic reviewer",
                 password_hash="unused",
-                is_test_data=True,
+                # Isolated fixture simulates formal identities for formal governance.
+                is_test_data=False,
             )
             db.add(reviewer)
             authorize_write_fixture(db, reviewer, role)

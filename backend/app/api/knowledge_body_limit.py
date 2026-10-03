@@ -1,4 +1,4 @@
-"""Bound import bodies before FastAPI JSON parsing, even without Content-Length."""
+"""Bound import and edit bodies before FastAPI JSON parsing, even without Content-Length."""
 
 import asyncio
 import re
@@ -14,13 +14,19 @@ class KnowledgeBodyLimit:
             re.escape(settings.api_v1_prefix) + r"/knowledge/sources/[^/]+/documents/(file|text)/?$"
         )
 
+        self.edit_path = re.compile(
+            re.escape(settings.api_v1_prefix) + r"/knowledge/chunks/[^/]+/?$"
+        )
+
     async def __call__(self, scope, receive, send):
         match = self.path.fullmatch(scope.get("path", ""))
-        if scope["type"] != "http" or scope.get("method") != "POST" or not match:
+        is_import = scope.get("method") == "POST" and match
+        is_edit = scope.get("method") == "PATCH" and self.edit_path.fullmatch(scope.get("path", ""))
+        if scope["type"] != "http" or not (is_import or is_edit):
             return await self.app(scope, receive, send)
         budget = self.settings.knowledge_request_metadata_bytes + (
             4 * ((self.settings.knowledge_max_file_bytes + 2) // 3)
-            if match[1] == "file"
+            if is_import and match[1] == "file"
             else self.settings.knowledge_max_document_chars * 12
         )
 

@@ -244,3 +244,43 @@ def test_linux_unavailable_resource_limit_fails_closed(tmp_path, monkeypatch):
         decode_and_extract("a.txt", base64.b64encode(b"hello").decode(), 100)
     assert error.value.status_code == 503
     assert error.value.code == "KNOWLEDGE_PARSER_UNAVAILABLE"
+
+
+@pytest.mark.parametrize("headers", [[], [(b"content-length", b"1")]])
+def test_edit_actual_bytes_are_bounded_before_json(headers):
+    called = []
+    sent = []
+
+    async def application(*args):
+        called.append(True)
+
+    messages = iter(
+        [
+            {"type": "http.request", "body": b"x" * 1024, "more_body": True},
+            {"type": "http.request", "body": b"x" * 13, "more_body": False},
+        ]
+    )
+
+    async def receive():
+        return next(messages)
+
+    async def send(message):
+        sent.append(message)
+
+    asyncio.run(
+        KnowledgeBodyLimit(
+            application,
+            settings(knowledge_max_document_chars=1, knowledge_request_metadata_bytes=1024),
+        )(
+            {
+                "type": "http",
+                "method": "PATCH",
+                "headers": headers,
+                "path": "/api/v1/knowledge/chunks/a",
+            },
+            receive,
+            send,
+        )
+    )
+    assert not called
+    assert sent[0]["status"] == 413

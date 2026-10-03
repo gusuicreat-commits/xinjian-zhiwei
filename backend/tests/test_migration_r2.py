@@ -59,7 +59,7 @@ def test_empty_database_upgrade_matches_models(migration_db):
     engine, migrate = migration_db
     migrate("upgrade", "head")
     with engine.connect() as conn:
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20261002_0038"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20261003_0039"
     migrate("check")
 
 
