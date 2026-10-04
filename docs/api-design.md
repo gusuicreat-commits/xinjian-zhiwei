@@ -126,6 +126,8 @@ checkpoint 不可用时，原有 API 仍可返回确定性结果。响应中的 
 `retrieval_audit`、规则/日志引用、故障树候选、知识引用和 `reviews` 用于可观察、可追溯
 展示；不返回知识正文、Prompt、认证信息或密钥。
 
+2026-10-04增量：工作流响应增加只读 `reported_evidence`（无来源时为空列表），从绑定诊断的持久证据投影，带来源与状态并清洗敏感值；等待反馈/教师期间即使 `final_result` 为空也可返回。它不扩展读取权限，不表示已确认根因。当前建议采用 `reasoning-facts-v2`，只显示规则许可的核验动作；模型自由 `missing_evidence` 和旧别名不能回退为当前指导。精确字段见 `workflow_schemas.py` 和[本轮评估](../output/audits/ai-residual-repair-20261004/report.md)。
+
 ### 重新检查命令
 
 `POST /api/v1/diagnosis-workflows/devices/{device_id}` 接受可选

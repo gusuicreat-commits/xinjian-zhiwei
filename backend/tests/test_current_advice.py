@@ -72,6 +72,7 @@ def add_call(db, diagnosis, workflow, stage="explanation", *, current=False):
             **record.input_snapshot,
             "output_contract": {"version": OUTPUT_CONTRACT_VERSION,
                                 "summary": "server summary", "limitations": [],
+                                "allowed_causes": [],
                                 "allowed_steps": ["检查供电"]},
         }
     db.flush()
@@ -332,3 +333,47 @@ def test_current_projection_preserves_persisted_teacher_edit(advice_task):
     assert current['ai_reasoning']['summary'] != 'OLD MODEL PRIVATE REASONING'
     assert workflow.final_result == original
     assert not db.dirty
+
+
+def test_skipped_explanation_keeps_paired_licensed_reasoning_action(advice_task):
+    from app.services.current_advice import project_current_advice
+
+    db, diagnosis, workflow = advice_task
+    make_ai_result(db, diagnosis, workflow, current=True)
+    anchor = db.scalar(select(AICallRecord).where(
+        AICallRecord.workflow_run_id == workflow.id, AICallRecord.call_stage == 'explanation',
+    ))
+    anchor.status = 'skipped'
+    anchor.output_json = None
+    anchor.error_code = 'INPUT_TOKEN_LIMIT'
+    paired = db.scalar(select(AICallRecord).where(
+        AICallRecord.workflow_run_id == workflow.id, AICallRecord.call_stage == 'reasoning',
+    ))
+    paired.input_snapshot = {**paired.input_snapshot,
+                             'allowed_verification_actions': [{'text': '核对配置记录'}]}
+    workflow.final_result = {**workflow.final_result,
+                             'provenance': 'rules_and_reviewed_knowledge',
+                             'ai_reasoning': {'mode': 'ai', 'status': 'unknown',
+                                              'next_verification_action': '核对配置记录'}}
+    db.commit()
+    original = deepcopy(workflow.final_result)
+    for _ in range(2):
+        final, _ = project_current_advice(db, workflow)
+        assert final['ai_reasoning']['next_verification_action'] == '核对配置记录'
+        assert final['ai_reasoning']['verification_requests'][0]['source'] == 'rules'
+        assert final['ai_reasoning']['reported_evidence']
+        assert workflow.final_result == original
+
+
+def test_waiting_workflow_exposes_source_reports_without_final_result(advice_task):
+    db, diagnosis, workflow = advice_task
+    workflow.final_result = None
+    db.commit()
+    response = serialize_workflow(workflow, audience='student')
+    assert response.final_result is None
+    assert response.reported_evidence
+    ids = {row['id'] for row in response.reported_evidence}
+    from app.models import DiagnosisEvidence
+    expected_ids = set(db.scalars(select(DiagnosisEvidence.id).where(
+        DiagnosisEvidence.diagnosis_id == diagnosis.id)))
+    assert ids == expected_ids

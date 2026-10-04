@@ -194,9 +194,8 @@ def _verify_case_draft_governance() -> str:
             if draft.root_cause.get("status") != "unknown":
                 raise SystemExit("student feedback incorrectly confirmed a root cause")
             polished = dict(draft.template_payload)
-            polished["symptom"] = "DHT11 窗口内累计读取失败，尚未获得有效数据。"
             polished["aiGeneratedFields"] = {
-                "title": "DHT11 读取异常排查",
+                "title": "SENSOR_READ_FAILED案例记录",
                 "sourceIds": draft.source_ids,
             }
             apply_ai_assisted_polish(db, draft, polished, actor_context=identity)

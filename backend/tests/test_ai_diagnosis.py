@@ -406,7 +406,7 @@ def test_old_audit_prose_is_not_served_as_current_validated_output(api_context):
     assert record.output_json == before  # Historical audit is not rewritten.
 
 
-def test_specific_pending_information_survives_persistence_and_replay(api_context):
+def test_unlicensed_pending_information_is_removed_on_persistence_and_replay(api_context):
     from app.services.ai_diagnosis import serialize_ai_call
 
     diagnosis_id = _create_diagnosis(api_context)
@@ -438,8 +438,8 @@ def test_specific_pending_information_survives_persistence_and_replay(api_contex
         record = db.get(AICallRecord, response.call_record_id)
         replay = serialize_ai_call(record, settings)
         expected = "推理提出的待核验项（未确认）：「缺少供电测量记录。」"
-        assert expected in response.explanation.limitations
-        assert expected in record.output_json["limitations"]
+        assert expected not in response.explanation.limitations
+        assert expected not in record.output_json["limitations"]
         assert replay.explanation == response.explanation
         assert "已确认供电正常。" not in record.output_json["limitations"]
         assert fake.calls == 1

@@ -20,6 +20,10 @@ def main():
         "--budgets", type=Path, help="JSON object containing allowed numeric budgets"
     )
     parser.add_argument(
+        "--profile", type=Path,
+        help="Explicit non-secret package-context-profile-v1 JSON; conflicting fixtures fail",
+    )
+    parser.add_argument(
         "--trusted-sources", type=Path, help="Explicit trusted snapshot mapping JSON"
     )
     parser.add_argument("--expectations", type=Path)
@@ -30,7 +34,10 @@ def main():
     args = parser.parse_args()
     materials = {}
     try:
-        for name, path in (("budgets", args.budgets), ("trusted_sources", args.trusted_sources)):
+        for name, path in (
+            ("budgets", args.budgets), ("trusted_sources", args.trusted_sources),
+            ("profile", args.profile),
+        ):
             if path is not None:
                 if not path.is_file():
                     print("package-context-preview-v1: required material missing")

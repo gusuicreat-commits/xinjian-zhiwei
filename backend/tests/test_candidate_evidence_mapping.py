@@ -256,8 +256,12 @@ def test_legacy_candidate_without_links_requires_unknown():
     result = _fallback_reasoning(state, limitation="synthetic")
     assert result.conclusion == "unknown"
     assert result.ranked_causes == []
-    assert (
-        _validate_reasoning(result.model_dump_json(), state, state["evidence_registry"]) == result
-    )
+    replay = _validate_reasoning(result.model_dump_json(), state, state["evidence_registry"])
+    assert replay.conclusion == "unknown" and replay.ranked_causes == []
+    assert replay.model_dump(exclude={"limitations"}) == result.model_dump(exclude={"limitations"})
+    assert replay.limitations == [
+        "候选排序不等于根因确认；本次根因尚未确认。",
+        "现有证据不足以形成候选原因排序。",
+    ]
     checked = validate_reasoning_against_knowledge({**state, "reasoned_causes": []})
     assert checked["checks"]["candidate_evidence_associated"] is True

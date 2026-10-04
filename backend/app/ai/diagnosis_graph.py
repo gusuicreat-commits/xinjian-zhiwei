@@ -184,32 +184,12 @@ def _persisted_evidence_registry(
             .order_by(DiagnosisEvidence.created_at, DiagnosisEvidence.id)
         )
     )
-    registry: list[dict[str, str]] = []
-    for item in rows:
-        value = item.normalized_value or {}
-        kind = value.get("kind")
-        if kind == "rule_fact":
-            fact = f"规则证据:{value.get('fact')}={value.get('observed_value')}"
-        elif kind == "observation":
-            fact = (
-                f"传感器:{value.get('metric')}={value.get('value')}"
-                f"{value.get('unit') or ''};status={value.get('status', 'unknown')}"
-            )
-        elif kind == "event":
-            fact = f"事件:{value.get('event_type')}={value.get('status') or 'observed'}"
-        else:
-            fact = f"证据:{item.evidence_type}"
-        registry.append(
-            {
-                "id": item.id,
-                "fact": fact,
-                "source": item.source_type,
-                "status": str(value.get("status", "unknown"))
-                if kind == "observation"
-                else "observed",
-            }
-        )
-    return registry
+    from app.ai.evidence_projection import evidence_reports
+
+    diagnosis = runtime.context.db.get(DiagnosisResult, diagnosis_id)
+    return evidence_reports(rows, sensitive_sources=(
+        diagnosis.context_snapshot if diagnosis is not None else {},
+    ))
 
 
 @observed_node("context_builder")
@@ -1125,10 +1105,13 @@ def _approved_result(state: DiagnosisState) -> dict[str, Any]:
         "missing_evidence": state.get("missing_evidence", []),
         "next_verification_action": state.get("next_verification_action"),
         "conflict": bool(state.get("evidence_conflict")),
-    })
+    }, allowed_actions=state.get("allowed_verification_actions") or [],
+        evidence_registry=state.get("evidence_registry") or [])
     base["knowledge_validation"] = state.get("knowledge_validation") or {}
     base["teacher_reviewed"] = bool(review)
-    base["candidate_causes"] = state.get("possible_causes", state.get("fault_tree_candidates", []))
+    base["candidate_causes"] = project_reasoning({
+        "ranked_causes": state.get("possible_causes", state.get("fault_tree_candidates", [])),
+    })["ranked_causes"]
     base["knowledge_references"] = [
         {
             "chunk_id": item.get("chunk_id"),

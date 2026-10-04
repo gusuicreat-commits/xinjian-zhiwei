@@ -275,7 +275,7 @@ def prepare_explanation(payload: AIDiagnosisInput, settings: Settings, sources=(
         omissions["budget_omitted"] = omissions.get("budget_omitted", 0) + 1
     prepared = seal_context(
         "explanation",
-        payload.model_dump(mode="json"),
+        json.loads(user)["input"],
         payload.knowledge,
         sources,
         settings,

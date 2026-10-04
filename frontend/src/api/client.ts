@@ -23,6 +23,24 @@ export const apiClient = axios.create({
   },
 })
 
+// The default workflow has two governed 30s stages plus bounded local work.
+// This is a client waiting budget, not permission to resend an unknown command.
+const MODEL_OPERATION_TIMEOUT_MS = 75_000
+const modelOperationPaths = [
+  /^\/api\/v1\/diagnosis-workflows\/devices\/[^/]+\/?$/,
+  /^\/api\/v1\/diagnosis-workflows\/[^/]+\/review\/?$/,
+  /^\/api\/v1\/student\/diagnoses\/[^/]+\/feedback\/?$/,
+  /^\/api\/v1\/diagnosis\/results\/[^/]+\/ai-explanation\/?$/,
+  /^\/api\/v1\/knowledge\/case-drafts\/[^/]+\/ai-polish\/?$/,
+]
+apiClient.interceptors.request.use((config) => {
+  const path = (config.url ?? '').split('?')[0] ?? ''
+  if (config.method === 'post' && modelOperationPaths.some((pattern) => pattern.test(path))) {
+    config.timeout = MODEL_OPERATION_TIMEOUT_MS
+  }
+  return config
+})
+
 // Fail closed for any future API path missed by a demo adapter.
 if (import.meta.env.MODE === 'review') {
   apiClient.interceptors.request.use(() => {

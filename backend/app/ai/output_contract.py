@@ -5,11 +5,59 @@ import json
 from app.ai.context_sanitizer import sanitize_text
 from app.ai.schemas import AIDiagnosisInput
 
-OUTPUT_CONTRACT_VERSION = "explanation-boundary-v4"
-REASONING_PROJECTION_VERSION = "reasoning-facts-v1"
+OUTPUT_CONTRACT_VERSION = "explanation-boundary-v6"
+REASONING_PROJECTION_VERSION = "reasoning-facts-v2"
+SUPPORT_LEVELS = ("unknown", "low", "medium", "high")
 
 
-def project_reasoning(reasoning: dict) -> dict:
+def allowed_explanation_causes(payload: AIDiagnosisInput) -> list[dict[str, str]]:
+    """One allowlist for generation, validation and frozen delivery contracts.
+
+    Presence matters: an explicit empty result must never revive fault-tree
+    candidates. The name-only explanation format cannot distinguish collisions.
+    """
+    state = payload.workflow_state
+    legacy = "reasoning_status" not in state and "reasoned_causes" not in state
+    if state.get("reasoning_status") == "unknown":
+        return []
+    rows = (
+        [item for guidance in payload.fault_tree_guidance
+         for item in guidance.get("ranked_causes", [])]
+        if legacy else state.get("reasoned_causes") or []
+    )
+    allowed, identities, ambiguous = {}, {}, set()
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("title" if legacy else "cause")
+        if not isinstance(name, str) or not name:
+            continue
+        identity = item.get("cause_id")
+        support = "high" if legacy else item.get("support_level") or "unknown"
+        if support not in SUPPORT_LEVELS:
+            ambiguous.add(name)
+            continue
+        if name in identities and identities[name] != identity:
+            ambiguous.add(name)
+        identities[name] = identity
+        # Duplicate names with the same identity can only narrow support.
+        previous = allowed.get(name, support)
+        allowed[name] = min((previous, support), key=SUPPORT_LEVELS.index)
+    return [{"cause": name, "max_support_level": support}
+            for name, support in allowed.items() if name not in ambiguous]
+
+
+def validate_explanation_causes(causes, contract: dict) -> None:
+    """Also used when reading stored outputs; the frozen contract is required."""
+    allowed = {item["cause"]: item["max_support_level"] for item in contract["allowed_causes"]}
+    if any(item.cause not in allowed for item in causes):
+        raise ValueError("AI explanation introduced a cause outside constrained reasoning")
+    if any(SUPPORT_LEVELS.index(item.support_level) > SUPPORT_LEVELS.index(allowed[item.cause])
+           for item in causes):
+        raise ValueError("AI explanation increased a constrained support level")
+
+
+def project_reasoning(reasoning: dict, *, allowed_actions=(), evidence_registry=()) -> dict:
     """Detach current facts from untrusted prose, including old checkpoints.
 
     Callers supply previously validated candidates/status. This projection does
@@ -17,7 +65,17 @@ def project_reasoning(reasoning: dict) -> dict:
     """
     from copy import deepcopy
 
-    result = deepcopy(reasoning)
+    result = deepcopy({key: value for key, value in reasoning.items() if key in {
+        "error_type", "conclusion", "status", "mode", "ranked_causes",
+        "missing_evidence", "next_verification_action", "conflict",
+    }})
+    result["ranked_causes"] = [
+        {**{key: value for key, value in (
+            item.model_dump() if hasattr(item, "model_dump") else item
+        ).items() if key not in {"reason", "rationale", "evidence", "confidence"}},
+         "reason": "引用仅表示与候选关联的来源记录，不证明支持方向或实际根因。"}
+        for item in result.get("ranked_causes") or []
+    ]
     status = result.get("status", result.get("conclusion"))
     ranked = result.get("ranked_causes") or []
     if "status" in result or "conclusion" not in result:
@@ -29,12 +87,19 @@ def project_reasoning(reasoning: dict) -> dict:
     )
     if result.get("conflict"):
         result["summary"] += "当前存在证据冲突，需要先核对来源。"
-    result["verification_requests"] = [
-        {"text": sanitize_text(item, max_chars=1000),
-         "source": "model" if result.get("mode", "ai") == "ai" else "rules",
-         "status": "unverified"}
-        for item in result.get("missing_evidence") or []
-        if isinstance(item, str) and item.strip()
+    texts = {item.get("text") for item in allowed_actions if isinstance(item, dict)}
+    action = result.get("next_verification_action")
+    action = action if isinstance(action, str) and action and action in texts else None
+    result["next_verification_action"] = action
+    result["missing_evidence"] = []
+    result["verification_requests"] = (
+        [{"text": action, "source": "rules", "status": "unverified"}] if action else []
+    )
+    # Source attribution is not a verified configuration comparison.
+    result["reported_evidence"] = [
+        {key: sanitize_text(item.get(key), max_chars=None)
+         for key in ("id", "fact", "source", "status")}
+        for item in evidence_registry if isinstance(item, dict) and item.get("id")
     ]
     result["projection_version"] = REASONING_PROJECTION_VERSION
     return result
@@ -85,23 +150,37 @@ def explanation_contract(payload: AIDiagnosisInput) -> dict:
             break
     if payload.workflow_state.get("evidence_conflict"):
         limitations.append("当前流程标记存在证据冲突，需要先核对冲突来源。")
-    # These are model-originated requests, not verified absence or hardware facts.
-    # Keep their specific information, explicitly quoted as pending review.
-    requests = payload.workflow_state.get("missing_evidence") or []
-    if isinstance(requests, list):
-        for item in dict.fromkeys(
-            text for text in requests if isinstance(text, str) and text.strip()
-        ):
-            if len(limitations) >= 12:
-                break
-            limitations.append(
-                "推理提出的待核验项（未确认）：" + "「" + sanitize_text(item, max_chars=500) + "」"
-            )
+    if not steps:
+        limitations.append("当前没有适用的核验指导；可请求教师帮助核对所需材料。")
     if payload.is_test_data:
         limitations.append("当前使用测试数据，不代表真实硬件或教师验证结果。")
     return {
         "version": OUTPUT_CONTRACT_VERSION,
+        "allowed_causes": allowed_explanation_causes(payload),
         "allowed_steps": steps,
         "summary": summary,
         "limitations": limitations,
     }
+
+
+def project_explanation_state(state: dict) -> dict:
+    """Current delivery boundary, also used for old graph/checkpoint inputs."""
+    from copy import deepcopy
+
+    result = deepcopy(state)
+    projected = project_reasoning({
+        "status": state.get("reasoning_status"),
+        "ranked_causes": state.get("reasoned_causes") or [],
+        "next_verification_action": state.get("next_verification_action"),
+        "conflict": state.get("evidence_conflict"),
+    }, allowed_actions=state.get("allowed_verification_actions") or [])
+    for key in ("reasoned_causes", "possible_causes"):
+        if key in state:
+            result[key] = project_reasoning({"ranked_causes": state[key] or []})["ranked_causes"]
+    if "reasoning_summary" in state:
+        result["reasoning_summary"] = projected["summary"]
+    if "missing_evidence" in state:
+        result["missing_evidence"] = []
+    if "next_verification_action" in state:
+        result["next_verification_action"] = projected["next_verification_action"]
+    return result

@@ -263,15 +263,37 @@ const requiredLimitations = computed(() => {
   return [...byText.values()]
 })
 const workflowReasoning = computed(() => props.workflow?.final_result?.ai_reasoning)
-const verificationRequests = computed(
-  () =>
-    workflowReasoning.value?.verification_requests ??
-    (workflowReasoning.value?.missing_evidence ?? []).map((text) => ({
-      text,
-      source: 'model' as const,
-      status: 'unverified' as const,
-    })),
+const verificationRequests = computed(() =>
+  workflowReasoning.value?.projection_version === 'reasoning-facts-v2'
+    ? (workflowReasoning.value.verification_requests ?? []).filter(
+        (item) => item.source === 'rules',
+      )
+    : [],
 )
+const reportedEvidence = computed(
+  () =>
+    props.workflow?.reported_evidence ??
+    (workflowReasoning.value?.projection_version === 'reasoning-facts-v2'
+      ? (workflowReasoning.value.reported_evidence ?? [])
+      : []),
+)
+const sourceLabel = (source: string) =>
+  ({
+    rule_engine: '规则记录',
+    sensor_reading: '传感器上报',
+    device_report: '设备上报',
+    device_log: '设备日志',
+    log: '日志记录',
+    student_report: '学生报告',
+  })[source] ?? '来源上报'
+const reportStatusLabel = (status: string) =>
+  ({
+    observed: '已记录',
+    valid: '有效记录',
+    invalid: '无效记录',
+    unknown: '尚未核实',
+    conflicting: '存在冲突',
+  })[status] ?? '记录状态待核验'
 const workflowNeedsAttention = computed(
   () =>
     props.workflow?.status === 'waiting_teacher' ||
@@ -362,6 +384,13 @@ function formatReviewTime(value?: string | null): string {
         <ul v-if="verificationRequests.length" class="required-limitations" aria-label="待核验事项">
           <li v-for="item in verificationRequests" :key="item.text">
             建议核验（尚未确认）：{{ item.text }}
+          </li>
+        </ul>
+        <ul v-if="reportedEvidence.length" class="required-limitations" aria-label="来源记录">
+          <li v-for="item in reportedEvidence" :key="item.id">
+            来源记录（{{ sourceLabel(item.source) }}；{{
+              reportStatusLabel(item.status)
+            }}，不等于根因确认）：{{ item.fact }}
           </li>
         </ul>
         <p v-if="workflowNeedsAttention" class="required-notice">

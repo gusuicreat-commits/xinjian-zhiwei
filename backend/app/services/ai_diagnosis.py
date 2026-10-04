@@ -28,13 +28,14 @@ from app.ai.context_sanitizer import (
     audit_snapshot,
     build_safe_ai_input,
 )
+from app.ai.context_status import CONTEXT_NOTICES, context_skip_notice, stage_context_skip_code
 from app.ai.governance import (
     AIQuotaDenied,
     GovernedAIInvocation,
     current_delivery_scope,
     estimate_prompt_tokens,
 )
-from app.ai.output_contract import explanation_contract
+from app.ai.output_contract import explanation_contract, validate_explanation_causes
 from app.ai.schemas import (
     AIDiagnosisInput,
     AIExplanationResponse,
@@ -139,35 +140,8 @@ def _validate_explanation(raw_content: str, payload: AIDiagnosisInput) -> AIStru
     allowed_evidence = set(payload.allowed_evidence)
     if any(item not in allowed_evidence for item in explanation.evidence):
         raise ValueError("AI evidence must be selected from deterministic evidence")
-    reasoned_causes = payload.workflow_state.get("reasoned_causes") or []
-    allowed_cause_support = {
-        str(item.get("cause")): str(item.get("support_level") or "unknown")
-        for item in reasoned_causes
-        if isinstance(item, dict) and item.get("cause")
-    }
-    # An explicit empty/unknown reasoning result is authoritative. Only legacy
-    # callers without a reasoning stage may fall back to fault-tree candidates.
-    if payload.workflow_state.get("reasoning_status") == "unknown":
-        allowed_cause_support = {}
-    allowed_causes = set(allowed_cause_support)
-    if (
-        "reasoning_status" not in payload.workflow_state
-        and "reasoned_causes" not in payload.workflow_state
-    ):
-        allowed_causes = {
-            str(cause.get("title"))
-            for guidance in payload.fault_tree_guidance
-            for cause in guidance.get("ranked_causes", [])
-            if cause.get("title")
-        }
-    if any(item.cause not in allowed_causes for item in explanation.possible_causes):
-        raise ValueError("AI explanation introduced a cause outside constrained reasoning")
-    support_rank = {"unknown": 0, "low": 1, "medium": 2, "high": 3}
-    if allowed_cause_support and any(
-        support_rank[item.support_level] > support_rank[allowed_cause_support[item.cause]]
-        for item in explanation.possible_causes
-    ):
-        raise ValueError("AI explanation increased a constrained support level")
+    contract = explanation_contract(payload)
+    validate_explanation_causes(explanation.possible_causes, contract)
     allowed_chunks = {item.chunk_id for item in payload.knowledge}
     referenced_chunks = {
         reference_id
@@ -176,7 +150,6 @@ def _validate_explanation(raw_content: str, payload: AIDiagnosisInput) -> AIStru
     }
     if not referenced_chunks.issubset(allowed_chunks):
         raise ValueError("AI knowledge references must come from retrieved chunks")
-    contract = explanation_contract(payload)
     if any(step not in contract["allowed_steps"] for step in explanation.steps):
         raise ValueError("AI explanation step must come from the allowed steps")
     if (
@@ -402,8 +375,12 @@ def serialize_ai_call(record: AICallRecord, settings: Settings) -> AIExplanation
         notice = "AI 调用或输出校验失败，当前展示规则诊断结果。"
     elif record.error_code == "AI_NOT_CONFIGURED":
         notice = "AI Provider 未配置，当前仅展示确定性规则诊断。"
-    elif record.error_code == "KNOWLEDGE_NOT_READY":
-        notice = "尚无匹配且已审核的结构化知识案例，当前仅展示确定性诊断。"
+    elif context_skip_notice(record.error_code, (record.input_snapshot or {}).get(
+        "context_manifest", {}
+    )):
+        notice = context_skip_notice(record.error_code, (record.input_snapshot or {}).get(
+            "context_manifest", {}
+        ))
     else:
         notice = "AI 调用已跳过，当前展示确定性规则诊断。"
     return _response(
@@ -734,9 +711,12 @@ def _explain_diagnosis(
         skip_code = policy.reason
         notice = "确定性结果已足够，本次无需调用 AI。"
     estimated_input_tokens = estimate_prompt_tokens(system_prompt, user_prompt)
-    if not payload._context_manifest["required_complete"]:
-        skip_code = "INPUT_TOKEN_LIMIT"
-        notice = "必需上下文无法完整放入预算，当前保留确定性结果。"
+    budget_code = stage_context_skip_code(
+        "explanation", payload._context_manifest, require_knowledge=False,
+    )
+    if budget_code:
+        skip_code = budget_code
+        notice = CONTEXT_NOTICES[skip_code]
     if skip_code:
         return _skipped_response(
             db,
@@ -857,6 +837,10 @@ def _explain_diagnosis(
         )
 
     if settings.ai_require_knowledge and not knowledge:
+        context_code = stage_context_skip_code(
+            "explanation", payload._context_manifest,
+            require_knowledge=settings.ai_require_knowledge,
+        )
         return _skipped_response(
             db,
             diagnosis=diagnosis,
@@ -867,9 +851,9 @@ def _explain_diagnosis(
             memory_sources=memory_sources,
             episode=episode,
             trigger_reason=policy.reason,
-            error_code="KNOWLEDGE_NOT_READY",
+            error_code=context_code,
             error_message=None,
-            notice="尚无可用的已审核结构化知识案例，已保持确定性诊断模式。",
+            notice=CONTEXT_NOTICES[context_code],
             deterministic_result=deterministic.model_dump(mode="json"),
             started=started,
             workflow_run_id=workflow_run_id,
@@ -890,7 +874,7 @@ def _explain_diagnosis(
             trigger_reason=policy.reason,
             error_code="INPUT_TOKEN_LIMIT",
             error_message=None,
-            notice="诊断上下文超过配置的输入 Token 上限，当前返回确定性诊断。",
+            notice=CONTEXT_NOTICES["INPUT_TOKEN_LIMIT"],
             deterministic_result=deterministic.model_dump(mode="json"),
             started=started,
             workflow_run_id=workflow_run_id,

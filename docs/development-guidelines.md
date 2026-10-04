@@ -175,6 +175,7 @@
 - 外发检查同时覆盖动态键和值；含敏感信息的动态键取消增强，不能仅改键导致引用碰撞。当前事实摘要由服务端投影，模型补充建议独立标记待核验；旧缓存、Checkpoint和成功重放也走当前合同。
 - 逻辑操作与物理尝试分开持久化：冻结操作身份、输入指纹和版本，发送前提交状态与额度；成功只重放，发送结果未知禁止自动重发/退款。等待Provider不持业务行锁。统一总期限及响应字节预算，429遵守Retry-After，确定请求错误不盲重试。
 
+- Provider输入须明确包含验收依赖的规则事实；输出Schema的必填字段、允许值须与业务验证一致，不能只在自然语言提示中要求。Schema约束使用已清洗的本次输入，不绕过外发清洗；修改同时检查历史重放与版本记录。
 - 推理、解释、案例润色每次实际尝试共用治理入口：开关、次数、输入长度、原子额度预留和外发许可；各入口有最小字段白名单，共用文本清洗。模型关闭不依赖外发投影构造，投影失败不拖垮确定性诊断。
 - 清洗覆盖日志、标签、单位、反馈、嵌套知识及任意字段名；已标敏感的非空短字符串不因长度忽略。数值保留类型，不全局替换数字；不得给任意`id`豁免。引用须同时验证路径、真实来源、允许值和关联性；必需引用与秘密冲突则取消增强，不偷改证据编号。
 - 不外发真实学生身份、令牌、私密教师备注或无关完整原文。日志/反馈/知识/模型输出中的命令不取得指令权限；Provider密钥只在服务器，注入后的输出仍受验证。
@@ -258,6 +259,24 @@
 - 文件存在、解析、必填字段、计数及关键值分别检查，相关版面/可读性另查。改评测须验证模块可导入、用例可收集、ID/引用一致，并保留正反例；收集成功不等执行通过，不强制外部文件名或目录。
 - 软件断言、语义审阅、真实Provider、硬件、课堂分别记录，未运行/受阻/不适用不能记通过。严重安全不符合阻止相应范围验收，不用“清零总分”；无工具调用的纯对话也检查泄露、误导和专业矛盾。
 
+### 既有 AI 设计的回归清单
+
+AI修复先列设计影响矩阵，逐项说明CoT请求/审计、LangGraph固定图/恢复、上下文完整单元与两阶段来源清单、案例适用条件、三类记忆与停用、资料包参考、输出及费用治理是否受影响，并链接准确测试实例。未影响可复用源码一致的证据；未实现或未验收项目明确保留，不能遗漏后统称“AI测试通过”。真实模型结构检查和独立效果对照分别记录。
+
+效果对照应保持非目标约束相同；删除提示段落若同时删掉业务要求，只能判断整段变化，不能单独归因于CoT。资料包预检须分别使用实际运行配置检查两阶段，明确总输入、单案例长度、知识要求及超时；宽松Mock配置不能替代实际配置。无合格来源、合格来源被预算省略、必需输入超量分别取证，不把统一降级提示当作根因。
+
+两阶段原因许可由后端共享合同生成：unknown或显式空排序不能退回故障树补候选；Prompt、Schema、验证器和当前读取共用允许原因与支持上限。仅历史缺推理阶段可走明确兼容分支；名称不能区分的不同原因不混用支持等级。升合同版本须同时核对缓存、旧审计只读投影和两实验的完整流程。预算原因以实际manifest选择结果为准，读取旧记录不改写历史错误码，来源停用/权限失败仍优先。
+
+受限查询原型也须检查工具与问题在当前实验、组件和任务中的适用性，全局合法ID不足以证明可以执行。记录是否查过已有资料、是否重复追问和何时停止；终态碰巧正确不能代替过程有效，模拟原型通过不能当作已接入固定诊断流程。
+
+当前交付与后续模型输入不得沿用自由reason、missing_evidence或其历史别名中的未许可断言；共同投影采用受控说明及当前合法指导。来源记录可独立于unknown排序显示，但必须标明来源/状态，不能自动转成配置符合性、物理效果或根因确认。读取旧结果不补造新结构；解释被预算跳过时，合法动作须从同轮已校验推理恢复，不能无故丢失。
+
+生成合同须与交付能力一致：已经由服务器确定的说明不得再要求模型自由编写后丢弃；新Provider Schema与实际校验共同收紧，历史记录走独立兼容投影。调整输入默认值须核对Settings、容器、示例、实际显式配置及费用预留，并用unknown与非空候选两种完整流程验收；显式较低上限仍必须生效，禁止自动扩大以强求成功。
+
+输入压缩只对清洗后相等字段建立显式别名，不能凭文本相似合并不同来源；实际发送投影参与manifest/hash。实际配置预检须采用与运行一致的分阶段准入，明确配置来源，不能由场景悄悄覆盖。独立原型的任务完成和权限复核后仍应检查重验结果，不在已撤权状态继续落步骤或交付。
+
+案例整理的自由文字不能仅凭sourceIds/事实字段不变认定有据；当前采用字段专属完整表述选择，生成/直接写入/旧稿提交/审批共用校验。AI不能借symptom或teacherNotes旁路增加内容，扩大自由改写能力需另设可验收合同。
+
 ### 安全、CoT与变更
 
 检查覆盖可见A–H类别：提示注入、凭据泄露、歧义对象、数据完整性、草稿限制、只读约束、专业风险、紧急压力。对象确实不明才澄清，已明确授权不重复确认；“仅分析/草稿”不变实施或发布；“赶快/演示”不取消证据、权限、预算和审核。PDF裁切场景和未提供外链不补造。
@@ -296,6 +315,8 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 | AUTH：退出与记忆最终授权 | `services/auth.py::revoke_session`、`memory_governance.py` | 主动退出/迟到登录、复核/清理/CLI、撤权先提交/写入先提交；`test_session_security_repair.py`、`test_security_repair_postgres.py`、浏览器真实退出。 |
 | KNOWLEDGE：文档写入性质与预算 | `services/knowledge.py`、`knowledge_access.py`、`api/knowledge_body_limit.py` | 创建/去重/文件转文本/编辑/拆分/合并/删除/审核/审计；账号与来源标记保守传播，测试账号拒写正式文档；锁内整文档预算，服务器重叠额度不增发，旧超限只减量修整；`test_knowledge_boundary_fix.py`、`test_knowledge_boundary_postgres.py`。 |
 | KNOWLEDGE：来源范围 | `services/knowledge_access.py` | 列表/统计/工作区/导入/编辑/批量合并/审核/授撤权；共享token拒绝、跨来源无副作用、旧资料不猜归属、审核身份不可伪造；`test_knowledge_scope_repair.py`、`test_security_repair_postgres.py`。 |
+| AI：表达合同与等待 | `ai/reasoning.py`、`schemas.py`、`knowledge/case_drafting.py`、`frontend/src/api/client.ts` | 新调用/旧重放、状态与排序一致、实际条件限制、四表达字段/模板旁路、旧稿提交/审批、9秒响应/75秒恢复；`test_reasoning_provider_contract.py`、`test_knowledge_case_drafting.py`、`api/longOperations.test.ts`、student浏览器延迟场景。 |
+| AI：两阶段原因许可与预算原因 | `ai/output_contract.py::allowed_explanation_causes/validate_explanation_causes`、`ai/context_status.py` | Prompt动态Schema/实际解释/缓存/当前建议/序列化/资料包预检；unknown与显式空、同名异ID、支持放大、旧调用、单案例/总Prompt/必需材料预算、旧原因投影；`test_explanation_handoff.py`，固定图与两实验合成真实调用分别验收。 |
 | AI：逻辑操作与当前事实 | `ai/governance.py`、`clients.py`、`output_contract.py` | 推理/解释/润色、发送前后中断、成功重放、未知费用、键名泄密、旧缓存当前投影；`test_ai_operation*`、`test_ai_transport_lifecycle.py`、`test_ai_semantic_delivery.py`。 |
 | OPS：配置和异常边界 | `core/config.py`、`api/http_boundary.py` | 环境拼写错误、staging内存checkpoint拒绝、Compose默认与显式覆盖、500安全头和追踪ID；`test_runtime_boundary_repair.py`。 |
 | AUTH：共享登录准入 | `services/login_limits.py`、`services/auth.py`、`api/v1/routes/auth.py` | 在途+失败原子限额、成功不清其他在途、过期不签令牌、独立进程共享、容量与迁移回撤；`test_audit_remediation.py`、`test_migration_r2.py` |
@@ -309,6 +330,8 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 | MEMORY：三类投影、来源、停用与副本 | `services/memory.py`、`memory_governance.py`、`memory_restore.py`；`cli/sync_knowledge_cases.py` | 工作流/解释/缓存/恢复/案例撤回/包撤销/教师复核/清理；跨班、缺来源、版本变更、迟到结果、计划变化、旧备份；`test_memory_lifecycle.py`、`test_memory_postgres.py`、浏览器记忆复核场景 |
 | PACKAGE：内容、版本与教学快照 | `experiment_packages/loader.py`、`experiment_packages/teaching.py`、`services/experiment_packages.py`、`services/teaching_materials.py` | 导入/发布/运行/撤回/初次与反馈指导/仪表盘；缺/重复/循环引用、组件隔离、不兼容、旧包不回填、参考不外发；`test_business_package_boundary.py`、`test_teaching_materials.py`、`test_dht11_material_contract.py` |
 | PKC：案例条件、来源登记与当前建议 | `knowledge/applicability.py`、`projection.py`、`experiment_packages/registry.py`、`context_preview.py`、`services/current_advice.py` | 包/全局、两阶段Provider、旧阶段/竞争重放、完成/等待快照；缺条件、未审资料、条件未知、私值重复、后来的调用不能替旧结果背书、1.0hash、改名派生；`test_case_applicability.py`、`test_package_context_runtime.py`、`test_current_advice.py`、`test_package_registry.py`、`test_package_context_preview.py` |
+| SEM：受控语义交付及来源报告 | `ai/output_contract.py`、`evidence_projection.py`、`services/current_advice.py` | 新响应/旧缓存/Checkpoint/第二阶段/当前API/页面；无来源规范、未许可需求、历史别名、unknown来源保留、预算跳过后合法动作；`test_residual_semantic_contract.py`、`test_current_advice.py`、`DiagnosisPanel.test.ts` |
+| STAGE：分阶段容量与实际预检 | `ai/context_status.py`、`provider_projection.py`、`experiment_packages/context_preview.py` | 有/无案例、必需材料超量、预算省略、显式profile冲突、相等别名/独立同文、实际payload hash；`test_stage_context_admission.py`、`test_context_construction.py`、`test_residual_semantic_contract.py` |
 | CTX：完整材料、预算与来源清单 | `ai/context_builder.py`、`context_contract.py`、两阶段适配器；`evaluation/context_runner.py` | 超长JSON、51条证据、秘密增长度、身份碰撞、缓存无provided、版本/重放、独立期望及两项破坏反例；`test_context_construction.py`、`test_context_evaluation.py`；[CTX对应表](evaluation-requirements.md#context-checks) |
 | AI：配额/外发/缓存/降级 | `ai/governance.py`、`ai/context_sanitizer.py`、`ai/reasoning.py`、`core/config.py` | 推理/解释/润色真实Provider请求与重试；并发配额、未知费用、短秘密/单位/嵌套ID、引用碰撞、0/30/31/35/50证据、关闭/失败/拒绝；`test_ai_quota_concurrency.py`、`test_r2_provider_data_boundary.py`、`test_business_ai_delivery.py` |
 | UI：对象/恢复/权限与中文 | `DiagnosisPanel`、学生/教师store与session、`api/diagnosisChecks`、`userLanguage.ts` | 三任务视图、刷新/切页/换登录、反馈/交接/审核；迟到成功/失败、503/403/409、私密清空、待确认可达、原文保留；组件/store单测、student/teacher浏览器及`feedback.integration.ts` |

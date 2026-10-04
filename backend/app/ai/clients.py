@@ -114,9 +114,14 @@ class OpenAICompatibleClient:
             "response_format": {"type": "json_object"},
             "temperature": 0,
         }
+        # Kimi K2.6 fixes sampling parameters; temperature=0 is rejected.
+        # Non-thinking mode avoids unbounded hidden reasoning in this profile.
+        if self.provider == "kimi":
+            payload.pop("temperature")
+            payload["thinking"] = {"type": "disabled"}
         if self._max_output_tokens is not None:
             payload["max_tokens"] = self._max_output_tokens
-        if self._thinking_enabled is not None:
+        if self._thinking_enabled is not None and self.provider != "kimi":
             payload["thinking"] = {"type": "enabled" if self._thinking_enabled else "disabled"}
         return payload
 

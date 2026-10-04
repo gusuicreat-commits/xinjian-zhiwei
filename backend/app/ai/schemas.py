@@ -83,7 +83,7 @@ class AIReasonedCause(StrictAIModel):
 
 
 class AIReasoningResult(StrictAIModel):
-    error_type: Optional[str] = Field(default=None, max_length=100)
+    error_type: Optional[str] = Field(max_length=100)
     conclusion: Literal["ranked", "unknown"]
     ranked_causes: list[AIReasonedCause] = Field(default_factory=list, max_length=20)
     summary: str = Field(min_length=1, max_length=1000)
@@ -91,6 +91,23 @@ class AIReasoningResult(StrictAIModel):
     missing_evidence: list[str] = Field(default_factory=list, max_length=20)
     next_verification_action: str | None = Field(default=None, max_length=1000)
     conflict: bool = False
+
+
+class AIProviderReasonedCause(StrictAIModel):
+    """New requests never expose the historical replay aliases."""
+
+    cause_id: str = Field(min_length=1, max_length=100)
+    cause: str = Field(min_length=1, max_length=500)
+    support_level: Literal["high", "medium", "low", "unknown"]
+    used_evidence_ids: list[str] = Field(max_length=30)
+    reason: Literal["由后端根据已校验结果生成。"]
+
+
+class AIProviderReasoningResult(AIReasoningResult):
+    ranked_causes: list[AIProviderReasonedCause] = Field(max_length=20)
+    summary: Literal["由后端根据已校验结果生成。"]
+    limitations: list[str] = Field(default_factory=list, max_length=0)
+    missing_evidence: list[str] = Field(default_factory=list, max_length=0)
 
 
 class AIPossibleCause(StrictAIModel):

@@ -858,7 +858,8 @@ def serialize_workflow(
 
     bound_db = object_session(workflow)
     teaching_ready = bound_db is not None and teaching_available(bound_db, workflow)
-    from app.services.current_advice import project_current_advice
+    from app.models import DiagnosisResult
+    from app.services.current_advice import current_evidence_reports, project_current_advice
     from app.services.memory import memory_context
 
     memories = memory_context(bound_db, workflow) if bound_db is not None else None
@@ -872,6 +873,9 @@ def serialize_workflow(
             else None
         )
     return DiagnosisWorkflowResponse(
+        reported_evidence=current_evidence_reports(
+            bound_db, bound_db.get(DiagnosisResult, workflow.diagnosis_result_id)
+        ) if teaching_ready and workflow.diagnosis_result_id else [],
         id=workflow.id,
         diagnosis_id=workflow.id,
         diagnosis_result_id=workflow.diagnosis_result_id,

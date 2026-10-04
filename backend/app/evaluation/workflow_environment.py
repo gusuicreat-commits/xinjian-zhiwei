@@ -79,10 +79,10 @@ class ScriptedProvider:
                     [
                         {
                             "cause_id": cause["cause_id"],
-                            "cause": cause["name"],
+                            "cause": cause["cause"],
                             "support_level": "low",
                             "used_evidence_ids": linked_evidence[:1],
-                            "reason": "合成排序样例，仅验证软件约束，不确认根因。",
+                            "reason": "由后端根据已校验结果生成。",
                         }
                     ]
                     if linked_evidence
@@ -103,9 +103,9 @@ class ScriptedProvider:
                 "error_type": prompt["error_type"],
                 "conclusion": "ranked" if ranked else "unknown",
                 "ranked_causes": ranked,
-                "summary": "现有日志不能区分具体硬件根因。",
-                "missing_evidence": ["需独立硬件测量"] if not ranked else [],
-                "limitations": ["合成数据"],
+                "summary": "由后端根据已校验结果生成。",
+                "missing_evidence": [],
+                "limitations": [],
             }
         else:
             data = prompt["input"]
@@ -113,13 +113,13 @@ class ScriptedProvider:
                 "error_type": data["rule_matches"][0]["error_type"]
                 if data["rule_matches"]
                 else "UNCLASSIFIED_ANOMALY",
-                "summary": "合成解释",
+                "summary": prompt["output_contract"]["summary"],
                 "evidence": data["allowed_evidence"][:1],
                 "possible_causes": [],
                 "steps": prompt["output_contract"]["allowed_steps"][:1],
                 "hint_level": 1,
                 "need_teacher_help": False,
-                "limitations": ["合成数据"],
+                "limitations": prompt["output_contract"]["limitations"],
             }
         return AICompletion(content=json.dumps(result, ensure_ascii=False))
 

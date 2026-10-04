@@ -32,10 +32,8 @@ class FakePolishClient:
         return AICompletion(
             content=json.dumps(
                 {
-                    "title": "DHT11 读取异常排查",
-                    "symptomDescription": "连续读取失败，当前没有有效数据。",
-                    "teachingNote": "先按证据逐项验证，不直接确认根因。",
-                    "solutionSummary": "信息不足，等待教师确认真实修复动作。",
+                    **{field: choices[-1] for field, choices in
+                       json.loads(user_prompt)["expression_choices"].items()},
                     "sourceIds": json.loads(user_prompt)["source_ids"],
                 },
                 ensure_ascii=False,
@@ -80,12 +78,11 @@ def _draft() -> KnowledgeCaseDraft:
     )
 
 
-def test_ai_polish_can_change_wording_but_not_verified_facts(persisted_draft) -> None:
+def test_ai_polish_can_select_grounded_expressions_but_not_change_facts(persisted_draft) -> None:
     db, draft = persisted_draft
     payload = dict(draft.template_payload)
-    payload["symptom"] = "DHT11 连续读取失败，尚未获得有效数据。"
     payload["aiGeneratedFields"] = {
-        "title": "DHT11 读取异常排查",
+        "title": "SENSOR_READ_FAILED案例记录",
         "sourceIds": draft.source_ids,
     }
 
@@ -197,7 +194,7 @@ def test_case_polish_enforces_budget_and_input_limit_before_provider(
         generate_ai_assisted_polish(
             db,
             draft,
-            Settings(ai_enabled=True, **settings_values),
+            Settings(_env_file=None, ai_enabled=True, **settings_values),
             ai_client=provider,
             actor_context=db.info["case_actor"],
         )
@@ -318,3 +315,75 @@ def test_case_polish_rejects_source_ids_not_bound_to_diagnosis(persisted_draft):
             actor_context=db.info["case_actor"],
         )
     assert provider.prompts == []
+
+
+@pytest.mark.parametrize(
+    'field', ['title', 'symptomDescription', 'teachingNote', 'solutionSummary']
+)
+def test_polish_rejects_new_claim_in_every_expression_field(persisted_draft, field):
+    db, draft = persisted_draft
+    before_version = draft.version_no
+    payload = dict(draft.template_payload)
+    payload['aiGeneratedFields'] = {
+        'sourceIds': draft.source_ids,
+        field: '排查驱动状态、采样频率及环境干扰。',
+    }
+    with pytest.raises(CaseDraftError, match='grounded'):
+        apply_ai_assisted_polish(db, draft, payload, actor_context=db.info['case_actor'])
+    db.refresh(draft)
+    assert draft.polished_payload is None
+    assert draft.version_no == before_version
+
+
+@pytest.mark.parametrize('field', ['symptom', 'teacherNotes'])
+def test_polish_cannot_bypass_expression_contract_through_template_fields(persisted_draft, field):
+    db, draft = persisted_draft
+    payload = dict(draft.template_payload)
+    payload[field] = '排查驱动状态、采样频率及环境干扰。'
+    payload['aiGeneratedFields'] = {'sourceIds': draft.source_ids}
+    with pytest.raises(CaseDraftError, match='grounded'):
+        apply_ai_assisted_polish(db, draft, payload, actor_context=db.info['case_actor'])
+    db.refresh(draft)
+    assert draft.polished_payload is None
+
+
+@pytest.mark.parametrize('entry', ['submit', 'approve'])
+def test_legacy_ungrounded_polish_cannot_progress_to_publication(persisted_draft, entry):
+    from app.knowledge.case_drafting import approve_case_draft, submit_case_draft_for_review
+    from app.models.knowledge import KnowledgeCase
+    db, draft = persisted_draft
+    draft.status = 'pending_review'
+    draft.polished_payload = {**draft.template_payload, 'aiGeneratedFields': {
+        'sourceIds': draft.source_ids, 'teachingNote': '排查驱动状态、采样频率及环境干扰。',
+    }}
+    db.commit()
+    version = draft.version_no
+    with pytest.raises(CaseDraftError, match='grounded'):
+        if entry == 'submit':
+            submit_case_draft_for_review(db, draft, actor_context=db.info['case_actor'])
+        else:
+            approve_case_draft(db, draft, case_id='must-not-publish', reviewer_ref='unused',
+                               confirmed_root_cause='GPIO 配置错误',
+                               final_solution_steps=['核对 GPIO 配置'],
+                               confirmation_note='synthetic',
+                               actor_context=db.info['case_actor'])
+    db.refresh(draft)
+    assert draft.version_no == version
+    assert db.get(KnowledgeCase, 'must-not-publish') is None
+
+
+def test_actual_polish_service_rejects_unprovided_teaching_claim(persisted_draft):
+    class UngroundedClient(FakePolishClient):
+        def complete_json(self, **kwargs):
+            completion = super().complete_json(**kwargs)
+            raw = json.loads(completion.content)
+            raw['teachingNote'] = '排查驱动状态、采样频率及环境干扰。'
+            return AICompletion(content=json.dumps(raw), input_tokens=100, output_tokens=50)
+    db, draft = persisted_draft
+    client = UngroundedClient()
+    with pytest.raises(CaseDraftError, match='validation'):
+        generate_ai_assisted_polish(db, draft, Settings(ai_enabled=True),
+                                   ai_client=client, actor_context=db.info['case_actor'])
+    db.refresh(draft)
+    assert draft.polished_payload is None
+    assert len(client.prompts) == 1

@@ -208,7 +208,7 @@ def test_graph_reads_full_temporary_registry_without_growing_checkpoint(api_cont
             for i in range(51)
         ]
         runtime = SimpleNamespace(
-            context=SimpleNamespace(db=SimpleNamespace(scalars=lambda _: rows))
+            context=SimpleNamespace(db=SimpleNamespace(scalars=lambda _: rows, get=db.get))
         )
         full = _persisted_evidence_registry(runtime, diagnosis_id)
         assert len(full) == 51

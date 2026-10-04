@@ -41,11 +41,53 @@ ALLOWED_AI_FIELDS = {
     "sourceIds",
 }
 DEFINITE_CAUSAL_TERMS = ("根因是", "确定为", "导致了", "必然导致")
-CASE_POLISH_PROMPT_VERSION = "knowledge-case-polish-v3"
+CASE_POLISH_PROMPT_VERSION = "knowledge-case-polish-v4"
 
 
 class CaseDraftError(ValueError):
     pass
+
+
+def polish_choices(draft: KnowledgeCaseDraft) -> dict[str, list[str]]:
+    """Complete, field-specific statements; never extract substrings that lose negation.
+
+    Free paraphrases cannot be proven faithful with string or source-ID checks.
+    Keep this boundary extractive until a separate reviewed contract supports them.
+    """
+    baseline = draft.template_payload or {}
+    choices = {
+        "title": ["信息不足", f"{draft.error_type}案例记录"],
+        "symptomDescription": ["信息不足"],
+        "teachingNote": ["信息不足", "本稿需结合原始证据与适用条件审核。"],
+        "solutionSummary": ["信息不足"],
+    }
+    symptom = baseline.get("symptom")
+    if isinstance(symptom, str) and symptom.strip() and len(symptom) <= 2000:
+        choices["symptomDescription"].append(symptom)
+    if (draft.fact_snapshot or {}).get("feedback_action") == "resolved":
+        choices["solutionSummary"].append("学生报告已解决，实际修复动作及效果仍需核验。")
+    return sanitize_provider_payload(
+        choices, allowed_fields=tuple(choices), max_chars=4000, strict=True,
+        sensitive_sources=(draft.fact_snapshot, draft.solution_record, baseline),
+    )
+
+
+def validate_grounded_polish(draft: KnowledgeCaseDraft, payload: dict) -> None:
+    baseline = draft.template_payload or {}
+    if any(payload.get(key) != baseline.get(key)
+           for key in (*FACT_FIELDS, "symptom", "teacherNotes")):
+        raise CaseDraftError("AI polish must preserve grounded template fields")
+    generated = payload.get("aiGeneratedFields") or {}
+    if (not isinstance(generated, dict) or set(generated) - ALLOWED_AI_FIELDS
+            or generated.get("sourceIds") != draft.source_ids):
+        raise CaseDraftError("AI polish must preserve grounded source IDs and fields")
+    try:
+        choices = polish_choices(draft)
+    except ProviderInputError as exc:
+        raise CaseDraftError("AI polish grounded input is unsafe") from exc
+    for field, value in generated.items():
+        if field != "sourceIds" and (not isinstance(value, str) or value not in choices[field]):
+            raise CaseDraftError(f"AI polish contains ungrounded expression: {field}")
 
 
 def withdraw_case(db, case, actor, *, request_id, expected_version, reason, recheck_access=None):
@@ -315,6 +357,7 @@ def apply_ai_assisted_polish(
     }
     if set(polished_payload) - allowed:
         raise CaseDraftError("AI polish contains unsupported fields")
+    validate_grounded_polish(draft, polished_payload)
     merged = deepcopy(baseline)
     merged["symptom"] = str(polished_payload.get("symptom") or baseline.get("symptom") or "")
     merged["teacherNotes"] = polished_payload.get("teacherNotes")
@@ -388,6 +431,8 @@ def generate_ai_assisted_polish(
         raise CaseDraftError("AI case polishing is not configured")
     system_prompt = """你是实验案例文档整理助手，只能整理已锁定事实，不能创造知识。
 只能输出 title、symptomDescription、teachingNote、solutionSummary、sourceIds。
+每个文字字段必须逐字选择 expression_choices 中该字段的一项完整表述。
+不得拼接、改写、补充器件、建议或原因；不合适时选择“信息不足”。
 sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止使用确定因果措辞。
 材料不足时写“信息不足”，只输出 JSON。"""
     prompt_payload = {
@@ -397,12 +442,13 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
         "solution_record": draft.solution_record,
         "source_ids": draft.source_ids,
         "allowed_fields": draft.allowed_ai_fields,
+        "expression_choices": polish_choices(draft),
     }
     try:
         prompt_payload = sanitize_provider_payload(
             prompt_payload,
             allowed_fields=tuple(prompt_payload),
-            max_chars=settings.ai_knowledge_content_max_chars,
+            max_chars=settings.ai_knowledge_content_max_chars, strict=True,
             trusted_references={("source_ids", "*"): trusted_source_ids},
             sensitive_sources=(
                 diagnosis.context_snapshot,
@@ -413,6 +459,8 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
     except ProviderInputError as exc:
         raise CaseDraftError("AI case polish input is unsafe") from exc
     prompt_payload["output_schema"] = AICasePolishFields.model_json_schema()
+    for field, choices in prompt_payload["expression_choices"].items():
+        prompt_payload["output_schema"]["properties"][field]["enum"] = choices
     user_prompt = json.dumps(prompt_payload, ensure_ascii=False, separators=(",", ":"))
     prompt_hash = hashlib.sha256(f"{system_prompt}\n{user_prompt}".encode()).hexdigest()
     governor = GovernedAIInvocation(
@@ -427,6 +475,9 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
                 user_prompt=user_prompt,
             )
             generated = AICasePolishFields.model_validate_json(completion.content)
+            candidate_payload = {**(draft.template_payload or {}), "aiGeneratedFields":
+                                 generated.model_dump(mode="json", by_alias=True)}
+            validate_grounded_polish(draft, candidate_payload)
             break
         except Exception as exc:
             if not governor.retry(exc) or attempt == settings.ai_max_retries:
@@ -466,6 +517,8 @@ def submit_case_draft_for_review(
         bool(item.get("passed")) for item in draft.quality_checks
     ):
         raise CaseDraftError("case draft failed quality checks")
+    if draft.polished_payload:
+        validate_grounded_polish(draft, draft.polished_payload)
     _update_draft(
         db,
         draft,
@@ -552,6 +605,8 @@ def approve_case_draft(
     if not draft.facts_locked or not draft.source_ids:
         raise CaseDraftError("case facts are not locked or traceable")
     payload = draft.polished_payload or draft.template_payload
+    if draft.polished_payload:
+        validate_grounded_polish(draft, draft.polished_payload)
     confirmed_at = utc_now()
     quality_checks = [
         *(draft.quality_checks or []),

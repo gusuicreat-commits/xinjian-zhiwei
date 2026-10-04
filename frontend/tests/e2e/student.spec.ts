@@ -258,7 +258,9 @@ test('shows abnormal evidence and submits teacher-help feedback', async ({ page 
   expect(errors).toEqual([])
 })
 
-test('shows workflow provenance, missing evidence and teacher review history', async ({ page }) => {
+test('shows workflow provenance, licensed guidance and teacher review history', async ({
+  page,
+}) => {
   const payload = dashboard({
     task: {
       configured: true,
@@ -384,7 +386,8 @@ test('shows workflow provenance, missing evidence and teacher review history', a
     final_result: {
       ai_reasoning: {
         status: 'unknown',
-        verification_requests: [{ text: '复核传感器型号', source: 'model', status: 'unverified' }],
+        projection_version: 'reasoning-facts-v2',
+        verification_requests: [{ text: '复核传感器型号', source: 'rules', status: 'unverified' }],
       },
       summary: '建议检查连接',
       limitations: ['缺少供电电压读数'],
@@ -770,4 +773,27 @@ test('explains saved internal codes and monitoring counts while preserving origi
       })
     }
   }
+})
+
+test('a nine-second check preserves the eventual server response without an early resend', async ({
+  page,
+}) => {
+  await mockStudentApi(page, dashboard())
+  await page.route('**/diagnosis-workflows/devices/*/checks/latest', (route) =>
+    route.fulfill({ json: null }),
+  )
+  let submitted = 0
+  await page.route(`**/diagnosis-workflows/devices/${device.device_id}`, async (route) => {
+    submitted += 1
+    await new Promise((resolve) => setTimeout(resolve, 9_000))
+    await route.fulfill({ status: 409, json: { detail: 'baseline changed' } })
+  })
+  await login(page)
+  await page.getByRole('button', { name: '检查当前数据', exact: true }).click()
+  const recovery = page.getByRole('alert', { name: '检查恢复提示' })
+  await expect(recovery).toContainText('不会自动重新提交', { timeout: 15_000 })
+  expect(submitted).toBe(1)
+  await recovery.getByRole('button', { name: '查看最新状态', exact: true }).click()
+  await expect(recovery).toHaveCount(0)
+  expect(submitted).toBe(1)
 })

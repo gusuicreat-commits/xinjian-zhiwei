@@ -86,9 +86,9 @@ def test_original_package_and_fixture_stay_immutable():
     assert all(case.review_status == "draft" for case in bundle.cases.cases)
     assert report["matched_ids"] == []
     assert report["matcher_trace"][0]["reason"] == "review_not_approved"
-    assert all(
-        stage["status"] == "deterministic_fallback_expected" for stage in report["stages"].values()
-    )
+    # Runtime reasoning needs current evidence, not an approved historical case.
+    assert report["stages"]["reasoning"]["status"] == "prepared"
+    assert report["stages"]["explanation"]["status"] == "deterministic_fallback_expected"
 
 
 def test_prompt_content_has_complete_limits_without_private_review_material(monkeypatch):
@@ -194,7 +194,7 @@ def test_settings_are_explicit_and_ignore_ambient_budgets(monkeypatch):
     monkeypatch.setenv("AI_MAX_INPUT_TOKENS", "1")
     monkeypatch.setenv("AI_KNOWLEDGE_CONTENT_MAX_CHARS", "2")
     settings = preview.preview_settings({})
-    assert settings.ai_input_token_limit == 4000
+    assert settings.ai_input_token_limit == 10000
     assert settings.ai_knowledge_content_max_chars == 1000
     assert settings.ai_enabled is False
 

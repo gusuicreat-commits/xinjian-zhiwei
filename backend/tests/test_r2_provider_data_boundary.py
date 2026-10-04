@@ -37,9 +37,9 @@ class EvidenceReviewProvider:
             "error_type": "SENSOR_READ_FAILED",
             "conclusion": "unknown",
             "ranked_causes": [],
-            "summary": "当前合成材料不足以区分候选原因。",
-            "limitations": ["尚未确认实际接线。"],
-            "missing_evidence": ["需要核对实际接线与程序引脚。"],
+            "summary": "由后端根据已校验结果生成。",
+            "limitations": [],
+            "missing_evidence": [],
             "next_verification_action": "执行白名单外操作" if self.invalid_action else None,
             "conflict": False,
         }, ensure_ascii=False), input_tokens=10, output_tokens=10)
@@ -89,11 +89,11 @@ def test_evidence_review_request_and_audit_keep_versioned_contract(evidence_revi
     provider, _, _, record, _, _ = evidence_review_run
     system, user = provider.requests[0]
     document = json.loads(user)
-    assert document["prompt_version"] == record.prompt_version == "evidence-reasoning-v2.9"
+    assert document["prompt_version"] == record.prompt_version == "evidence-reasoning-v2.14"
     assert record.prompt_hash == hashlib.sha256(f"{system}\n{user}".encode()).hexdigest()
     assert set(document) == {
         "prompt_version", "error_type", "device_status", "experiment_context",
-        "candidate_causes", "evidence_registry", "knowledge_constraints",
+        "candidate_causes", "evidence_registry", "evidence_conflict", "knowledge_constraints",
         "allowed_verification_actions", "output_json_schema",
     }
     assert document["error_type"] == "SENSOR_READ_FAILED"

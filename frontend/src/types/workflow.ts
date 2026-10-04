@@ -95,6 +95,7 @@ export interface WorkflowFinalResult extends WorkflowExplanation {
     ranked_causes?: WorkflowReasonedCause[]
     missing_evidence?: string[]
     verification_requests?: { text: string; source: 'model' | 'rules'; status: 'unverified' }[]
+    reported_evidence?: { id: string; fact: string; source: string; status: string }[]
     projection_version?: string
     next_verification_action?: string | null
     conflict?: boolean
@@ -125,6 +126,7 @@ export interface WorkflowRetrievalAudit {
 }
 
 export interface DiagnosisWorkflowRecord {
+  reported_evidence?: { id: string; fact: string; source: string; status: string }[]
   teaching_available?: boolean
   memory_context?: MemoryContext | null
   check?: CheckReceipt | null

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import subprocess
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ from app.ai.context_builder import (
 )
 from app.ai.context_contract import CONTEXT_CONTRACT_VERSION, CONTEXT_POLICY_VERSION
 from app.ai.context_sanitizer import ProviderInputError, build_safe_ai_input
+from app.ai.context_status import stage_context_skip_code
 from app.ai.reasoning import REASONING_PROMPT_VERSION, _reasoning_prompt
 from app.core.config import Settings
 from app.experiment_packages.loader import PACKAGE_FILES, load_experiment_package
@@ -44,10 +46,55 @@ BUDGET_FIELDS = (
     "ai_max_context_items",
     "ai_max_log_items",
 )
+PROFILE_FIELDS = (
+    *BUDGET_FIELDS,
+    "ai_output_token_limit",
+    "ai_timeout_seconds",
+    "ai_total_timeout_seconds",
+    "ai_response_max_bytes",
+    "ai_max_retries",
+    "ai_require_knowledge",
+    "ai_prompt_version",
+    "ai_output_language",
+)
 
 
 class PreviewModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class PreviewProfile(PreviewModel):
+    """Explicit non-secret runtime or candidate limits, never environment loading."""
+
+    schema_version: Literal["package-context-profile-v1"]
+    source: Literal["runtime_snapshot", "candidate_profile", "fixture_defaults"]
+    settings: dict
+
+    @model_validator(mode="after")
+    def safe_complete_profile(self):
+        if set(self.settings) != set(PROFILE_FIELDS):
+            raise ValueError("profile requires exactly the documented non-secret fields")
+        for key, value in self.settings.items():
+            if key == "ai_require_knowledge":
+                valid = type(value) is bool
+            elif key in {"ai_prompt_version", "ai_output_language"}:
+                valid = type(value) is str and 0 < len(value) <= 100
+            elif key in {"ai_timeout_seconds", "ai_total_timeout_seconds"}:
+                valid = type(value) in {int, float} and math.isfinite(value) and value > 0
+            else:
+                valid = type(value) is int and value >= (0 if key == "ai_max_retries" else 1)
+            if not valid:
+                raise ValueError("invalid profile limit")
+        return self
+
+
+def snapshot_preview_profile(settings: Settings, *, source="runtime_snapshot") -> dict:
+    """Copy only approved fields; never serialize a full Settings object."""
+    return PreviewProfile(
+        schema_version="package-context-profile-v1",
+        source=source,
+        settings={key: getattr(settings, key) for key in PROFILE_FIELDS},
+    ).model_dump(mode="json")
 
 
 class PreviewEvidence(PreviewModel):
@@ -125,18 +172,33 @@ def preview_settings(overrides: dict[str, int]) -> Settings:
         raise ValueError("unsupported budget field")
     if any(type(value) is not int for value in overrides.values()):
         raise ValueError("budget values must be integers")
-    values = {key: Settings.model_fields[key].default for key in BUDGET_FIELDS}
+    values = {key: Settings.model_fields[key].default for key in PROFILE_FIELDS}
     values.update(overrides)
+    return _settings_from_profile_values(values)
+
+
+def _settings_from_profile_values(values):
     return Settings(
         _env_file=None,
         **values,
         ai_enabled=False,
         ai_local_enabled=False,
         ai_cloud_enabled=False,
-        ai_require_knowledge=True,
-        ai_prompt_version=Settings.model_fields["ai_prompt_version"].default,
-        ai_output_language=Settings.model_fields["ai_output_language"].default,
     )
+
+
+def _effective_settings(scenario, *, budgets=None, profile=None):
+    if profile is None:
+        settings = preview_settings({**(budgets or {}), **scenario.budgets})
+        return settings, snapshot_preview_profile(settings, source="fixture_defaults")
+    parsed = PreviewProfile.model_validate(profile)
+    # A fixture must not silently replace an explicitly frozen runtime profile.
+    for overrides in (budgets or {}, scenario.budgets):
+        preview_settings(overrides)
+        if any(parsed.settings[key] != value for key, value in overrides.items()):
+            raise ValueError("scenario budgets conflict with explicit profile")
+    settings = _settings_from_profile_values(parsed.settings)
+    return settings, parsed.model_dump(mode="json")
 
 
 def _scenario_state(bundle, scenario):
@@ -240,7 +302,9 @@ def _scenario_state(bundle, scenario):
     return record, guidance, state, sources
 
 
-def _stage_report(stage, manifest, payload, candidate_ids, prompt_version, trace=()):
+def _stage_report(
+    stage, manifest, payload, candidate_ids, prompt_version, trace=(), *, require_knowledge=True
+):
     selected = manifest["selected_ids"].get("case_ids", [])
     units = []
     for case_id in selected:
@@ -278,11 +342,13 @@ def _stage_report(stage, manifest, payload, candidate_ids, prompt_version, trace
                 },
             }
         )
-    complete = manifest["required_complete"]
-    status = "prepared" if complete and selected else "deterministic_fallback_expected"
+    skip_code = stage_context_skip_code(stage, manifest, require_knowledge=require_knowledge)
+    status = "prepared" if skip_code is None else "deterministic_fallback_expected"
     return {
         "stage": stage,
         "status": status,
+        "context_skip_code": skip_code,
+        "knowledge_required": stage == "explanation" and require_knowledge,
         "prompt_version": prompt_version,
         "candidate_ids": candidate_ids,
         "selected_ids": selected,
@@ -300,9 +366,11 @@ def _stage_report(stage, manifest, payload, candidate_ids, prompt_version, trace
     }
 
 
-def preview_scenario(bundle, scenario: PreviewScenario, *, budgets=None, trusted_sources=None):
+def preview_scenario(
+    bundle, scenario: PreviewScenario, *, budgets=None, trusted_sources=None, profile=None
+):
     """One input-only preview. The object and supplied package stay unchanged."""
-    settings = preview_settings({**(budgets or {}), **scenario.budgets})
+    settings, effective_profile = _effective_settings(scenario, budgets=budgets, profile=profile)
     record, guidance, state, sources = _scenario_state(bundle, scenario)
     cases = bundle.cases.cases if scenario.source_mode == "package" else scenario.fixture_cases
     matched, trace = match_case_candidates(
@@ -341,6 +409,8 @@ def preview_scenario(bundle, scenario: PreviewScenario, *, budgets=None, trusted
         },
         "scenario_sha256": payload_digest(scenario.model_dump(mode="json")),
         "budgets": {key: getattr(settings, key) for key in BUDGET_FIELDS},
+        "effective_profile": effective_profile,
+        "profile_sha256": payload_digest(effective_profile),
         "structure": {"status": "valid"},
         "source_traceability": registry_report(
             bundle, package_version_id=sources[0]["id"], trusted_sources=trusted_sources
@@ -402,7 +472,8 @@ def preview_scenario(bundle, scenario: PreviewScenario, *, budgets=None, trusted
                 prompt_version = settings.ai_prompt_version
                 selection_trace = details["trace"]
             report["stages"][stage] = _stage_report(
-                stage, manifest, payload, candidate_ids, prompt_version, selection_trace
+                stage, manifest, payload, candidate_ids, prompt_version, selection_trace,
+                require_knowledge=settings.ai_require_knowledge,
             )
         except ProviderInputError as exc:
             report["stages"][stage] = {
@@ -412,6 +483,8 @@ def preview_scenario(bundle, scenario: PreviewScenario, *, budgets=None, trusted
                 "selected_ids": [],
                 "omitted_ids": candidate_ids,
                 "reason_codes": [exc.code],
+                "context_skip_code": exc.code,
+                "knowledge_required": stage == "explanation" and settings.ai_require_knowledge,
                 "context_manifest": {"required_complete": False, "reason_codes": [exc.code]},
                 "provider_attempted": False,
                 "units": [],
@@ -464,6 +537,7 @@ def source_identity():
         "app/ai/context_builder.py",
         "app/ai/context_sanitizer.py",
         "app/ai/context_contract.py",
+        "app/ai/context_status.py",
         "app/ai/governance.py",
         "app/ai/output_contract.py",
         "app/schemas/knowledge_case.py",
@@ -533,6 +607,7 @@ def run_package_context_preview(
     expectations=None,
     strict=False,
     trusted_sources=None,
+    profile=None,
 ):
     report = {
         "report_format": "package-context-preview-v1",
@@ -557,6 +632,8 @@ def run_package_context_preview(
         input_document = json.loads(Path(inputs).read_text())
         parsed = PreviewInputs.model_validate(input_document)
         preview_settings(budgets or {})
+        if profile is not None:
+            PreviewProfile.model_validate(profile)
         report["inputs_sha256"] = payload_digest(input_document)
         report.update(source_identity())
         for scenario in parsed.cases:
@@ -566,7 +643,7 @@ def run_package_context_preview(
                 return report
             bundle, validation = load_experiment_package(path)
             result = preview_scenario(
-                bundle, scenario, budgets=budgets, trusted_sources=trusted_sources
+                bundle, scenario, budgets=budgets, trusted_sources=trusted_sources, profile=profile
             )
             result["structure"]["checks"] = [item.code for item in validation.checks if item.passed]
             report["cases"].append(result)

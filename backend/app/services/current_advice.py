@@ -7,10 +7,14 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from app.ai.context_contract import current_context_policy
-from app.ai.output_contract import OUTPUT_CONTRACT_VERSION, project_reasoning
+from app.ai.output_contract import (
+    OUTPUT_CONTRACT_VERSION,
+    project_reasoning,
+    validate_explanation_causes,
+)
 from app.ai.schemas import AIKnowledgeReference, AIReasoningResult, AIStructuredExplanation
 from app.diagnosis.lightweight_schemas import DiagnosisCore
-from app.models import AICallRecord, DiagnosisResult
+from app.models import AICallRecord, DiagnosisEvidence, DiagnosisResult
 from app.services.lightweight_diagnosis import (
     build_diagnosis_core,
     render_deterministic_explanation,
@@ -66,6 +70,7 @@ def assess_current_advice(db, record, *, explanation=True):
             step not in contract.get("allowed_steps", []) for step in output.steps
         ):
             return AdviceAssessment(False, "invalid_output_contract")
+        validate_explanation_causes(output.possible_causes, contract)
         output = AIStructuredExplanation.model_validate({
             **output.model_dump(), "summary": contract["summary"],
             "limitations": contract["limitations"],
@@ -186,9 +191,15 @@ def project_current_advice(db, workflow):
     final = deepcopy(workflow.final_result)
     request = deepcopy(workflow.review_request)
     if final is not None:
-        if isinstance(final.get("ai_reasoning"), dict):
-            final["ai_reasoning"] = project_reasoning(final["ai_reasoning"])
         diagnosis, _, invalid = _inspection(db, workflow, final)
+        if isinstance(final.get("ai_reasoning"), dict):
+            final["ai_reasoning"] = _current_reasoning(
+                db, workflow, diagnosis, final, final["ai_reasoning"], invalid
+            )
+        if "candidate_causes" in final:
+            final["candidate_causes"] = project_reasoning({
+                "ranked_causes": final["candidate_causes"],
+            })["ranked_causes"]
         if not invalid and db is not None:
             anchor = bound_explanation_call(db, workflow, final)
             assessment = assess_current_advice(db, anchor)
@@ -211,11 +222,11 @@ def project_current_advice(db, workflow):
                 if previous.get("teacher_reviewed"):
                     final["limitations"].append("原教师编辑保留为历史，不视为对当前回退说明的新审核。")
     if request is not None:
-        if isinstance((request.get("ai_result") or {}).get("ai_reasoning"), dict):
-            request["ai_result"]["ai_reasoning"] = project_reasoning(
-                request["ai_result"]["ai_reasoning"]
-            )
         diagnosis, _, invalid = _inspection(db, workflow, request, interrupt=True)
+        if isinstance((request.get("ai_result") or {}).get("ai_reasoning"), dict):
+            request["ai_result"]["ai_reasoning"] = _current_reasoning(
+                db, workflow, diagnosis, request, request["ai_result"]["ai_reasoning"], invalid
+            )
         if not invalid and request.get("ai_result") is not None:
             assessment = assess_current_advice(db, bound_explanation_call(db, workflow, request))
             if assessment.eligible and assessment.explanation is not None:
@@ -230,3 +241,37 @@ def project_current_advice(db, workflow):
                 context_policy_status=LEGACY_CONTEXT_STATUS,
             )
     return final, request
+
+
+def current_evidence_reports(db, diagnosis):
+    """Caller has authorized the bound diagnosis and checked teaching availability."""
+    from app.ai.evidence_projection import evidence_reports
+
+    if db is None or diagnosis is None:
+        return []
+    return evidence_reports(db.scalars(select(DiagnosisEvidence).where(
+        DiagnosisEvidence.diagnosis_id == diagnosis.id,
+    ).order_by(DiagnosisEvidence.created_at, DiagnosisEvidence.id)),
+        sensitive_sources=(diagnosis.context_snapshot or {},))
+
+
+def _current_reasoning(db, workflow, diagnosis, advice, reasoning, invalid):
+    """Rebuild source attribution from this diagnosis, not stale model prose."""
+    actions, reports = [], []
+    if not invalid and db is not None and diagnosis is not None:
+        reports = current_evidence_reports(db, diagnosis)
+        anchor = bound_explanation_call(db, workflow, advice)
+        assessment = assess_current_advice(db, anchor)
+        if assessment.eligible:
+            contract = anchor.input_snapshot.get("output_contract") or {}
+            actions = [{"text": text} for text in contract.get("allowed_steps", [])]
+        elif anchor is not None and anchor.call_stage.startswith("explanation"):
+            stage = "reasoning" + anchor.call_stage[len("explanation"):]
+            paired = db.scalar(select(AICallRecord).where(
+                AICallRecord.workflow_run_id == workflow.id,
+                AICallRecord.diagnosis_result_id == diagnosis.id,
+                AICallRecord.call_stage == stage,
+            ))
+            if assess_current_advice(db, paired, explanation=False).eligible:
+                actions = paired.input_snapshot.get("allowed_verification_actions") or []
+    return project_reasoning(reasoning, allowed_actions=actions, evidence_registry=reports)

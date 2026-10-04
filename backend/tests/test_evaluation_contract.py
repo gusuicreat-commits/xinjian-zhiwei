@@ -212,7 +212,7 @@ def test_exact_rule_error_still_fails_code_checks(monkeypatch):
     assert report["status"] == "failed"
 
 
-def test_specific_pending_information_is_preserved_without_becoming_confirmed():
+def test_unlicensed_pending_information_is_not_delivered_as_guidance():
     payload = explanation_input()
     payload.workflow_state.update(
         {
@@ -225,7 +225,7 @@ def test_specific_pending_information_is_preserved_without_becoming_confirmed():
     assert "SENSOR_READ_FAILED" in result.summary
     assert "unknown" in result.summary
     assert any("证据冲突" in item for item in result.limitations)
-    assert "推理提出的待核验项（未确认）：「缺少供电测量记录。」" in result.limitations
+    assert "推理提出的待核验项（未确认）：「缺少供电测量记录。」" not in result.limitations
 
 
 def test_model_only_limitation_is_not_promoted_to_a_known_fact():

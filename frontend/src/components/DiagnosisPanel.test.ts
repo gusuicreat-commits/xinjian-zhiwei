@@ -630,7 +630,7 @@ it('keeps saved AI provenance separate from current disabled configuration and e
 })
 
 it.each([false, true])(
-  'keeps unknown and unverified requests visible (structured=%s)',
+  'keeps unknown visible without trusting old unlicensed requests (structured=%s)',
   (structured) => {
     const wrapper = mountPanel({
       diagnosis: { ...diagnosis, explanation: { limitations: ['规则限制一', '规则限制二'] } },
@@ -665,10 +665,9 @@ it.each([false, true])(
       '工作流限制二',
       '仍为未知',
       '证据存在冲突',
-      '独立电压测量',
     ])
       expect(focus.text()).toContain(value)
-    expect(focus.text()).toContain('建议核验（尚未确认）：独立电压测量')
+    expect(focus.text()).not.toContain('独立电压测量')
     expect(focus.text()).not.toContain('尚缺：')
     expect(focus.element.closest('details')).toBeNull()
   },
@@ -796,4 +795,51 @@ it('shows the saved AI source beside the main summary even with no limitations a
   expect(main.get('.summary-source').element.closest('details')).toBeNull()
   expect(wrapper.find('[aria-label="诊断限制"]').exists()).toBe(false)
   expect(wrapper.get('.ai-availability').text()).toContain('当前 AI 增强未启用')
+})
+
+it('shows licensed guidance and source reports even with unknown ranking', () => {
+  const wrapper = mountPanel({
+    workflow: {
+      ...workflow,
+      final_result: {
+        ai_reasoning: {
+          status: 'unknown',
+          projection_version: 'reasoning-facts-v2',
+          verification_requests: [{ text: '核对配置记录', source: 'rules', status: 'unverified' }],
+          reported_evidence: [
+            {
+              id: 'e1',
+              fact: '配置记录为GPIO17；要求GPIO16',
+              source: 'device_report',
+              status: 'observed',
+            },
+          ],
+        },
+      },
+    },
+  })
+  expect(wrapper.get('[aria-label="待核验事项"]').text()).toContain('核对配置记录')
+  const reports = wrapper.get('[aria-label="来源记录"]').text()
+  expect(reports).toContain('配置记录为GPIO17；要求GPIO16')
+  expect(reports).toContain('不等于根因确认')
+  expect(wrapper.text()).toContain('仍为未知')
+})
+
+it('shows source reports while waiting for feedback without a final result', () => {
+  const wrapper = mountPanel({
+    workflow: {
+      ...workflow,
+      final_result: null,
+      reported_evidence: [
+        {
+          id: 'e1',
+          fact: '配置记录为GPIO17；要求GPIO16',
+          source: 'device_report',
+          status: 'observed',
+        },
+      ],
+    },
+  })
+  expect(wrapper.get('[aria-label="来源记录"]').text()).toContain('配置记录为GPIO17；要求GPIO16')
+  expect(wrapper.get('[aria-label="来源记录"]').text()).toContain('不等于根因确认')
 })

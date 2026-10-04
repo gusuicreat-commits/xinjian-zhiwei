@@ -1,6 +1,6 @@
 # AI 诊断工作流设计
 
-代码核对日期：2026-09-27。本文解释当前模块协作、输入输出和兼容边界；持续约束见
+代码核对日期：2026-10-03。本文解释当前模块协作、输入输出和兼容边界；持续约束见
 [模型内核](development-guidelines.md#model-core)与[AI 质检准则](development-guidelines.md#ai-quality)，
 实际验收见[实现状态](implementation-status.md)和[测试与评测](evaluation.md)。
 
@@ -59,7 +59,7 @@ context_builder → rule_engine → fault_tree_analyzer → knowledge_context
 
 推理输入为设备事实、规则结果、故障树候选、知识上下文和历史失败信息；解释输入另含知识校验结果。
 推理、解释和润色各自建立字段白名单，再由公共清洗器处理敏感值与嵌套文本。设备标识匿名化，相关
-日志限量，读数/心跳投影为摘要，知识按上限截断；学生身份、密钥、Wi-Fi、联系方式和教师私密备注
+日志限量，读数/心跳投影为摘要，知识按完整案例单元选择，超量时整单元省略；学生身份、密钥、Wi-Fi、联系方式和教师私密备注
 不进入 Prompt。必需引用与敏感值冲突时取消增强，不改写证据 ID；AI 关闭不依赖外发投影成功。
 精确字段及长度以代码为准，不在本文维护第二份 Schema。
 
@@ -78,13 +78,13 @@ HTTP 响应使用 snake_case，实验包 camelCase 不另构成 HTTP 契约。
 最终 `steps` 逐字选择工作流允许动作，显式空列表保持为空；没有该字段的旧调用只能选择
 已持久化故障树指导的 hints，不能从任意知识正文补步骤。`hint_level/need_teacher_help` 取确定性升级结果。
 `summary/limitations` 由后端解释契约生成，自由文字不直接升格为事实。当前契约
-`explanation-boundary-v4` 列出规则异常和 unknown 状态，保留证据冲突；推理提出的补充信息
-以“待核验项（未确认）”呈现，不作为已确认缺失。解释模型自行补写的确定性限制不直接采纳。
+`explanation-boundary-v6` 列出规则异常和 unknown 状态，保留证据冲突。模型自由理由和
+missing_evidence不进入当前展示或下阶段输入；仅将本次允许的下一动作呈现为未执行指导，
+不把动作改写为已经缺失的观察。没有合格指导时提示教师帮助。解释模型补写的限制不直接采纳。
 
 响应、持久化解释和回放使用同一契约。缓存纳入实际 Prompt 哈希并重新校验；旧 v1 审计不改写，
 缺当前契约或校验失败时返回 `rules_only`，不再次付费调用，不作为新建议展示。输出投影本身不回填历史；调用恢复的0038另保存有界Provider结果，不保存完整原始私有输入。
-校验覆盖身份、关联集合、冲突和动作；自由 `reason/summary`、教师编辑、完整因果与电气安全
-仍需独立审阅，代码通过和模板保护均不能代替。
+新推理Provider合同v2.14将 `reason/summary` 固定为服务器生成占位文字，`limitations/missing_evidence`只能为空；服务端用已验证状态生成实际说明，严格新响应拒绝任意补写。解释Schema的摘要/限制明确为后端合同常量，后端继续执行交付投影。历史记录仍经兼容解析和安全投影，不改写或收费重生。候选选择和引用的语义关系、教师编辑、完整因果与电气安全仍需独立审阅，代码通过和模板保护不能代替。
 
 ## 知识来源、版本与案例沉淀
 
@@ -128,7 +128,7 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 ## CoT 分步证据核对
 
-用户确认实施后，第一版已接入 `ai/reasoning.py`，当前Prompt版本为 `evidence-reasoning-v2.9`（案例适用条件升级；原分步核对从v2.6引入）。在原有一次推理调用内，模型按下面的顺序核对材料，只返回现有 JSON 字段中的简洁结果，不输出完整思维过程。
+用户确认实施后，第一版已接入 `ai/reasoning.py`，当前Prompt版本为 `evidence-reasoning-v2.14`（显式冲突输入及错误类型输出契约修复；原分步核对从v2.6引入）。在原有一次推理调用内，模型按下面的顺序核对材料，只返回现有 JSON 字段中的简洁结果，不输出完整思维过程。
 
 | 顺序 | 要做什么 | 谁负责把关 |
 | --- | --- | --- |
@@ -155,7 +155,7 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 6 项语义条目已纳入 `backend/evaluation/semantic_rubrics.json`（COT-SEM-01 至 06），分别审阅理由有据、未知保留、冲突限制、建议未冒充执行、解释与结论一致、表达清楚尊重。由现有合成评测报告逐项列出 `not_run/null`；没有用关键词或模型打分冒充语义审阅。条目正文只在目录中维护，映射见[评测要求对应表](evaluation-requirements.md)。
 
-真实模型对照仍待执行：在相同冻结输入、模型、包版本、候选与预算下比较 v2.5 和 v2.6，独立审阅实际推理与学生最终输出，并记录各次耗时、Token 和费用。调试与验收样本隔离；不得只挑最好结果或用旧审计冒充新运行。thinking 是另一变量，本次未开启。只有证据支持改善且原有边界无退步，才能声称效果提升。
+历史v2.5/v2.6对照尚无此处要求的独立证据；2026-10-03已进行同实质规则、不同顺序的合成CoT对照，未显示该小样本增益。实际材料见设计效果报告，不能把删除实质规则的对照归因为CoT。调试与验收样本隔离；不得只挑最好结果或用旧审计冒充新运行。thinking 是另一变量，本次未开启。只有证据支持改善且原有边界无退步，才能声称效果提升。
 
 <a id="memory-lifecycle-design"></a>
 
@@ -286,7 +286,7 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 完整受权来源中的敏感值在投影前暂存私有属性；包括确认人、恢复诊断ID及审核秘密的重复值，清洗覆盖Provider正文、标题和Checkpoint引用。私有来源本身不写Checkpoint、公开响应或审计清单。案例及全部条件整条入选或省略，预算不影响独立本地硬约束集合。
 
-当前策略`whole-unit-applicability-v1`、投影`case-applicability-v1`、推理Prompt`evidence-reasoning-v2.9`、解释默认Prompt`phase9.5-v3`；输出JSON Schema不变，服务端输出合同升为`explanation-boundary-v4`。实际payload/Prompt/来源指纹参与缓存，清单记录投影版本。旧阶段结果及唯一约束竞争重放都重验策略、当前来源和权限，不补造历史清单或收费重调。
+当前策略`whole-unit-applicability-v1`、投影`case-applicability-v1`、推理Prompt`evidence-reasoning-v2.14`、解释默认Prompt`phase9.5-v3`；推理输出error_type改为必填（无异常回退仍可为null），每次Provider Schema约束为本次规则值；输入显式传递evidence_conflict。服务端输出合同为`explanation-boundary-v6`。实际payload/Prompt/来源指纹参与缓存，清单记录投影版本。旧阶段结果及唯一约束竞争重放都重验策略、当前来源和权限，不补造历史清单或收费重调。
 
 新工作流结果及等待反馈/教师审核快照冻结`context_delivery.explanation_call_id`，并校验对应推理阶段。读取不能用诊断上后来更新的latest调用替旧正文证明；缺冻结身份或旧策略AI结果只读降级到原确定性核心。检查幂等、反馈后读取、学生当前页共用投影；原final_result、调用审计及业务回执不修改。明确历史复核接口保留原文，标历史用途和策略状态。
 
@@ -294,6 +294,35 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 ## 当前输出与调用恢复边界（2026-10-02）
 
-`provider-allowlist-v4` 拒绝含私密信息的动态键，值继续最小化清洗。`reasoning-facts-v1` 将当前摘要投影为未知/候选待验证，模型自由摘要不能成为事实；`verification_requests` 显式记录text、source和unverified状态。模型missing_evidence只作为待核验建议，服务器观测缺失仍按独立来源显示；保留经过授权的教师编辑。旧缓存与Checkpoint交付前重投影，不额外调用Provider。
+`provider-allowlist-v4` 拒绝含私密信息的动态键，值继续最小化清洗。`reasoning-facts-v2` 使用受控理由和摘要，仅从已校验的下一动作产生`verification_requests`；自由missing_evidence及历史reason/rationale/evidence别名不能绕过共同投影。原模型响应仅保留清洗后的调用审计。页面不回退展示旧自由字段。
+
+`reported_evidence` 独立展示当前诊断的来源记录，即使排序为unknown仍可见；来源类型和状态同时显示，不能将文本自动当作类型化配置比对或硬件真值。当前读取重新加载该诊断的证据，并从绑定的有效解释或配对推理记录恢复动作许可；预算跳过解释不抹掉合法推理指导。源/权限不合格仍降级，历史和已授权教师编辑保留。
 
 调用治理新增持久逻辑操作，具体状态与失败恢复合同见[修复方案G4](agent-security-repair-plan.md#6-g4一次逻辑操作与每次物理请求分开记录)，数据字段见[数据库设计](database-design.md)。本地恶意输出与故障注入只能验证程序合同，不能证明真实模型的语义质量。
+
+## 真实 API 修复后的表达与等待合同（2026-10-03）
+
+推理 v2.12 的 Provider 专用 Schema 只保留当前五个排序字段，外发候选标题统一为 cause；新响应严格验证，历史 confidence/evidence/rationale 仅在历史兼容模型中解释。CoT 五步和图结构保留。推理 limitations 依据实际 unknown、冲突及可信案例条件生成；旧推理重放同样投影，原审计不回写，模型原文不作为当前条件。
+
+案例整理 Prompt 为 knowledge-case-polish-v4。四个文字字段逐字选择当前锁定材料/固定状态说明组成的字段专属 expression_choices；Schema 枚举及本地共同校验，不再接受任意自由改写。symptom/teacherNotes 不可从旁路改变。生成、直接写入、提交审核及审批均复核已有润色内容；旧无据草稿保留原文但不能继续发布，需重新整理。教师独立提供的根因确认和修复步骤仍沿审核合同。该保守限制降低自由润色能力，不能称为已解决任意自然语言的语义保真。
+
+前端对检查、反馈、直接解释、诊断审核与案例整理 POST 采用75秒有限等待，普通请求8秒；Nginx API读取期限90秒。覆盖默认每阶段30秒、两阶段及本地余量。自定义更长阶段或断网仍可能进入原身份恢复；不自动重发，不把超时视为未执行。
+
+修复方案、设计回归矩阵与执行结果见 [本轮审计目录](../output/audits/real-api-repair-20261003/plan.md)。CoT独立增益、上下文效果、概念解释P4及真实课堂状态分别保留原验收边界。
+
+### 2026-10-04 两阶段合同与预算原因
+
+解释输出合同为`explanation-boundary-v6`：后端生成`allowed_causes`及各原因的`max_support_level`，生成Prompt、动态Schema、响应验证和当前记录读取共同使用。`unknown`或显式空排序要求空`possible_causes`，故障树仍提供允许动作。仅无推理字段的历史调用可用故障树候选兼容；不同cause_id同名时不向名称格式的解释输出开放该名称。合同版本进入实际Prompt/hash及冻结审计，旧合同结果不能直接成为当前AI建议，历史记录不回写。
+
+上下文状态区分`INPUT_TOKEN_LIMIT`（必需材料超过预算）、`KNOWLEDGE_CONTEXT_BUDGET_EXCEEDED`（合格案例被预算省略）和`KNOWLEDGE_NOT_READY`（没有合格案例）。预检提供同类原因，API即时响应和审计重读使用共同提示；来源失效/权限保护优先。默认总输入已提高为有界10000；显式4000仍生效，复杂或超量材料仍按原规则降级。
+
+[既有19项设计效果检查](../output/audits/ai-design-effect-study-20261003/report.md)与[本轮修复](../output/audits/ai-design-repair-20261004/report.md)分别保留。合成对照未证明CoT增益；自由理由/待核验项语义、配置差异利用、Loop追问及P4未因此全部解决。
+
+
+## 残余问题的共同合同修复（2026-10-04）
+
+执行范围见[修复设计](ai-residual-repair-plan-20261004.md)，实际证据统一见[验收报告](../output/audits/ai-residual-repair-20261004/report.md)。解释输入投影`explanation-input-v1`仅将清洗后完全相同的sensor_values/sensor_data、possible_causes/reasoned_causes用明确别名表示，Schema只去掉title注释；不删证据、来源、条件或不同ID的同文记录。manifest的payload_sha256对应实际发送input。
+
+分阶段准入由`stage_context_skip_code`统一：推理可无历史案例，解释遵守配置的知识要求。预检支持白名单配置快照和`--profile`，显式profile与场景预算冲突时拒绝，声明的runtime_snapshot来源不自动认证生产部署。Settings、Compose和示例默认已统一为10000；本机显式配置同步，AI仍关闭。配置存在不表示运行服务已更新，业务启用另验收。
+
+动态查询`query-task-v2`仍是隔离原型，任务需求、材料来源、问题资格、先查后问及安全停止由共同合同决定，未接入产品。没有新增RAG/Embedding，也不替换固定LangGraph。类型化实际配置生产方、课程观察许可目录及P4仍未完成，不能将本轮受控交付概括为任意语义推理可靠。

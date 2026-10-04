@@ -531,6 +531,9 @@ def build_safe_ai_input(
         sensitive_sources=(context, state, {"secret": list(sensitive_values)}),
         max_chars=max(2000, settings.ai_knowledge_content_max_chars), strict=True,
     )
+    from app.ai.output_contract import project_explanation_state
+
+    safe["workflow_state"] = project_explanation_state(safe["workflow_state"])
     result = AIDiagnosisInput.model_validate(safe)
     result._context_omissions = omissions
     result._context_trace = trace

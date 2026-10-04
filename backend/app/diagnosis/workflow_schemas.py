@@ -199,6 +199,7 @@ class DiagnosisWorkflowMetricsResponse(StrictModel):
 
 
 class DiagnosisWorkflowResponse(StrictModel):
+    reported_evidence: list[dict[str, str]] = Field(default_factory=list)
     memory_context: MemoryContext | None = None
     check: dict[str, Any] | None = None
     teaching_available: bool = True

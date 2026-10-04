@@ -135,3 +135,12 @@ PYTHONPATH=backend python -m app.cli.preview_package_context --strict \
 `test_internal_experiment_cli.py`与`test_internal_experiment_preparation.py`验证显式目标、授权、重复、冲突及回滚；`test_internal_experiment_preparation_postgres.py`验证真实PostgreSQL的并发与锁后复核。`test_internal_experiment_drill.py`从空实验schema经管理员包API、准备CLI和学生/设备API走完整合成流程，设置`XINJIAN_INTERNAL_DRILL_REPORT`可留脱敏成功过程。上述均被后端全量测试收集；缺测试DSN会跳过PostgreSQL层，不能称完成。
 
 真实浏览器联调另含新初始化任务的学生选择、开始、资料展示和结束用例。演练与旧有8项流程分别有实际结果，不能把数据库published、合成记录、AI skipped审计行数当实物验收或真实Provider调用。操作入口见[内部准备说明](experiments/internal-lab-preparation.md)。
+
+
+### 显式配置容量预检
+
+`preview_package_context --profile /path/to/profile.json`接收完整白名单快照（由`context_preview.snapshot_preview_profile(settings, source="runtime_snapshot")`生成），不接收密钥或整个Settings导出。也可标记`candidate_profile`比较有界候选预算。显式配置与场景预算冲突会失败；应另建无冲突合成场景，不修改既有冻结输入。报告中的来源标签由调用方声明，仍需记录实际服务/版本/生成时间，不能当作已经部署。推理与解释分别报告准入，`prepared`不代表真实Provider已调用。
+
+### 教师与课堂独立验收
+
+使用[本轮交接说明](../output/audits/ai-capacity-semantic-followup-20261004/teacher-acceptance.md)和[空白记录模板](../output/audits/ai-capacity-semantic-followup-20261004/teacher-acceptance-template.json)准备真实验收，逐项判据仍唯一引用`semantic_rubrics.json`。教师先冻结真实来源、课程允许动作及独立预期，再运行待验版本；预期不进入Provider。合成开发回归、教师语义判断、实物恢复和课堂可用性分别记录，缺材料保持null/not_run，不自动签署通过。

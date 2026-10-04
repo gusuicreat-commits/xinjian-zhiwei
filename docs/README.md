@@ -11,11 +11,12 @@
 | 开发和修复 | [开发入口](../AGENTS.md) · [开发准则](development-guidelines.md) |
 | 理解反复缺陷与本轮扫描 | [AI辅助开发缺陷复盘](development-retrospective-20261002.md) · [全项目软件扫描方案](software-scan-plan-20261002.md)（已执行，修复进展见[应对方案](software-boundary-repair-plan-20261003.md)；依赖公告风险另列，[本机报告](../output/audits/software-boundary-scan-20261002/report.md)） |
 | 运行和演示 | [部署说明](deployment.md) · [演示手册](demo-runbook.md) |
-| 测试和解读结果 | [测试与评测](evaluation.md) · [测试报告约定](test-reporting.md) |
+| 测试和解读结果 | [测试与评测](evaluation.md) · [测试报告约定](test-reporting.md) · [真实 API 全面测试方案](real-api-test-plan-20261003.md)（仅设计） |
 
 ## 按模块查阅
 
-- AI 与资料：[AI诊断设计](ai-diagnosis-design.md)、[实验包设计](experiment-package-design.md)、[受控上下文](context-construction-plan.md)、[资料包衔接](package-context-evolution-plan.md)。
+- AI 与资料：[AI诊断设计](ai-diagnosis-design.md)、[Kimi 2.6 接入与实测](kimi-api-integration.md)、[残余问题根因与修复方案](ai-residual-repair-plan-20261004.md)（[验收报告](../output/audits/ai-residual-repair-20261004/report.md)）、[实验包设计](experiment-package-design.md)、[受控上下文](context-construction-plan.md)、[资料包衔接](package-context-evolution-plan.md)。
+- [默认容量与生成合同修复评估](../output/audits/ai-capacity-semantic-followup-20261004/report.md)：10000默认、受控生成、真实回归及教师验收交接。
 - 接口与存储：[API设计](api-design.md)、[数据库设计](database-design.md)、[设备协议](device-protocol.md)。
 - 实物准备：[DHT11内部实验指南](experiments/dht11-internal-lab.md)、[施工方案](experiments/dht11-hardware-execution-plan.md)、[到货执行清单](experiments/dht11-arrival-checklist.md)、[内部测试准备](experiments/internal-lab-preparation.md)、[固件说明](../firmware/esp32_dht11/README.md)。
 - 验收补充：[评测要求](evaluation-requirements.md)、[硬件验证计划](hardware-validation-plan.md)、[真人试用模板](usability-trial.md)、[模拟器说明](../simulator/README.md)。

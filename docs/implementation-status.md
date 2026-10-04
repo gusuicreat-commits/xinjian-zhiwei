@@ -1,6 +1,8 @@
 # 芯鉴知微当前实现状态
 
-核对日期：2026-10-03。本文记录工作区的软件版本、能力、限制及执行证据；开发要求见[开发准则](development-guidelines.md)，外部事实与效果待验项见[真实性看板](project-truth-status.md)。代码存在、测试通过和已部署分别判断。
+核对日期：2026-10-04。本文记录工作区的软件版本、能力、限制及执行证据；开发要求见[开发准则](development-guidelines.md)，外部事实与效果待验项见[真实性看板](project-truth-status.md)。代码存在、测试通过和已部署分别判断。
+
+最新进展：[默认容量与生成合同修复](../output/audits/ai-capacity-semantic-followup-20261004/report.md)已完成。默认与本机输入配置统一10000，显式低预算仍受保护；推理v2.14限制自由理由/摘要/需求，解释Schema固定摘要与限制，脱敏名称在响应、降级和重放间保持一致。最终完整门禁退出0：后端1186通过、12项Linux专属检查在macOS跳过，前端163、浏览器20/11/1通过。真实Kimi12次已知语义回归通过（配置差异6/6给方向、证据不足6/6保留unknown），另4次完成两包默认预算两阶段流程；16次按历史单价估算¥0.24。教师与课堂独立验收已有空白记录，仍待真实材料；AI保持关闭、未部署，不能称所有AI语义已无错误。
 
 ## 当前版本
 
@@ -27,10 +29,16 @@
 | 新数据检查 | 固定输入与请求身份；恢复原请求；新回执复用证据时读取问题当前处理状态，旧回执不改写，不额外调用模型 | `services/diagnosis_checks.py`；[重新检查规则](development-guidelines.md#recheck) |
 | 学生反馈与教师处置 | 等待锁后、工作流恢复和长操作交付时重验当前权限；401/403不包装成503；合法历史回执仍可重放。409不换身份重试；反馈、工单和硬件恢复分开，私密备注按角色投影 | `services/student_feedback.py`、`diagnosis_workflow.py`、`interventions.py` |
 | 教学资料与案例 | 新指导保存 concepts/steps 的明确关联快照；故障树提示决定动作。草稿审批/润色采用状态与版本约束，来源唯一、审批同事务；实验包版本化发布并绑定快照 | `experiment_packages/teaching.py`、`knowledge/case_drafting.py`；[包设计](experiment-package-design.md) |
-| AI | 默认关闭；候选排序/解释/润色共享外发清洗、预算预留、缓存重验和调用审计，失败降级。`evidence-reasoning-v2.9` 保留分步证据核对并接入完整上下文准备，沿用原 Schema/图、开关和 thinking 设置；新增6项语义条目仍未审阅 | `ai/governance.py`、`context_sanitizer.py`、`reasoning.py`；[AI 设计](ai-diagnosis-design.md) |
+| AI | 默认关闭；候选排序/解释/润色共享外发清洗、预算预留、缓存重验和调用审计，失败降级。`evidence-reasoning-v2.14` 保留分步核对和固定图，新请求固定自由说明字段；`reasoning-facts-v2`及解释合同v6限制自由文字交付，来源报告独立保留，旧结果读取重验；当前合成对照已有开发方逐项审阅，教师独立保留集仍待验收 | `ai/governance.py`、`context_sanitizer.py`、`reasoning.py`；[AI 设计](ai-diagnosis-design.md) |
 | 记忆 | 事实（固定包配置）、经验（受审案例）、工作（当前任务投影）分开；来源版本与用途留痕，召回/恢复/交付重验，停用后阻断旧建议并支持教师影响复核；过期缓存按固定计划清理 | `services/memory.py`、`memory_governance.py`、`memory_restore.py`；[记忆设计](ai-diagnosis-design.md#memory-lifecycle-design) |
 | 前端 | 学生和教师各三类任务视图；切页保留对象与待确认请求；教师旧请求隔离、分区错误提示、就绪统计按范围表达；内部代码中文投影，离线审核可演示 | `frontend/src` 的两端 Dashboard、`userLanguage.ts`；[界面规则](development-guidelines.md#ui) |
 | 固件与运维 | 64位运行时钟；DHT11前次转换语义；配置持久存储后先保存单批、存储失败暂停、重试预算持久化、确认后仅重试清理。备份恢复核对同一数据库快照的内容与关系约束，模拟器提供实际场景清单 | [固件](../firmware/esp32_dht11/README.md)、[部署](deployment.md)、[模拟器](../simulator/README.md) |
+
+## Kimi 2.6 接入（2026-10-03）
+
+已新增显式 Kimi Provider 和三个客户端入口的参数校验，真实合成请求确认连通；证据不足案例通过，冲突案例被校验拒绝，注入案例遇到429，尚未完成真实模型验收。第一轮随后修复了冲突标记投影和error_type必填契约，新Prompt v2.10的3项原案例复验通过；建议相关性仍待独立语义验收。本机配置保留 AI 关闭，业务服务未部署；详见[Kimi 接入与实测](kimi-api-integration.md)。
+
+2026-10-03全面实测随后取得24个不同合成案例、36份分层响应（33份结构接受、3份拒绝），详见[执行报告](../output/audits/real-api-evaluation-20261003/report.md)。结构接受不等于语义正确；该阶段尚未执行CoT/上下文效果对照，10月4日合成增量见本文最新进展。后续修复将推理合同升至v2.12、润色升为受控表述选择v4，并为模型长操作采用有界等待；验收记录见[修复方案](../output/audits/real-api-repair-20261003/plan.md)，运行服务未启用AI。
 
 ## 软件限制
 
@@ -67,7 +75,7 @@
 
 上述记忆报告对应当时未提交工作区和源码指纹；其运行库未迁移，未部署、调用真实模型或重编译固件。此前上下文实现另行执行了固件构建，实际范围见新报告。上一次[数据处理修复报告](../output/audits/data-integrity-fix-latest/report.md)保留为独立历史证据，不能与本轮数量累加。
 
-其他范围按独立报告查询：[CoT 实施与 Mock 检查](../output/audits/cot-implementation-latest/report.md)（真实语义与效果比较未执行）、[新旧入口修复](../output/audits/legacy-boundary-remediation-latest/report.md)（含模拟器、固件、迁移、备份与分阶段门禁；原 verify 首轮失败，后续定向重跑通过，不能描述为单次全绿）。更早证据见[历史索引](archive/README.md)，不在本页累计数量。自动报告可能只在本机/CI存在，缺附件不能当作已重新验证。
+其他范围按独立报告查询：[CoT 实施与 Mock 检查](../output/audits/cot-implementation-latest/report.md)（该历史阶段未执行真实语义与效果比较）、[新旧入口修复](../output/audits/legacy-boundary-remediation-latest/report.md)（含模拟器、固件、迁移、备份与分阶段门禁；原 verify 首轮失败，后续定向重跑通过，不能描述为单次全绿）。更早证据见[历史索引](archive/README.md)，不在本页累计数量。自动报告可能只在本机/CI存在，缺附件不能当作已重新验证。
 
 ## DHT11资料与固件修复（2026-09-28）
 
@@ -100,3 +108,9 @@ Linux独立解析专项28通过、15项PG专用跳过，覆盖主机跳过的全
 原生macOS/Windows后端文件解析明确503，需使用Linux服务，文本导入仍可用；旧知识来源须显式授权，缺可信提交人的旧待审核资料须重新提交。0037/0038仅在一次性隔离库验证，业务库未迁移；源码提交状态以Git历史为准；未部署。真实Provider语义、硬件和课堂效果未验收。
 
 2026-10-03边界修复：知识资料创建/编辑/审核的测试性质和文档总量约束已接入，新增0039服务器重叠额度计量；受公告影响的Python/npm依赖已兼容升级，更新后公告查询0命中。分阶段软件验收完成：后端1077、模拟器32、PG流程25、前端157、浏览器19/11/1通过；12项主机Linux限定跳过有Linux专项补验。两次门禁曾因旧测试身份和迁移版本断言失败，修正后相关步骤通过，非单次完整脚本全绿。见[应对方案](software-boundary-repair-plan-20261003.md)和[验收报告](../output/audits/software-boundary-fix-20261003/report.md)。业务库/部署状态未改变。
+
+## 真实 API 修复验收（2026-10-03）
+
+本轮已修复新推理合同歧义、模型限制说明投影、润色无据文字及默认长操作等待问题。v2.12下原正向排序样例3次、unknown样例1次及完整对齐材料的润色服务1次真实回归通过；保留此前失败与夹具纠正记录，不作准确率或CoT增益结论。
+
+软件门禁分阶段完成：后端1108通过、12项Linux专属解析在macOS跳过；模拟器32、前端161、固定工作流25、浏览器20+11+1通过。上下文/资料包预检、迁移/备份、固件软件及Nginx语法检查完成；检查过程和精确源码身份见[修复报告](../output/audits/real-api-repair-20261003/report.md)。运行服务AI保持关闭，未部署、未提交或推送。本轮润色收紧为受控完整表述选择；任意自由改写保真仍未验收。

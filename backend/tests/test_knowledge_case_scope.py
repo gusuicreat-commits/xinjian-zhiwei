@@ -232,10 +232,8 @@ class ScopePolishClient:
         return AICompletion(
             content=json.dumps(
                 {
-                    "title": "读取异常",
-                    "symptomDescription": "设备报告读取失败。",
-                    "teachingNote": "按证据继续验证。",
-                    "solutionSummary": "等待教师确认。",
+                    **{field: choices[-1] for field, choices in
+                       payload["expression_choices"].items()},
                     "sourceIds": payload["source_ids"],
                 },
                 ensure_ascii=False,

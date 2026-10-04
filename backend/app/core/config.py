@@ -86,7 +86,7 @@ class Settings(BaseSettings):
         ),
     )
     ai_input_token_limit: int = Field(
-        default=4000,
+        default=10000,
         validation_alias=AliasChoices(
             "AI_MAX_INPUT_TOKENS",
             "AI_INPUT_TOKEN_LIMIT",
@@ -290,6 +290,21 @@ class Settings(BaseSettings):
             raise ValueError("the production DeepSeek profile requires non-thinking mode")
         if self.ai_transport != "openai-compatible":
             raise ValueError("DeepSeek production profile requires openai-compatible transport")
+        return self
+
+    @model_validator(mode="after")
+    def validate_kimi_profile(self) -> "Settings":
+        for prefix in ("ai", "ai_local", "ai_cloud"):
+            if getattr(self, f"{prefix}_provider") != "kimi":
+                continue
+            if getattr(self, f"{prefix}_base_url") != "https://api.moonshot.cn/v1":
+                raise ValueError("Kimi base URL must be https://api.moonshot.cn/v1")
+            if getattr(self, f"{prefix}_model") != "kimi-k2.6":
+                raise ValueError("Kimi profile requires kimi-k2.6")
+            if self.ai_thinking_enabled:
+                raise ValueError("Kimi diagnosis profile requires non-thinking mode")
+            if self.ai_transport != "openai-compatible":
+                raise ValueError("Kimi profile requires openai-compatible transport")
         return self
 
     @property

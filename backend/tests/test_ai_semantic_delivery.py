@@ -45,9 +45,9 @@ def test_checkpoint_final_projection_preserves_uncertainty_and_teacher_edit():
     final = _approved_result(state)
     assert final["summary"] == "教师的审核意见"
     assert MALICIOUS not in final["ai_reasoning"]["summary"]
-    assert final["ai_reasoning"]["verification_requests"] == [
-        {"text": "是否断线", "source": "model", "status": "unverified"}
-    ]
+    # R01: free model requests lack a teaching permission; preserve the audit,
+    # not the old current-delivery behavior.
+    assert final["ai_reasoning"]["verification_requests"] == []
     assert state["reasoning_summary"] == MALICIOUS
 
 
@@ -93,7 +93,7 @@ def test_current_projection_rewrites_old_prose_without_mutating_history(monkeypa
     monkeypatch.setattr(current_advice, "_inspection", lambda *a, **k: (None, True, False))
     current, _ = current_advice.project_current_advice(None, workflow)
     assert MALICIOUS not in current["ai_reasoning"]["summary"]
-    assert current["ai_reasoning"]["verification_requests"][0]["status"] == "unverified"
+    assert current["ai_reasoning"]["verification_requests"] == []
     assert workflow.final_result == historical
 
 
