@@ -372,7 +372,13 @@ def test_legacy_ungrounded_polish_cannot_progress_to_publication(persisted_draft
     assert db.get(KnowledgeCase, 'must-not-publish') is None
 
 
-def test_actual_polish_service_rejects_unprovided_teaching_claim(persisted_draft):
+@pytest.mark.parametrize("retries", [0, 1])
+def test_actual_polish_service_rejects_unprovided_teaching_claim(persisted_draft, retries):
+    from sqlalchemy import select
+
+    from app.models.ai_operation import AIOperation
+    from app.models.ai_usage_reservation import AIUsageReservation
+
     class UngroundedClient(FakePolishClient):
         def complete_json(self, **kwargs):
             completion = super().complete_json(**kwargs)
@@ -382,8 +388,206 @@ def test_actual_polish_service_rejects_unprovided_teaching_claim(persisted_draft
     db, draft = persisted_draft
     client = UngroundedClient()
     with pytest.raises(CaseDraftError, match='validation'):
-        generate_ai_assisted_polish(db, draft, Settings(ai_enabled=True),
+        generate_ai_assisted_polish(db, draft, Settings(_env_file=None, ai_enabled=True,
+                                                       ai_max_retries=retries,
+                                                       ai_input_cost_per_1k_tokens=0.01,
+                                                       ai_output_cost_per_1k_tokens=0.02),
                                    ai_client=client, actor_context=db.info['case_actor'])
     db.refresh(draft)
     assert draft.polished_payload is None
-    assert len(client.prompts) == 1
+    assert len(client.prompts) == retries + 1
+    usages = list(db.scalars(select(AIUsageReservation)))
+    assert len(usages) == retries + 1
+    assert all(usage.status == "succeeded" and usage.accounted_cost > 0 for usage in usages)
+    assert db.scalar(select(AIOperation)).attempt_no == retries + 1
+
+
+@pytest.mark.parametrize("timing", ["provider", "delivery_recheck", "final_write"])
+def test_polish_delivery_denial_preserves_usage_and_audit(persisted_draft, monkeypatch, timing):
+    from dataclasses import replace
+
+    from sqlalchemy import select
+
+    from app.knowledge import case_drafting
+    from app.models import AuditEvent
+    from app.models.ai_operation import AIOperation
+    from app.models.ai_usage_reservation import AIUsageReservation
+    from app.models.classroom import AuthSession
+    from app.services.auth import AuthorizationDenied
+
+    db, draft = persisted_draft
+    actor = db.info["case_actor"]
+    version = draft.version_no
+
+    class RevokingClient(FakePolishClient):
+        def complete_json(self, **kwargs):
+            completion = super().complete_json(**kwargs)
+            if timing == "provider":
+                db.get(AuthSession, actor.session_id).revoked_at = utc_now()
+                db.commit()
+            return completion
+
+    def deny_delivery():
+        if timing == "delivery_recheck":
+            raise AuthorizationDenied()
+
+    if timing == "final_write":
+        original = case_drafting._authorize_final_case_write
+        monkeypatch.setattr(case_drafting, "_authorize_final_case_write",
+                            lambda db, identity, draft_id: original(
+                                db, replace(identity, session_id="revoked-synthetic"), draft_id))
+    provider = RevokingClient()
+    with pytest.raises(AuthorizationDenied):
+        generate_ai_assisted_polish(
+            db, draft, Settings(_env_file=None, ai_enabled=True,
+                                ai_input_cost_per_1k_tokens=0.01,
+                                ai_output_cost_per_1k_tokens=0.02),
+            ai_client=provider, actor_context=actor, recheck_access=deny_delivery,
+        )
+    # No caller rollback: the service must undo its own conditional draft write.
+    db.refresh(draft)
+    operation = db.scalar(select(AIOperation).where(AIOperation.call_stage == "case_polish"))
+    usages = list(db.scalars(select(AIUsageReservation)))
+    events = list(db.scalars(select(AuditEvent).where(AuditEvent.action == "ai.delivery_denied")))
+    assert len(provider.prompts) == 1
+    assert draft.version_no == version and draft.polished_payload is None and not draft.ai_audit
+    assert operation.status == "succeeded" and operation.attempt_no == 1
+    assert len(usages) == 1 and usages[0].status == "succeeded" and usages[0].accounted_cost > 0
+    assert len(events) == 1
+    assert events[0].resource_type == "ai_operation" and events[0].resource_id == operation.id
+    assert events[0].is_test_data
+    assert events[0].details_json == {
+        "call_stage": "case_polish", "attempt_no": 1,
+        "error_code": "AI_DELIVERY_ACCESS_REVOKED",
+    }
+
+
+def test_polish_denial_replay_is_audited_once_and_can_deliver_without_new_charge(persisted_draft):
+    from sqlalchemy import select
+
+    from app.models import AuditEvent
+    from app.models.ai_usage_reservation import AIUsageReservation
+    from app.services.auth import AuthorizationDenied
+
+    db, draft = persisted_draft
+    provider = FakePolishClient()
+    settings = Settings(_env_file=None, ai_enabled=True)
+
+    def deny():
+        raise AuthorizationDenied()
+
+    for _ in range(2):
+        with pytest.raises(AuthorizationDenied):
+            generate_ai_assisted_polish(db, draft, settings, ai_client=provider,
+                                       actor_context=db.info["case_actor"], recheck_access=deny)
+    result = generate_ai_assisted_polish(db, draft, settings, ai_client=provider,
+                                       actor_context=db.info["case_actor"])
+    assert result.polished_payload is not None and result.ai_audit["validation_status"] == "passed"
+    assert len(provider.prompts) == 1
+    assert len(list(db.scalars(select(AIUsageReservation)))) == 1
+    assert len(list(db.scalars(select(AuditEvent).where(
+        AuditEvent.action == "ai.delivery_denied")))) == 1
+
+
+@pytest.mark.parametrize("failure", ["commit", "lookup", "cleanup"])
+def test_polish_audit_storage_failure_still_refuses_delivery(
+    persisted_draft, monkeypatch, caplog, failure,
+):
+    from sqlalchemy import select
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.models.ai_usage_reservation import AIUsageReservation
+    from app.services.auth import AuthorizationDenied
+
+    db, draft = persisted_draft
+    provider = FakePolishClient()
+
+    def refuse_after_completion():
+        db.rollback()  # Expire the paid operation, as final write authorization does.
+        def failed_storage(*args, **kwargs):
+            raise SQLAlchemyError("synthetic storage unavailable")
+        monkeypatch.setattr(db, "commit" if failure == "commit" else "scalar", failed_storage)
+        if failure == "cleanup":
+            original_rollback = db.rollback
+            calls = 0
+
+            def failed_cleanup():
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise SQLAlchemyError("synthetic cleanup unavailable")
+                return original_rollback()
+
+            monkeypatch.setattr(db, "rollback", failed_cleanup)
+        raise AuthorizationDenied(403)
+
+    with pytest.raises(AuthorizationDenied):
+        generate_ai_assisted_polish(
+            db, draft, Settings(_env_file=None, ai_enabled=True), ai_client=provider,
+            actor_context=db.info["case_actor"], recheck_access=refuse_after_completion,
+        )
+    db.refresh(draft)
+    assert draft.polished_payload is None and not draft.ai_audit
+    assert len(provider.prompts) == 1
+    assert len(list(db.scalars(select(AIUsageReservation)))) == 1
+    assert "ai_delivery_denial_audit_unavailable" in caplog.text
+
+
+def test_polish_source_denial_after_provider_is_audited_without_retry(persisted_draft, monkeypatch):
+    from sqlalchemy import select
+
+    from app.ai.governance import GovernedAIInvocation
+    from app.models import AuditEvent
+    from app.models.ai_usage_reservation import AIUsageReservation
+
+    db, draft = persisted_draft
+    original_check = GovernedAIInvocation._check_knowledge
+
+    class Client(FakePolishClient):
+        def complete_json(self, **kwargs):
+            response = super().complete_json(**kwargs)
+            def withdrawn(governor):
+                raise AIQuotaDenied("AI_KNOWLEDGE_WITHDRAWN")
+            monkeypatch.setattr(GovernedAIInvocation, "_check_knowledge", withdrawn)
+            return response
+
+    provider = Client()
+    with pytest.raises(CaseDraftError):
+        generate_ai_assisted_polish(db, draft, Settings(_env_file=None, ai_enabled=True),
+                                   ai_client=provider, actor_context=db.info["case_actor"])
+    monkeypatch.setattr(GovernedAIInvocation, "_check_knowledge", original_check)
+    assert len(provider.prompts) == 1
+    assert draft.polished_payload is None
+    assert len(list(db.scalars(select(AIUsageReservation)))) == 1
+    event = db.scalar(select(AuditEvent).where(AuditEvent.action == "ai.delivery_denied"))
+    assert event.details_json["error_code"] == "AI_KNOWLEDGE_WITHDRAWN"
+
+
+def test_polish_valid_retry_keeps_both_charged_attempts(persisted_draft):
+    from sqlalchemy import select
+
+    from app.models.ai_usage_reservation import AIUsageReservation
+
+    class Client(FakePolishClient):
+        def complete_json(self, **kwargs):
+            response = super().complete_json(**kwargs)
+            if len(self.prompts) == 1:
+                raw = json.loads(response.content)
+                raw["teachingNote"] = "synthetic unprovided teaching claim"
+                return AICompletion(content=json.dumps(raw), input_tokens=100, output_tokens=50)
+            return response
+
+    db, draft = persisted_draft
+    provider = Client()
+    result = generate_ai_assisted_polish(
+        db, draft, Settings(_env_file=None, ai_enabled=True, ai_max_retries=1,
+                            ai_input_cost_per_1k_tokens=0.01, ai_output_cost_per_1k_tokens=0.02),
+        ai_client=provider, actor_context=db.info["case_actor"],
+    )
+    usages = list(db.scalars(select(AIUsageReservation)))
+    assert len(provider.prompts) == len(usages) == 2
+    assert all(usage.status == "succeeded" for usage in usages)
+    assert result.ai_audit["attempt_count"] == 2
+    assert result.ai_audit["estimated_cost"] == pytest.approx(
+        sum(usage.accounted_cost for usage in usages))
+    assert "synthetic unprovided" not in json.dumps(result.polished_payload)
