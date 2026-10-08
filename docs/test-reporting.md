@@ -58,3 +58,22 @@
 `context-evaluation-v1` 同名JSON/Markdown输出到 `output/context-evaluation/`；JSON保留逐项代码断言、归因、输入/源码指纹、语义/真实Provider/硬件/保留集状态。代码退出0不等于语义通过，1是检查失败或执行错误，2是必需软件材料缺失/损坏。语义缺材料为not_run/null；0次真实调用、Token和费用未知不得写成已验证的成本收益。软件服务/并发/浏览器门禁另存本次审计报告，不把纯选择器报告扩称端到端验收。
 
 资料包预检使用`package-context-preview-v1`：分开structure、source_traceability、stage_coverage；来源identity比对与内容可信性分开。报告仅存定位、长度、有限条件状态、固定省略原因和指纹，不保存私密审核正文或完整Prompt。输入/预期分离，严格评测与普通分析退出语义不同，见[预检命令](evaluation.md#package-context-preview)。P4概念解释检查须单列未实施，不能随P0–P3软件门禁标通过。
+
+
+## 受控查询报告
+
+`query-evaluation-v1` 将 Markdown/JSON 保存到显式 `--output` 路径（必须为 `.json`）。
+逐例保存真实固定图 A、B0_scripted、确定性查询、相同材料合同探针/实际推理服务回放、步骤、计数、
+输入/预期/答复指纹与独立断言。选择替身次数不计真实 Provider 调用；合成语义未审为 `not_run/null`。
+退出0表示所选软件断言通过，1表示断言/执行失败，real模式未满足门禁返回2且无调用。
+整体 `status=incomplete` 不因软件通过而改成全面通过。源码/环境基线、费用核对、PG/进程测试和缺陷
+失败基线另留在本轮专项目录；费用不能合并重叠历史账本或用估算冒充账单。
+
+
+真实调度报告格式 `query-real-v1`：`binding.provider_execution` 明确区分 `real_kimi` 与
+`injected_test_double`。`pairs` 保存每组A/B0/确定性查询、规则同材料回放、原服务调用审计和检查；
+`comparison` 分开新增材料、选择差异及规则/AI状态，不生成诊断正确率或教学得分。
+`usage` 来自同一库的原有预留表，区分有usage的估算和未结预留；替身账本中的金额只是软件测试值，
+不是真实费用。`execution_status=completed` 仅表示所选批次已运行，整体 `status=incomplete` 仍保留。
+`running_pair` 非空时保留中断现场，不能删除账本或换任务身份续扣。预算不足、探针失败、软件断言失败
+分别保留原因；人工审阅未执行仍为 `not_run/null`。报告不得隐去模型回退或知识未就绪的分母。

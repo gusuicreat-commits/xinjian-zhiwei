@@ -562,12 +562,18 @@ def ai_reasoning_node(
     reasoning_state["knowledge_constraints"] = build_reasoning_knowledge_constraints(
         state.get("experiment_context"), graph_knowledge
     )
+    from app.services.student_authorization import authorize_student_actor
+
     result, mode = reason_about_causes(
         runtime.context.db,
         diagnosis,
         reasoning_state,
         runtime.context.settings,
         workflow_run_id=state["diagnosis_id"],
+        recheck_access=lambda: authorize_student_actor(
+            runtime.context.db, runtime.context.student_actor,
+            diagnosis.device_id, state["experiment_session_id"],
+        ),
         call_stage=(
             f"reasoning:feedback:{state['student_feedback']['id']}"
             if (state.get("student_feedback") or {}).get("id")

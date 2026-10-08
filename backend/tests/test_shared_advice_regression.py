@@ -1,11 +1,12 @@
 from copy import deepcopy
 
 from test_case_applicability import case_record, diagnosis_record
+from test_current_advice import advice_task as _advice_task
 from test_current_advice import make_ai_result
 
 from app.knowledge.matcher import match_case_candidates
 
-pytest_plugins = ["test_current_advice"]
+advice_task = _advice_task
 
 
 def test_conflicting_identity_cannot_select_text_only_case():

@@ -466,6 +466,7 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
     governor = GovernedAIInvocation(
         db, diagnosis, settings, call_stage="case_polish",
         operation_key=f"case:{draft.id}:version:{expected_version}:polish",
+        recheck_access=lambda: authorize_case_write(db, actor_context, draft.id),
     )
     for attempt in range(settings.ai_max_retries + 1):
         try:
@@ -479,6 +480,8 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
                                  generated.model_dump(mode="json", by_alias=True)}
             validate_grounded_polish(draft, candidate_payload)
             break
+        except AuthorizationDenied:
+            raise
         except Exception as exc:
             if not governor.retry(exc) or attempt == settings.ai_max_retries:
                 raise CaseDraftError("AI case polish failed validation or quota check") from exc

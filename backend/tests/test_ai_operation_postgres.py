@@ -43,7 +43,7 @@ def _compete(url, diagnosis_id, ready, release, messages):
         engine.dispose()
 
 
-def test_two_processes_send_only_once(migration_db):
+def test_two_processes_send_only_once(migration_db):  # noqa: F811
     engine, migrate = migration_db
     migrate("upgrade", "head")
     with Session(engine) as db:

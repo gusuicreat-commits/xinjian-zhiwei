@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import threading
 import time
+from collections.abc import Callable
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -29,6 +33,23 @@ _reservation_lock = threading.RLock()
 class AIQuotaDenied(AIProviderError):
     def __init__(self, code: str):
         super().__init__(code, code=code, outcome_unknown=False)
+
+
+@dataclass(frozen=True)
+class TaskAttemptLimits:
+    """Optional isolated-task limits, persisted with the existing operation contract.
+
+    A task owns a dedicated diagnosis. Once bound, later stages inherit the strictest
+    persisted limits even if their caller omits this argument. No separate cost ledger.
+    """
+    total: int = 5
+    selection: int = 3
+
+    def __post_init__(self):
+        if type(self.total) is not int or not 0 <= self.total <= 5:
+            raise ValueError("invalid total attempt limit")
+        if type(self.selection) is not int or not 0 <= self.selection <= 3:
+            raise ValueError("invalid selection attempt limit")
 
 
 def current_delivery_scope(db, diagnosis):
@@ -69,6 +90,8 @@ def current_delivery_scope(db, diagnosis):
     except AIQuotaDenied:
         raise
     except Exception as exc:
+        if getattr(getattr(exc, "orig", None), "sqlstate", None) in {"55P03", "57014"}:
+            raise AIQuotaDenied("AI_DEADLINE_EXCEEDED") from exc
         raise AIQuotaDenied("AI_TEACHING_SCOPE_UNAVAILABLE") from exc
 
 
@@ -94,6 +117,9 @@ class GovernedAIInvocation:
         source_snapshot: list[dict] | None = None,
         operation_key: str | None = None,
         execution_context: dict | None = None,
+        recheck_access: Callable[[], None] | None = None,
+        task_attempt_limits: TaskAttemptLimits | None = None,
+        cumulative_budget_limit: float | None = None,
     ):
         self.db = db
         self.diagnosis = diagnosis
@@ -106,6 +132,17 @@ class GovernedAIInvocation:
         self.source_snapshot = source_snapshot
         self.operation_key = operation_key or f"diagnosis:{diagnosis.id}:{call_stage}"
         self.execution_context = execution_context or {}
+        # Runtime-only authority; never serialize identities into an operation.
+        self.recheck_access = recheck_access
+        self.task_attempt_limits = task_attempt_limits
+        if cumulative_budget_limit is not None and (
+            isinstance(cumulative_budget_limit, bool)
+            or not math.isfinite(cumulative_budget_limit) or cumulative_budget_limit < 0
+        ):
+            raise ValueError("invalid cumulative budget")
+        # Optional isolated-ledger ceiling: all reservations, no rolling-day reset.
+        self.cumulative_budget_limit = cumulative_budget_limit
+        self._delivery_scope = None
         self.operation = None
         self.deadline = time.monotonic() + settings.ai_total_timeout_seconds
 
@@ -149,6 +186,9 @@ class GovernedAIInvocation:
             select(AIOperation).where(AIOperation.operation_key == self.operation_key)
         )
         if operation is None:
+            return
+        if operation.status == "succeeded" and operation.completion:
+            # A completed operation can be read after its dispatch deadline.
             return
         remaining = (
             self._aware(operation.deadline_at) - datetime.now(timezone.utc)
@@ -210,6 +250,36 @@ class GovernedAIInvocation:
         costs = [item.accounted_cost for item in self.reservations]
         return sum(costs) if costs and all(item is not None for item in costs) else None
 
+    def _bound_database_wait(self):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise AIQuotaDenied("AI_DEADLINE_EXCEEDED")
+        if self.db.get_bind().dialect.name == "postgresql":
+            # Transaction-local: pool reuse must not inherit this request's limit.
+            millis = str(max(1, int(remaining * 1000)))
+            self.db.execute(text(
+                "SELECT set_config('lock_timeout', :millis, true), "
+                "set_config('statement_timeout', :millis, true)"
+            ), {"millis": millis})
+
+    @contextmanager
+    def _reservation_slot(self):
+        remaining = max(0.0, self.deadline - time.monotonic())
+        if not _reservation_lock.acquire(timeout=remaining):
+            raise AIQuotaDenied("AI_DEADLINE_EXCEEDED")
+        try:
+            yield
+        finally:
+            _reservation_lock.release()
+
+    @staticmethod
+    def _storage_error(exc):
+        code = getattr(getattr(exc, "orig", None), "sqlstate", None)
+        return AIQuotaDenied(
+            "AI_DEADLINE_EXCEEDED" if code in {"55P03", "57014"}
+            else "AI_QUOTA_STORAGE_UNAVAILABLE"
+        )
+
     def _reserve(self, client: AIClient, system_prompt: str, user_prompt: str):
         settings = self.settings
         if not settings.ai_enabled or not client.configured:
@@ -218,10 +288,11 @@ class GovernedAIInvocation:
         if tokens > settings.ai_input_token_limit:
             raise AIQuotaDenied("INPUT_TOKEN_LIMIT")
         projected = estimate_ai_cost(tokens, settings.ai_output_token_limit, settings)
-        with _reservation_lock:
+        with self._reservation_slot():
             # Existing business rows must be durable before reserving and sending.
             try:
                 self.db.commit()
+                self._bound_database_wait()
                 dialect = self.db.get_bind().dialect.name
                 if dialect == "postgresql":
                     self.db.execute(text("SELECT pg_advisory_xact_lock(873421, 91728)"))
@@ -229,6 +300,13 @@ class GovernedAIInvocation:
                     self.db.connection().exec_driver_sql("BEGIN IMMEDIATE")
                 else:
                     raise AIQuotaDenied("AI_QUOTA_STORAGE_UNSUPPORTED")
+                # Both backoff and quota-lock acquisition can outlive authority.
+                # Validate before *either* a new reservation or a saved completion.
+                if self.recheck_access is not None:
+                    self.recheck_access()
+                if current_delivery_scope(self.db, self.diagnosis) != self._delivery_scope:
+                    raise AIQuotaDenied("AI_RESULT_STALE")
+                self._check_knowledge()
                 from app.ai.context_contract import CONTEXT_POLICY_VERSION
                 from app.ai.output_contract import (
                     OUTPUT_CONTRACT_VERSION,
@@ -250,6 +328,27 @@ class GovernedAIInvocation:
                     "response_max_bytes": settings.ai_response_max_bytes,
                     "output_token_limit": settings.ai_output_token_limit,
                 }
+                # Under the existing cross-process quota lock, inherit the strictest
+                # task contract for this dedicated diagnosis across all stages.
+                limits = [self.task_attempt_limits] if self.task_attempt_limits else []
+                budgets = ([self.cumulative_budget_limit]
+                           if self.cumulative_budget_limit is not None else [])
+                for saved in self.db.scalars(select(AIOperation.execution_versions).where(
+                    AIOperation.diagnosis_result_id == self.diagnosis.id
+                )):
+                    if saved.get("cumulative_budget_limit") is not None:
+                        budgets.append(saved["cumulative_budget_limit"])
+                    if saved.get("task_attempt_limits") is not None:
+                        limits.append(TaskAttemptLimits(**saved["task_attempt_limits"]))
+                effective_limits = (TaskAttemptLimits(
+                    total=min(v.total for v in limits),
+                    selection=min(v.selection for v in limits),
+                ) if limits else None)
+                if effective_limits is not None:
+                    versions["task_attempt_limits"] = asdict(effective_limits)
+                effective_budget = min(budgets) if budgets else None
+                if effective_budget is not None:
+                    versions["cumulative_budget_limit"] = effective_budget
                 fingerprint = hashlib.sha256(
                     json.dumps(
                         [system_prompt, user_prompt, versions],
@@ -311,6 +410,32 @@ class GovernedAIInvocation:
                     or time.monotonic() >= self.deadline
                 ):
                     raise AIQuotaDenied("AI_DEADLINE_EXCEEDED")
+                if effective_limits is not None:
+                    attempts = self.db.scalar(select(func.count(AIUsageReservation.id)).where(
+                        AIUsageReservation.diagnosis_result_id == self.diagnosis.id
+                    ))
+                    selections = self.db.scalar(select(func.count(AIUsageReservation.id)).where(
+                        AIUsageReservation.diagnosis_result_id == self.diagnosis.id,
+                        AIUsageReservation.call_stage == "query_select",
+                    ))
+                    if attempts >= effective_limits.total:
+                        raise AIQuotaDenied("AI_TASK_ATTEMPTS_EXHAUSTED")
+                    if (self.call_stage == "query_select"
+                            and selections >= effective_limits.selection):
+                        raise AIQuotaDenied("AI_SELECTION_ATTEMPTS_EXHAUSTED")
+                if effective_budget is not None:
+                    # Under the same quota lock as reservation creation, count failed,
+                    # in-flight and older-day calls. Do not introduce another ledger.
+                    unknown_costs = self.db.scalar(select(func.count(AIUsageReservation.id)).where(
+                        AIUsageReservation.accounted_cost.is_(None)
+                    ))
+                    spent = self.db.scalar(select(func.coalesce(
+                        func.sum(AIUsageReservation.accounted_cost), 0.0
+                    )))
+                    if projected is None or unknown_costs:
+                        raise AIQuotaDenied("AI_CUMULATIVE_COST_UNRESOLVED")
+                    if float(spent) + projected > effective_budget:
+                        raise AIQuotaDenied("AI_CUMULATIVE_BUDGET_LIMIT")
                 if self.episode is None:
                     self.episode = episode_for_diagnosis(self.db, self.diagnosis)
                 if self.episode is not None:
@@ -377,7 +502,12 @@ class GovernedAIInvocation:
                 raise
             except Exception as exc:
                 self.db.rollback()
-                raise AIQuotaDenied("AI_QUOTA_STORAGE_UNAVAILABLE") from exc
+                from app.services.auth import AuthorizationDenied
+                from app.services.data_scope import ScopeViolation
+
+                if isinstance(exc, (AuthorizationDenied, ScopeViolation)):
+                    raise
+                raise self._storage_error(exc) from exc
 
     def _settle(self):
         try:
@@ -395,14 +525,26 @@ class GovernedAIInvocation:
         system_prompt: str,
         user_prompt: str,
     ) -> AICompletion:
-        delivery_scope = current_delivery_scope(self.db, self.diagnosis)
-        self._check_knowledge()
+        # A prior succeeded operation can be loaded during a new, conflicting request.
+        # Only a response settled by this invocation may create a post-response audit.
+        self.response_settled_this_call = False
         try:
+            self._bound_database_wait()
+            delivery_scope = current_delivery_scope(self.db, self.diagnosis)
+            self._delivery_scope = delivery_scope
+            self._check_knowledge()
             self._wait_retry()
+        except AIQuotaDenied:
+            self.db.rollback()
+            raise
         except SQLAlchemyError as exc:
             self.db.rollback()
-            raise AIQuotaDenied("AI_QUOTA_STORAGE_UNAVAILABLE") from exc
-        reservation = self._reserve(client, system_prompt, user_prompt)
+            raise self._storage_error(exc) from exc
+        try:
+            reservation = self._reserve(client, system_prompt, user_prompt)
+        except AIQuotaDenied:
+            self.db.rollback()
+            raise
         if reservation is None:
             return AICompletion(**self.operation.completion)
         try:
@@ -448,7 +590,18 @@ class GovernedAIInvocation:
         }
         self.operation.retry_allowed = False
         self._settle()
-        self._check_knowledge()
-        if current_delivery_scope(self.db, self.diagnosis) != delivery_scope:
-            raise AIQuotaDenied("AI_RESULT_STALE")
+        self.response_settled_this_call = True
+        try:
+            self._bound_database_wait()
+            if self.recheck_access is not None:
+                self.recheck_access()
+            self._check_knowledge()
+            if current_delivery_scope(self.db, self.diagnosis) != delivery_scope:
+                raise AIQuotaDenied("AI_RESULT_STALE")
+        except AIQuotaDenied:
+            self.db.rollback()
+            raise
+        except SQLAlchemyError as exc:
+            self.db.rollback()
+            raise self._storage_error(exc) from exc
         return completion

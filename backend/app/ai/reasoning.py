@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from sqlalchemy import select
@@ -404,6 +404,7 @@ def reason_about_causes(
     ai_client: AIClient | None = None,
     ai_clients: list[tuple[str, AIClient]] | None = None,
     sensitive_sources: Iterable[Any] = (),
+    recheck_access: Callable[[], None] | None = None,
 ) -> tuple[AIReasoningResult, str]:
     """Rank only fault-tree candidates; return a deterministic fallback on any failure."""
 
@@ -428,6 +429,7 @@ def reason_about_causes(
         db, diagnosis, settings, call_stage=call_stage, knowledge_case_ids=case_ids,
         source_snapshot=memory_sources,
         operation_key=f"workflow:{workflow_run_id}:{call_stage}",
+        recheck_access=recheck_access,
     )
 
     existing = db.scalar(
@@ -491,6 +493,7 @@ def reason_about_causes(
     used_route = None
     used_client = None
     error: Exception | None = None
+    access_error: Exception | None = None
     attempts = 0
     manifest = ContextManifestV1(stage="reasoning", required_complete=False,
                                  reason_codes=["context_incomplete"])
@@ -549,18 +552,41 @@ def reason_about_causes(
                 used_client = client
                 break
             except Exception as exc:  # Provider and schema failures share one safe fallback.
+                from app.services.auth import AuthorizationDenied
+                from app.services.data_scope import ScopeViolation
+
                 error = exc
+                settled_operation = governor.operation
+                if isinstance(exc, (AuthorizationDenied, ScopeViolation)) or (
+                    isinstance(exc, AIQuotaDenied) and governor.response_settled_this_call
+                    and settled_operation is not None
+                    and settled_operation.status == "succeeded"
+                    and settled_operation.completion
+                ):
+                    access_error = exc
+                    break
                 if not governor.retry(exc):
                     break
-        if result is not None or (error is not None and not governor.retry(error)):
+        if access_error is not None or result is not None or (
+            error is not None and not governor.retry(error)
+        ):
             break
+    settled = None
+    if access_error is not None:
+        operation = governor.operation
+        if operation is None or operation.status != "succeeded" or not operation.completion:
+            db.rollback()
+            raise access_error
+        settled = dict(operation.completion)
+        settled_cost = governor.estimated_cost
+        db.rollback()
     attempts = governor.attempts
     if isinstance(error, AIQuotaDenied):
         manifest.reason_codes.append("source_changed" if "KNOWLEDGE" in error.code
                                      else "scope_unavailable" if "SCOPE" in error.code
                                      or error.code == "AI_RESULT_STALE" else "governance_denied")
     mode = "ai" if result is not None else "deterministic_fallback"
-    if result is None:
+    if result is None and access_error is None:
         # A rejected response must not make fallback reintroduce names cleaned before sending.
         result = _fallback_reasoning(
             state_with_sent_names(sent_candidate_names),
@@ -577,7 +603,7 @@ def reason_about_causes(
         transport=settings.ai_transport,
         prompt_version=REASONING_PROMPT_VERSION,
         prompt_hash=prompt_hash,
-        status="succeeded" if mode == "ai" else "failed",
+        status="succeeded" if mode == "ai" or settled is not None else "failed",
         quota_managed=True,
         attempt_count=attempts,
         duration_ms=duration_ms,
@@ -596,25 +622,32 @@ def reason_about_causes(
                 sensitive_sources=(state, diagnosis.context_snapshot or {}, *sensitive_sources),
             ) if completion else None,
         },
-        output_json=result.model_dump(mode="json"),
+        output_json=result.model_dump(mode="json") if result is not None else None,
         knowledge_references=[],
-        input_tokens=completion.input_tokens if completion else None,
-        output_tokens=completion.output_tokens if completion else None,
+        input_tokens=completion.input_tokens if completion else settled.get("input_tokens")
+        if settled else None,
+        output_tokens=completion.output_tokens if completion else settled.get("output_tokens")
+        if settled else None,
         trigger_reason="EVIDENCE_CAUSE_RANKING",
         cache_status="miss",
         route=used_route,
-        route_path=used_route or "deterministic_fallback",
+        route_path="provider_response_access_revoked" if settled else
+        used_route or "deterministic_fallback",
         latency_ms=duration_ms,
-        estimated_cost=governor.estimated_cost,
-        validation_status="passed" if mode == "ai" else "fallback",
+        estimated_cost=settled_cost if settled else governor.estimated_cost,
+        validation_status="not_run" if settled else
+        "passed" if mode == "ai" else "fallback",
         fallback_reason=(
+            "ACCESS_REVOKED_AFTER_PROVIDER" if settled else
             error.code
             if isinstance(error, (AIQuotaDenied, ProviderInputError))
             else type(error).__name__
             if error
             else None
         ),
-        error_code="AI_REASONING_FAILED" if error else None,
+        error_code=(error.code if isinstance(error, AIQuotaDenied)
+                    else "AI_DELIVERY_ACCESS_REVOKED") if settled else
+        "AI_REASONING_FAILED" if error else None,
         error_message=type(error).__name__ if error else None,
         is_test_data=diagnosis.is_test_data,
     )
@@ -641,4 +674,6 @@ def reason_about_causes(
         if replay and replay.output_json:
             return replay_record(replay)
         raise
+    if access_error is not None:
+        raise access_error
     return result, mode

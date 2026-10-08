@@ -1,5 +1,6 @@
 import pytest
 from test_knowledge_case_drafting import FakePolishClient
+from test_knowledge_case_drafting import persisted_draft as _persisted_draft
 
 from app.ai.governance import AIQuotaDenied
 from app.core.config import Settings
@@ -7,7 +8,7 @@ from app.knowledge.case_drafting import CaseDraftError, generate_ai_assisted_pol
 from app.models import DiagnosisEpisode, DiagnosisResult
 from app.models.ai_usage_reservation import AIUsageReservation
 
-pytest_plugins = ["test_knowledge_case_drafting"]
+persisted_draft = _persisted_draft
 
 
 def test_one_model_attempt_is_charged_once_and_attributed_to_both_problems(api_context):

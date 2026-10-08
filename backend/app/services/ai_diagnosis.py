@@ -889,6 +889,9 @@ def _explain_diagnosis(
     attempts = 0
     route = settings.ai_provider or "provider"
     attempted_routes: list[str] = []
+    from app.services.auth import AuthorizationDenied
+    from app.services.data_scope import ScopeViolation
+
     governor = GovernedAIInvocation(
         db,
         diagnosis,
@@ -897,6 +900,7 @@ def _explain_diagnosis(
         episode=episode,
         knowledge_case_ids=tuple(k.case_id for k in knowledge if k.case_id),
         source_snapshot=memory_sources,
+        recheck_access=lambda: _authorize_projection(db, diagnosis, student_actor),
         execution_context={"context_policy": CONTEXT_POLICY_VERSION,
                            "context_contract": CONTEXT_CONTRACT_VERSION},
         operation_key=(
@@ -917,9 +921,55 @@ def _explain_diagnosis(
                 )
                 explanation = _validate_explanation(completion.content, payload)
                 break
-            except AIQuotaDenied as exc:
-                last_error = exc
-                break
+            except (AuthorizationDenied, ScopeViolation, AIQuotaDenied) as exc:
+                # The Provider response and usage are durable before the final
+                # authority check. Preserve an internal call audit, but never
+                # validate, cache or deliver its content after revocation.
+                operation = governor.operation
+                settled = (
+                    dict(operation.completion)
+                    if governor.response_settled_this_call
+                    and operation is not None and operation.status == "succeeded"
+                    and operation.completion else None
+                )
+                if settled is None and isinstance(exc, AIQuotaDenied):
+                    last_error = exc
+                    break
+                if settled is not None:
+                    attempted = governor.attempts
+                    estimated_cost = governor.estimated_cost
+                    db.rollback()
+                    _save_record(
+                        db,
+                        diagnosis=diagnosis,
+                        settings=settings,
+                        payload=payload,
+                        prompt_hash=prompt_hash,
+                        status="succeeded",
+                        attempt_count=attempted,
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                        explanation=None,
+                        knowledge=knowledge,
+                        memory_sources=memory_sources,
+                        input_tokens=settled.get("input_tokens"),
+                        output_tokens=settled.get("output_tokens"),
+                        error_code=(exc.code if isinstance(exc, AIQuotaDenied)
+                                    else "AI_DELIVERY_ACCESS_REVOKED"),
+                        episode=episode,
+                        trigger_reason=policy.reason,
+                        cache_status="miss",
+                        route=route,
+                        route_path=f"cache_miss → {route}_response_access_revoked",
+                        validation_status="not_run",
+                        fallback_reason="DELIVERY_DENIED_AFTER_PROVIDER",
+                        estimated_cost=estimated_cost,
+                        provider=ai.provider,
+                        model_name=ai.model,
+                        transport=client_transport,
+                        workflow_run_id=workflow_run_id,
+                        call_stage=call_stage,
+                    )
+                raise
             except (AIProviderError, ValidationError, ValueError, json.JSONDecodeError) as exc:
                 last_error = exc
                 # Retry only known failures; uncertain physical requests are not repeated.

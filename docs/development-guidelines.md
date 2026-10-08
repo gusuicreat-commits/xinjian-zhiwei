@@ -2,6 +2,8 @@
 
 本文件是持续开发约束的唯一维护位置。2026-09-27 按任务整理，合并重复要求，不改变用户已确认的业务边界。实现、版本和验收结果分别查[实现状态](implementation-status.md)、[真实性看板](project-truth-status.md)和当次报告；文档中的要求不等于能力已实现。
 
+开始功能或方案设计前，先读[产品背景与需求（PRD）](product-background-prd.md)，以“利用设备内部运行证据辅助学生诊断”为产品目标，区分目标能力与实际采集、实现及验收状态；具体开发约束继续以本文为准。
+
 2026-10-02依据三批历史缺陷复盘补充[缺陷预防要求](#defect-prevention)。原因与官方资料单独保存于[AI辅助开发缺陷复盘](development-retrospective-20261002.md)；本轮检查安排见[全项目软件扫描方案](software-scan-plan-20261002.md)，方案存在不表示扫描已执行。
 
 | 正在做什么 | 必读位置 |
@@ -317,7 +319,8 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 | KNOWLEDGE：来源范围 | `services/knowledge_access.py` | 列表/统计/工作区/导入/编辑/批量合并/审核/授撤权；共享token拒绝、跨来源无副作用、旧资料不猜归属、审核身份不可伪造；`test_knowledge_scope_repair.py`、`test_security_repair_postgres.py`。 |
 | AI：表达合同与等待 | `ai/reasoning.py`、`schemas.py`、`knowledge/case_drafting.py`、`frontend/src/api/client.ts` | 新调用/旧重放、状态与排序一致、实际条件限制、四表达字段/模板旁路、旧稿提交/审批、9秒响应/75秒恢复；`test_reasoning_provider_contract.py`、`test_knowledge_case_drafting.py`、`api/longOperations.test.ts`、student浏览器延迟场景。 |
 | AI：两阶段原因许可与预算原因 | `ai/output_contract.py::allowed_explanation_causes/validate_explanation_causes`、`ai/context_status.py` | Prompt动态Schema/实际解释/缓存/当前建议/序列化/资料包预检；unknown与显式空、同名异ID、支持放大、旧调用、单案例/总Prompt/必需材料预算、旧原因投影；`test_explanation_handoff.py`，固定图与两实验合成真实调用分别验收。 |
-| AI：逻辑操作与当前事实 | `ai/governance.py`、`clients.py`、`output_contract.py` | 推理/解释/润色、发送前后中断、成功重放、未知费用、键名泄密、旧缓存当前投影；`test_ai_operation*`、`test_ai_transport_lifecycle.py`、`test_ai_semantic_delivery.py`。 |
+| AI：逻辑操作与当前事实 | `ai/governance.py`、`clients.py`、`output_contract.py` | 推理/解释/润色、发送前后中断、成功重放、未知费用、键名泄密、旧缓存当前投影；`test_ai_operation*`、`test_ai_transport_lifecycle.py`、`test_ai_semantic_delivery.py`。退避/额度锁后、预留或成功重放前重验运行时身份和来源，进程锁与PG锁等待受调用剩余时限约束；`test_ai_dispatch_revalidation.py`、`test_ai_dispatch_postgres.py`覆盖真实等锁撤权、三入口、超时回收与过期成功重放。 |
+| QUERY：隔离取证与答复 | `evaluation/query_contract.py`、`query_graph.py`、`query_storage.py`；模型仍经 `ai/governance.py` | 仅评测入口、工具前后/提交、答复、checkpoint恢复和最终读取；mismatch/unclear、整批拒绝、别名、重复/并发答复、终止进程、来源撤回及累计额度；`test_query_contract.py`、`test_query_graph.py`、`test_query_postgres.py`、`test_query_governance.py`、`test_query_real.py`。真实评测入口 `query_real.py`/`run_query_evaluation` 绑定源码/材料/配置/预算；共用预留锁检查跨日累计金额，完成组不重发，未完成组拒绝自动重新付费；规则与AI实际服务输入等价另验。不代表生产查询接口已接入。 |
 | OPS：配置和异常边界 | `core/config.py`、`api/http_boundary.py` | 环境拼写错误、staging内存checkpoint拒绝、Compose默认与显式覆盖、500安全头和追踪ID；`test_runtime_boundary_repair.py`。 |
 | AUTH：共享登录准入 | `services/login_limits.py`、`services/auth.py`、`api/v1/routes/auth.py` | 在途+失败原子限额、成功不清其他在途、过期不签令牌、独立进程共享、容量与迁移回撤；`test_audit_remediation.py`、`test_migration_r2.py` |
 | SESSION：独占、释放、回执 | `services/experiment_sessions.py` | 开始/学生结束/教师列表详情释放/原命令确认；双占用、撤权、原班归属、旧会话不关新会话；`test_business_sessions*.py`、`test_session_release.py`、`test_simulation_fixes_postgres.py` |

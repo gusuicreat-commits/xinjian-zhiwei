@@ -125,7 +125,9 @@ class ScriptedProvider:
 
 
 class WorkflowEnvironment:
-    def __init__(self, package, mode, postgres_dsn=None):
+    def __init__(self, package, mode, postgres_dsn=None, prefix=""):
+        self.prefix = prefix
+        self.device_key = prefix + DEVICE_KEY
         self.package = package
         self.provider = ScriptedProvider(mode)
         self.postgres_dsn = postgres_dsn
@@ -175,24 +177,24 @@ class WorkflowEnvironment:
         with self.sessions() as db:
             roles = ensure_rbac_catalog(db)
             student = User(
-                username="synthetic-student",
+                username=self.prefix + "synthetic-student",
                 display_name="合成学生",
                 password_hash="unused",
                 is_test_data=True,
             )
             teacher = User(
-                username="synthetic-teacher",
+                username=self.prefix + "synthetic-teacher",
                 display_name="合成教师角色，不代表教师审核",
                 password_hash=hash_password(LOGIN_PASSWORD, iterations=1000),
                 is_test_data=True,
             )
             device = Device(
-                device_key=DEVICE_KEY,
+                device_key=self.device_key,
                 display_name="合成评测设备",
                 device_type="test-fixture",
                 token_hash=hash_device_token(DEVICE_TOKEN, iterations=1000),
             )
-            course = Course(code="workflow-eval", title="合成课程", is_test_data=True)
+            course = Course(code=self.prefix + "workflow-eval", title="合成课程", is_test_data=True)
             db.add_all([student, teacher, device, course])
             db.flush()
             assign_role(db, teacher, roles["teacher"])
@@ -203,8 +205,12 @@ class WorkflowEnvironment:
             db.flush()
             from app.services.auth import ActorContext
 
-            publisher = User(username="synthetic-package-admin", display_name="合成包管理员",
-                             password_hash=teacher.password_hash, is_test_data=True)
+            publisher = User(
+                username=self.prefix + "synthetic-package-admin",
+                display_name="合成包管理员",
+                password_hash=teacher.password_hash,
+                is_test_data=True,
+            )
             db.add(publisher)
             db.flush()
             assign_role(db, publisher, roles["admin"])
@@ -213,9 +219,24 @@ class WorkflowEnvironment:
             self.hashes = {}
             for package in ("dht11_temperature_humidity", "gpio_led_output"):
                 bundle, _ = load_experiment_package(PACKAGE_ROOT / package)
-                _, version = import_experiment_package(db, publisher, package_documents(bundle))
-                for status in ("pending", "approved", "published"):
-                    transition_experiment_package(db, publisher, version, status)
+                from sqlalchemy import select
+
+                from app.experiment_packages.loader import load_experiment_package_payload
+                from app.models import ExperimentVersion
+
+                bundle, _ = load_experiment_package_payload(package_documents(bundle))
+
+                version = db.scalar(
+                    select(ExperimentVersion).where(
+                        ExperimentVersion.package_hash == bundle.manifest.package_hash,
+                        ExperimentVersion.status == "published",
+                        ExperimentVersion.is_test_data.is_(True),
+                    )
+                )
+                if version is None:
+                    _, version = import_experiment_package(db, publisher, package_documents(bundle))
+                    for status in ("pending", "approved", "published"):
+                        transition_experiment_package(db, publisher, version, status)
                 self.versions[package] = version.id
                 self.hashes[package] = version.package_hash
             assignment = ExperimentAssignment(
@@ -254,7 +275,7 @@ class WorkflowEnvironment:
             self.assignment_id = assignment.id
             self.class_id = classroom.id
         self.headers = {
-            "X-Device-ID": DEVICE_KEY,
+            "X-Device-ID": self.device_key,
             "X-Device-Token": DEVICE_TOKEN,
             "X-Experiment-Session-ID": self.session_id,
         }
@@ -262,7 +283,7 @@ class WorkflowEnvironment:
     def other_student_headers(self):
         with self.sessions() as db:
             student = User(
-                username="synthetic-other",
+                username=self.prefix + "synthetic-other",
                 display_name="另一合成学生",
                 password_hash="unused",
                 is_test_data=True,
@@ -294,11 +315,16 @@ class WorkflowEnvironment:
 
 
 @contextmanager
-def workflow_environment(package, mode="valid", postgres_dsn=None):
-    env = WorkflowEnvironment(package, mode, postgres_dsn)
+def workflow_environment(package, mode="valid", postgres_dsn=None, *, engine=None, prefix=""):
+    """An explicit caller-owned synthetic engine may retain the common usage ledger."""
+    env = WorkflowEnvironment(package, mode, postgres_dsn, prefix)
     admin = None
     try:
-        if postgres_dsn:
+        if engine is not None:
+            if postgres_dsn is not None:
+                raise ValueError("choose one isolated engine")
+            env.engine = engine
+        elif postgres_dsn:
             import psycopg
             from psycopg import sql
 
@@ -355,7 +381,7 @@ def workflow_environment(package, mode="valid", postgres_dsn=None):
     finally:
         if hasattr(env, "saver_context"):
             env.saver_context.__exit__(None, None, None)
-        if hasattr(env, "engine"):
+        if engine is None and hasattr(env, "engine"):
             env.engine.dispose()
         if admin is not None:
             try:
