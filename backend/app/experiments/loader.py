@@ -7,12 +7,13 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from app.core.errors import InvalidRequest
 from app.experiments.schemas import ExperimentDefinition
 
 DEFAULT_EXPERIMENT_DIRECTORY = Path(__file__).parent / "definitions"
 
 
-class ExperimentDefinitionLoadError(ValueError):
+class ExperimentDefinitionLoadError(InvalidRequest):
     """A definition is missing, ambiguous, malformed, or fails schema validation."""
 
 

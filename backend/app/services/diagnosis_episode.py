@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, object_session
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings
+from app.core.errors import ConflictError
 from app.models.device import Device
 from app.models.diagnosis_episode import DiagnosisEpisode, DiagnosisIssue
 from app.models.diagnosis_feedback import DiagnosisFeedback
@@ -23,7 +24,7 @@ _LIFECYCLE_LOCKS = [RLock() for _ in range(64)]
 _HELD_SCOPES = ContextVar("episode_lifecycle_scopes", default=frozenset())
 
 
-class EpisodeFeedbackConflict(ValueError):
+class EpisodeFeedbackConflict(ConflictError):
     pass
 
 

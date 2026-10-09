@@ -7,6 +7,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import AccessDenied
 from app.core.security import hash_password, hash_session_token, verify_password
 from app.models.base import utc_now
 from app.models.classroom import (
@@ -118,7 +119,7 @@ class ActorContext:
     mode: str = "session"
 
 
-class AuthorizationDenied(PermissionError):
+class AuthorizationDenied(AccessDenied):
     def __init__(self, status_code=403):
         self.status_code = status_code
         super().__init__("current authorization is no longer valid")

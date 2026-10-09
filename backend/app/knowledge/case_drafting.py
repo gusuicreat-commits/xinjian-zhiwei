@@ -14,6 +14,7 @@ from app.ai.clients import AIClient, build_ai_client
 from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_payload
 from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
 from app.core.config import Settings
+from app.core.errors import ConflictError
 from app.models.base import utc_now
 from app.models.classroom import User
 from app.models.diagnosis_feedback import DiagnosisFeedback
@@ -45,7 +46,7 @@ DEFINITE_CAUSAL_TERMS = ("根因是", "确定为", "导致了", "必然导致")
 CASE_POLISH_PROMPT_VERSION = "knowledge-case-polish-v4"
 
 
-class CaseDraftError(ValueError):
+class CaseDraftError(ConflictError):
     pass
 
 

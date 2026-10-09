@@ -12,13 +12,12 @@ from fastapi.openapi.docs import (
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.ai.diagnosis_graph import build_diagnosis_graph
-from app.api.errors import authorization_denied_handler
+from app.api.errors import register_error_handlers
 from app.api.http_boundary import ResponseBoundary
 from app.api.v1.router import api_router
 from app.api.v1.routes.health import router as health_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
-from app.services.auth import AuthorizationDenied
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -70,7 +69,7 @@ app = BoundedFastAPI(
 )
 
 
-app.add_exception_handler(AuthorizationDenied, authorization_denied_handler)
+register_error_handlers(app)
 
 
 

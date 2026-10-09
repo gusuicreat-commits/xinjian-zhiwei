@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.errors import DomainError
 from app.models.base import utc_now
 from app.models.classroom import ExperimentSession
 from app.models.device import Device
@@ -34,7 +35,7 @@ from app.services.device_protocol import _parse_device_time
 
 
 @dataclass(frozen=True)
-class ProtocolIngestError(Exception):
+class ProtocolIngestError(DomainError):
     status_code: int
     error_code: str
     message: str

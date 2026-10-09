@@ -12,6 +12,7 @@ from uuid import UUID
 
 from sqlalchemy import select, text
 
+from app.core.errors import InvalidRequest
 from app.core.security import hash_device_token, hash_password
 from app.models import (
     AuditEvent,
@@ -35,7 +36,7 @@ from app.services.rbac import assign_role
 ACTION = "internal_experiment.prepare"
 
 
-class PreparationError(ValueError):
+class PreparationError(InvalidRequest):
     pass
 
 

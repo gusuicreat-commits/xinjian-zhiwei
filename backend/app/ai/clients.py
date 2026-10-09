@@ -14,9 +14,10 @@ import anyio
 import httpx
 
 from app.core.config import Settings
+from app.core.errors import DomainError
 
 
-class AIProviderError(RuntimeError):
+class AIProviderError(DomainError, RuntimeError):
     def __init__(
         self,
         message: str,

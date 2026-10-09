@@ -140,6 +140,7 @@
 <a id="recheck"></a>
 ### 3.4 重新检查与原请求恢复（BR-RECHECK / RECOVERY）
 
+- 领域失败按 [`core/errors.py`](../backend/app/core/errors.py) 分类，由 [`api/errors.py`](../backend/app/api/errors.py) 在 API 边界映射（[兼容契约](api-design.md#domain-errors)）；临时故障不能证明来源 stale，新增吞异常的宽泛捕获由 [AST 棘轮门禁](../backend/tests/test_error_handling_gate.py) 阻止，[既有白名单](../backend/tests/broad_except_allowlist.json) 只降不升。
 - “继续指导/仍未解决”沿旧证据；“检查当前数据/用最新数据重新检查”分析已上传的新输入，不控制硬件采样。读取、刷新、切页、回执查询不新增诊断/反馈/模型调用或计数。
 - 命令绑定操作者、会话、目标、原状态/版本、请求ID及载荷。同ID同载荷返回原回执或恢复原命令，异载荷409；未决命令须先确认，不能另起请求。旧客户端未传ID时由服务端生成，但不能据此保证客户端丢响应重试幂等。
 - 先验会话、固定包和参数，再用短REPEATABLE READ事务冻结截止时刻内输入；图只用该快照，迟到数据留给下一次。原始私有上下文不进入前端回执或checkpoint。会话互斥跨业务提交，等待后重读；等待Provider不持业务行锁或快照事务。
@@ -306,6 +307,7 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 | 规则 | 唯一执行位置 | 入口与必须保留的反例 |
 | --- | --- | --- |
 | TEST/XJ-009：流水线测试数据来源 | [真实链路构造器](../backend/tests/pipeline.py)；[AST 棘轮门禁](../backend/tests/test_fixture_provenance.py) | HTTP 摄入→包导入/发布→上下文→诊断保存；扫描 `tests/**/*.py`（仅豁免根构造器），新增直接构造失败、减少须同步下调[白名单](../backend/tests/handbuilt_rows_allowlist.json)，保留注明理由的异常形态反例。 |
+| ERROR/XJ-010：领域错误与宽泛捕获 | `core/errors.py` 分类；`api/errors.py::register_error_handlers`、`main.py` 注册；`test_error_handling_gate.py` 扫描全部 `app/**/*.py` | 401/403 授权、409 冲突、422 非法请求、确定失效与503临时不可用分开；不改既有响应/回滚/发送结果未知语义。分类和兼容反例见 `test_domain_errors.py`、`test_error_http_compatibility.py`；裸捕获、Exception/BaseException、条件重抛后吞异常均受门禁约束，次数降低必须同步下调逐处注明理由的白名单，禁止上调。混合旧包装和待办见[API边界说明](api-design.md#domain-errors)。 |
 | AUTH/R1：短事务最终授权 | `services/auth.py`的`ActorContext/authorize_actor`、`data_scope`、`student_authorization`、`knowledge_authorization` | HTTP/服务/图终结/CLI使用运行时身份引用，不把授权结果或令牌写Checkpoint；权限支持行受事务保护，等待后重验，拒绝无成功副作用；`test_shared_authorization*`、`test_template_authorization.py`、`test_knowledge_final_authorization.py`。Review-Token仅沿现有契约用于`GET /diagnosis/interventions`和`GET /ops/status`旧运维查询，不获得个人教师权限。 |
 | AUTH/XJ-008：全部 HTTP 操作登记 | `api/access_policy.py::ACCESS_POLICIES`；`test_access_policy.py` 执行门禁 | 按方法＋有效路径模板双向核对，包括根路径别名、OpenAPI JSON/HEAD 和隐藏文档路由；展开 FastAPI 惰性路由，与新生成 OpenAPI 可见操作一致，递归检查鉴权依赖及依赖权限/角色。新增、删除、鉴权变化必须同步登记；无凭据请求不能成功，公开操作须说明理由。设备缺凭据422须逐项登记状态、detail.code和来源并精确断言（见[设备协议](device-protocol.md#稳定错误)），其余非公开操作须401/403。处理函数内鉴权须显式登记可定位函数；服务内权限及写事务复查按源码如实声明，False 保留待办，不以登记或冒烟代替事务撤权测试。 |
 | ADVICE/R2、IDENTITY/R3：当前建议与实验身份 | `services/current_advice.py::assess_current_advice`、`knowledge/applicability.py::context_from_diagnosis` | 工作流/学生状态说明/解释记录共用来源、结构、策略校验；绑定冻结调用，保留教师编辑；未知/冲突实验不匹配，sensor_type不扩大范围；`test_shared_advice_regression.py`。 |

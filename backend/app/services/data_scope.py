@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import AccessDenied, ConflictError
 from app.models.classroom import (
     Classroom,
     Enrollment,
@@ -17,11 +18,11 @@ from app.models.diagnosis_result import DiagnosisResult
 from app.models.diagnosis_workflow import DiagnosisWorkflowRun
 
 
-class ScopeConflict(ValueError):
+class ScopeConflict(ConflictError):
     pass
 
 
-class ScopeViolation(PermissionError):
+class ScopeViolation(AccessDenied):
     pass
 
 

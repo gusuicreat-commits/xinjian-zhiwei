@@ -4,6 +4,7 @@ from datetime import timezone
 
 from sqlalchemy import exists, select
 
+from app.core.errors import ConflictError
 from app.models import (
     AICallRecord,
     AIExplanationCache,
@@ -22,7 +23,7 @@ from app.services.data_scope import authorize_workflow_review
 from app.services.memory import digest
 
 
-class MemoryConflict(ValueError):
+class MemoryConflict(ConflictError):
     pass
 
 

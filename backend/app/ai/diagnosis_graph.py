@@ -18,6 +18,7 @@ from app.ai.context_sanitizer import _sensitive_values, sanitize_text
 from app.ai.reasoning import build_evidence_registry, reason_about_causes
 from app.ai.schemas import AIExplanationResponse, AIKnowledgeReference
 from app.core.config import Settings
+from app.core.errors import DomainError
 from app.diagnosis.schemas import DiagnosisContext, DiagnosisOutcome, ExperimentTemplateContext
 from app.diagnosis.workflow_schemas import DiagnosisState
 from app.knowledge.validation import (
@@ -60,7 +61,7 @@ class DiagnosisGraphContext:
     student_actor: Any | None = None
 
 
-class DiagnosisNodeExecutionError(RuntimeError):
+class DiagnosisNodeExecutionError(DomainError, RuntimeError):
     """A redacted node failure carrying only bounded observability metadata."""
 
     def __init__(self, node: str, duration_ms: float, error_type: str) -> None:

@@ -12,6 +12,59 @@
 - 测试数据显式标记；常规接口为 `is_test_data: true`，批量协议为 `isTestData: true`。
 - 原始请求：入库到对应记录的 `raw_payload`，用于追溯；认证头不会写入原始载荷。
 
+<a id="domain-errors"></a>
+## 领域错误分类与 HTTP 边界（XJ-010）
+
+领域基类为 `backend/app/core/errors.py::DomainError`，五类错误的稳定字段为
+`error_code`；字段用于内部分类，不向旧响应增加字段。生产应用在 `app/main.py` 调用
+`app/api/errors.py::register_error_handlers` 统一注册，保留既有路由适配器。
+
+| 类别 | 稳定错误码 | 默认 HTTP 映射与语义 |
+| --- | --- | --- |
+| `AccessDenied` | `ACCESS_DENIED` | 403；无有效身份为401。`AuthorizationDenied` 沿用实例 `status_code` 和 `detail={code: CURRENT_AUTHORIZATION_DENIED, message: ...}`，`ScopeViolation` 沿用字符串 detail。 |
+| `ConflictError` | `CONFLICT` | 409、字符串 detail；状态、版本、请求身份/载荷冲突，先重读或协调原请求。 |
+| `InvalidRequest` | `INVALID_REQUEST` | 422、字符串 detail；请求或输入材料本身不合法。 |
+| `StaleError` | `STALE` | 未被消费时409、字符串 detail；仅用于已确定来源/版本失效。受控查询仍消费 `_Stale` 并返回既有 `200 status=stale`，不改变状态投影。 |
+| `TemporarilyUnavailable` | `TEMPORARILY_UNAVAILABLE` | 503、字符串错误码 detail，不暴露任意基础设施异常正文；业务失败写入应在服务边界回滚。`QueryUnavailable.error_code` 保留 `query_temporarily_unavailable`，原请求可恢复后重试。 |
+
+现有异常的继承归类：
+
+- `AccessDenied`：`AuthorizationDenied`、`ScopeViolation`（`WorkflowScopeViolation` 为后者别名）。
+- `ConflictError`：`ScopeConflict`（`WorkflowConflict` 为别名）、`QueryConflict`、
+  `InterventionConflict`、`MemoryConflict`、`EpisodeFeedbackConflict`、`CaseDraftError`。
+- `InvalidRequest`：`PreparationError`、`ExperimentDefinitionLoadError`、
+  `ExperimentPackageLoadError`、`ProviderInputError`。
+- `StaleError`：`query_sources._Stale`。
+- `TemporarilyUnavailable`：`QueryUnavailable`。
+
+所有原 `ValueError`/`RuntimeError`/`PermissionError` 捕获关系保留。旧类的部分生产者本来
+混合不同含义（如 `CaseDraftError` 的校验/状态/AI失败和仅用于CLI的 `PreparationError`）；
+归类只沿用主要现有边界，不能把所有旧生产者解释为已完成精确细分。
+
+四个混合包装仅纳入 `DomainError`，不注册统一 HTTP 映射：`AIProviderError` 及其子类
+`AIQuotaDenied` 同时承载确定拒绝、故障和发送结果未知；`DiagnosisNodeExecutionError`
+携带任意节点失败的观测元数据；`ProtocolIngestError` 携带多状态协议错误信封。
+它们的单类别归类尚未完成，必须先按实际生产原因拆分，不能仅以继承关系假称临时可重试。
+Provider 已发送结果未知仍禁止自动重发/退款，协议既有401/409/413/422/429及错误体保持原样。
+
+兼容例外仍由原路由适配器执行：工作流的范围拒绝有专属 code/message，部分范围错误在
+查找/恢复接口返回404或403，教师审核范围冲突返回409 `DIAGNOSIS_SCOPE_INVALID`；
+工作流 `AuthorizationDenied` 使用字符串 detail 且先回滚，权限依赖的复核也使用字符串 detail；
+实验包加载错误在学生会话选择返回409，工作流启动/包校验返回422，某些恢复捕获返回503。
+普通 `ValueError` 在包/模板状态和版本操作返回409，在干预动作返回422，在查询操作返回
+422 `invalid_query_request` 且回滚。这些捕获不能被新的默认映射覆盖。
+所有旧手写映射本轮保留：除了状态/响应差异，还包括回滚、后续宽泛捕获及只注册授权
+处理器的隔离评测应用。不能只删除某个 `except`，让它掉入后面的 ValueError/Exception 捕获。
+
+[`test_error_handling_gate.py`](../backend/tests/test_error_handling_gate.py) 扫描全部 `app/**/*.py`
+中的 `except Exception`、`except BaseException` 和裸捕获（含导入别名和元组），只有可见路径
+全部重新抛出或转为五类异常才豁免；混合包装仍需登记。条件重抛、嵌套函数中的 raise、
+改抛普通 ValueError/HTTPException 都不能掩盖吞异常路径。循环、嵌套try/context manager
+采取保守判定，不声称证明任意动态Python控制流。
+[`broad_except_allowlist.json`](../backend/tests/broad_except_allowlist.json) 逐文件计数，逐处记录
+位置、类别和理由：①确定性降级，②应改为分类异常（后续工作），③其他观测/恢复/评测边界。
+超额失败，减少也须下调白名单；冻结上限禁止新增文件或提高次数。
+
 ## 登录与明确拒绝
 
 `DELETE /auth/session` 使用 Bearer 撤销当前登录，成功或重复撤销返回204，不影响其他登录会话；缺失/未知令牌401。学生和教师主动退出立即清空本地内容，再确认服务端注销；网络失败显示“本机已退出，服务端退出未确认”。权限失效导致的本地重置不等于主动注销。不存在/停用账号也进行一次密码派生校验，统一失败语义。

@@ -1,0 +1,163 @@
+{
+  "note": "XJ-010 audited baseline; files are relative to backend/app. Category 1=确定性降级, 2=应改为分类异常（后续工作）, 3=其他兼容/观测边界. Counts may only decrease; every site is documented.",
+  "files": {
+    "ai/diagnosis_graph.py": 1,
+    "ai/governance.py": 4,
+    "ai/reasoning.py": 1,
+    "api/http_boundary.py": 1,
+    "api/v1/routes/diagnosis_workflows.py": 2,
+    "api/v1/routes/health.py": 1,
+    "api/v1/routes/student.py": 1,
+    "evaluation/context_runner.py": 1,
+    "evaluation/workflow_runner.py": 1,
+    "knowledge/case_drafting.py": 1,
+    "services/diagnosis_workflow.py": 4,
+    "services/query_sources.py": 2
+  },
+  "reasons": {
+    "ai/diagnosis_graph.py": [
+      {
+        "line": 86,
+        "category": 2,
+        "reason": "observed_node.wrapped 将任意失败包装成 DiagnosisNodeExecutionError；需保留节点观测元数据并区分确定拒绝、请求错误和临时故障，不能统一冒充可重试。",
+        "function": "observed_node.decorate.wrapped"
+      }
+    ],
+    "ai/governance.py": [
+      {
+        "line": 96,
+        "category": 2,
+        "reason": "current_delivery_scope 将范围存储故障转成混合 AIQuotaDenied；后续拆分临时不可用与确定额度/范围拒绝。",
+        "function": "current_delivery_scope"
+      },
+      {
+        "line": 573,
+        "category": 2,
+        "reason": "_reserve 回滚后重抛撤权或 _storage_error 包装；后续分类额度预留存储失败，保留原逻辑操作身份及发送前持久化语义。",
+        "function": "GovernedAIInvocation._reserve"
+      },
+      {
+        "line": 585,
+        "category": 2,
+        "reason": "_settle 回滚后转成 AIQuotaDenied；费用预留已持久化，需专门结算故障分类，不能自动退款或重发 Provider。",
+        "function": "GovernedAIInvocation._settle"
+      },
+      {
+        "line": 630,
+        "category": 2,
+        "reason": "complete_json 将 Provider 失败保存为 failed_known/outcome_unknown 并重抛混合包装；需按发送结果分类，未知结果不得标成可自动重试。",
+        "function": "GovernedAIInvocation.complete_json"
+      }
+    ],
+    "ai/reasoning.py": [
+      {
+        "line": 554,
+        "category": 1,
+        "reason": "reason_about_causes 失败采用受治理重试或确定性降级；撤权及已结算成功后的拒绝交付另行传播，属 BR-AI 设计行为。",
+        "function": "reason_about_causes"
+      }
+    ],
+    "api/http_boundary.py": [
+      {
+        "line": 45,
+        "category": 3,
+        "reason": "ResponseBoundary 统一500脱敏，完整响应后阻止服务器再次泄漏原异常；流中断仍以脱敏异常失败，不转成业务成功。",
+        "function": "ResponseBoundary.__call__"
+      }
+    ],
+    "api/v1/routes/diagnosis_workflows.py": [
+      {
+        "line": 118,
+        "category": 2,
+        "reason": "start_diagnosis_workflow 兼容503 DIAGNOSIS_WORKFLOW_FAILED，后续由服务分类后集中适配原响应体，避免任意程序错误均被标成临时故障。",
+        "function": "start_diagnosis_workflow"
+      },
+      {
+        "line": 378,
+        "category": 2,
+        "reason": "review_diagnosis_workflow 兼容503 DIAGNOSIS_WORKFLOW_RESUME_FAILED，需服务分类并保留同一检查点恢复语义。",
+        "function": "review_diagnosis_workflow"
+      }
+    ],
+    "api/v1/routes/health.py": [
+      {
+        "line": 44,
+        "category": 2,
+        "reason": "readiness 将数据库探针错误适配成503 DATABASE_UNAVAILABLE，后续改为临时不可用并保留探针响应契约。",
+        "function": "readiness"
+      }
+    ],
+    "api/v1/routes/student.py": [
+      {
+        "line": 258,
+        "category": 2,
+        "reason": "create_student_feedback 回滚后兼容503 DIAGNOSIS_FEEDBACK_RETRY_REQUIRED，需区分已应用/未知结果，始终保留原request_id和载荷。",
+        "function": "create_student_feedback"
+      }
+    ],
+    "evaluation/context_runner.py": [
+      {
+        "line": 139,
+        "category": 3,
+        "reason": "评测逐案例记录执行错误而继续收集其他案例，属于隔离评测报告边界，不是产品业务状态。",
+        "function": "run_context_evaluation"
+      }
+    ],
+    "evaluation/workflow_runner.py": [
+      {
+        "line": 535,
+        "category": 3,
+        "reason": "评测逐案例脱敏记录error及异常类型，保持报告失败语义，不暴露DSN，不是业务降级。",
+        "function": "run_workflow_evaluation"
+      }
+    ],
+    "knowledge/case_drafting.py": [
+      {
+        "line": 488,
+        "category": 2,
+        "reason": "generate_ai_assisted_polish 在重试分支吞当前异常，耗尽时混合成 CaseDraftError；后续拆分输入/状态冲突、临时故障和发送结果未知，同时保留现有409契约。",
+        "function": "generate_ai_assisted_polish"
+      }
+    ],
+    "services/diagnosis_workflow.py": [
+      {
+        "line": 84,
+        "category": 3,
+        "reason": "_restore_checkpoint_observability 读取失败时只放弃补充观测，调用方仍处理原失败；不得用于判定业务或来源确定失效。",
+        "function": "_restore_checkpoint_observability"
+      },
+      {
+        "line": 496,
+        "category": 3,
+        "reason": "start_workflow 在业务终态已提交时协调检查点并返回原业务真值，其他分支记录失败后重抛，属于跨存储恢复兼容。",
+        "function": "start_workflow"
+      },
+      {
+        "line": 648,
+        "category": 3,
+        "reason": "review_workflow 回滚后重验权限，若业务终态已提交则协调检查点并返回原结果，否则重抛，不重做已提交审核。",
+        "function": "review_workflow"
+      },
+      {
+        "line": 788,
+        "category": 3,
+        "reason": "resume_workflow_with_feedback 回滚后只协调已有终态反馈，其他路径重抛；保留原请求的幂等恢复，不凭异常制造新决策。",
+        "function": "resume_workflow_with_feedback"
+      }
+    ],
+    "services/query_sources.py": [
+      {
+        "line": 601,
+        "category": 2,
+        "reason": "ArchivedSource.query 将非DBAPI来源读取失败投影成 SourceResult(error)，后续可转成临时不可用；绝不能改为stale，现调用方依赖error完成整单回滚。",
+        "function": "ArchivedSource.query"
+      },
+      {
+        "line": 697,
+        "category": 2,
+        "reason": "revalidate_delivery 将依赖复核失败转成error，后续由分类异常传播故障；不得改变当前拒绝优先和query_tasks的503回滚语义。",
+        "function": "revalidate_delivery"
+      }
+    ]
+  }
+}

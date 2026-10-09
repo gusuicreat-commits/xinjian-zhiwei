@@ -9,6 +9,7 @@ from typing import Any
 
 from app.ai.schemas import AIDiagnosisInput, AIKnowledgeReference
 from app.core.config import Settings
+from app.core.errors import InvalidRequest
 from app.models.diagnosis_result import DiagnosisResult
 from app.models.guidance_history import GuidanceHistory
 
@@ -66,7 +67,7 @@ DEVICE_KEYS = {"deviceid", "devicekey", "anonymousdeviceid"}
 ReferenceAllowlist = Mapping[tuple[str, ...], Collection[str]]
 
 
-class ProviderInputError(ValueError):
+class ProviderInputError(InvalidRequest):
     """Safe error classification: never expose the rejected value in an audit."""
 
     def __init__(self, code: str = "AI_INPUT_UNSAFE_REFERENCE"):

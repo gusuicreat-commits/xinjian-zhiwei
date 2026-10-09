@@ -13,6 +13,7 @@ from time import monotonic
 from sqlalchemy import event, select
 from sqlalchemy.exc import DBAPIError, OperationalError
 
+from app.core.errors import ConflictError, TemporarilyUnavailable
 from app.models import DiagnosisResult, QueryAnswerReceipt, QueryQuestion, QueryTask
 from app.models.base import utc_now
 from app.services.auth import AuthorizationDenied
@@ -41,11 +42,13 @@ ACTIVE_SECONDS = 120
 SOURCE_ORDER = ("task_evidence", "firmware_reported_config", "package_requirement", "approved_case")
 
 
-class QueryConflict(ValueError):
+class QueryConflict(ConflictError):
     pass
 
 
-class QueryUnavailable(RuntimeError):
+class QueryUnavailable(TemporarilyUnavailable):
+    error_code = "query_temporarily_unavailable"
+
     def __init__(self):
         super().__init__("query_temporarily_unavailable")
 

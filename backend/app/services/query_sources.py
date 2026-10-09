@@ -16,6 +16,7 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 
+from app.core.errors import StaleError
 from app.knowledge.applicability import context_from_diagnosis, evaluate_case_applicability
 from app.models import (
     Classroom,
@@ -140,7 +141,7 @@ class QueryScope:
     is_test_data: bool
 
 
-class _Stale(ValueError):
+class _Stale(StaleError):
     def __init__(self):
         super().__init__("source_stale")
 

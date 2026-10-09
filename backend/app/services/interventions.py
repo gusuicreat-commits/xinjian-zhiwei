@@ -4,6 +4,7 @@ from typing import Optional
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app.core.errors import ConflictError
 from app.models.base import utc_now
 from app.models.classroom import Classroom, User
 from app.models.diagnosis_result import DiagnosisResult
@@ -22,7 +23,7 @@ TRANSITIONS = {
 }
 
 
-class InterventionConflict(ValueError):
+class InterventionConflict(ConflictError):
     pass
 
 

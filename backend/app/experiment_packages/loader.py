@@ -11,6 +11,7 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import Version
 from pydantic import ValidationError
 
+from app.core.errors import InvalidRequest
 from app.diagnosis.schemas import ArtifactScope
 from app.experiment_packages.schemas import (
     ExperimentPackageBundle,
@@ -61,7 +62,7 @@ def engine_compatible(requirement: str) -> bool:
         return False
 
 
-class ExperimentPackageLoadError(ValueError):
+class ExperimentPackageLoadError(InvalidRequest):
     """A package is missing, unsafe, internally inconsistent, or fails tests."""
 
 
