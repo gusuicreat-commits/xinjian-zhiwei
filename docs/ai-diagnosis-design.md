@@ -335,6 +335,35 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 ## 隔离受控查询评测（2026-10-07）
 
+### DHT11 真实资料来源服务层（XJ-003，2026-10-09）
+
+`app/services/query_sources.py` 按[来源合同方案](query-source-contract-plan-20261009.md)实现
+`SENSOR_READ_FAILED` 的 S1–S4 读取和逐来源复核。范围仅由服务器重新授权的会话及其归属诊断构造，
+固定包身份与诊断快照一致；复用学生授权、测试性质传播、来源停用和案例适用性守卫。
+S2 要求证据的 `source_type=device_log`、冻结载荷的 `event_code=DHT11_READ_FAILED`，且
+`evidence_type` 与会话固定包 `hardware.evidence_mapping` 的错误码映射一致（当前为
+`sensor.read_failed`）。GPIO 只取本诊断冻结载荷中的整数，在投影前判定冲突。
+按 XJ-003 第 2 轮验收要求，方案 §3.1 的“不回查 DeviceLog”边界调整为：仅按证据的
+`source_ref` 读取同一设备、同一会话的日志行取 `boot_id`，再从同一 `ingestion_request_id`
+且同范围的心跳取 `firmware_version`；不按时间窗补查，不读取当前设备配置或用实时载荷替换 GPIO。
+元数据缺失或不在范围内保持 null；同批次心跳的固件版本不唯一也保持 null。
+这些补充来源的测试标记保守传播，身份、批次关联和元数据值纳入 manifest 修订复核。
+
+来源状态区分查无、缺生产方、冲突、拒绝和故障。`units` 复用 `query-task-v3` 的 8 KiB UTF-8
+整单元投影（包含投影包装与省略计数）；`manifest` 是内部复核清单，涵盖合格但被预算省略的单元，
+不作为额外取证材料。无合格案例返回 `checked_empty/no_approved_case`；有材料但全被省略不会
+伪装成查无。R1 在材料省略、缺失或冲突时保持 unknown；R3 仅判定可采用的引用，拒绝把工具故障
+或全部省略误判为空。查询后采用前由调用方在受保护事务内执行 `revalidate`；最终交付辅助复核
+同时调用 `diagnosis_sources_available`。来源故障的复核保守返回 stale，撤权优先返回无对象信息的 denied。
+
+R1 只比较程序自报 GPIO 与包要求，不断言接线正确，根因保持 unconfirmed，不改变候选排序或支持边。
+R2 仅有明确标注 synthetic 的结构目录与纯函数资格/枚举校验：R1 已查完、测试范围且同需求未问过
+才可提问；`unclear` 关闭本题并保留 `observation_unknown`，调用方须保留已问需求以禁止再问。
+正式教学题目仍待教师确认。此服务层没有模型调用、任务调度、API、答复存储或迁移，也未替换下方
+隔离评测适配器。问题登记与提交事务内撤权、等待时会话结束和原回执确认留给 XJ-004；AI 仍默认关闭。
+
+### 隔离原型实现与边界
+
 `app/evaluation/query_contract.py`、`query_graph.py`、`query_storage.py`和`query_runner.py`
 实现 `query-task-v3` 合成评测入口；它不属于产品诊断 API，也没有改变固定诊断图、AI 默认开关或正式迁移。
 实施依据为[详细方案](langgraph-query-execution-plan-20261007.md)，实际状态见

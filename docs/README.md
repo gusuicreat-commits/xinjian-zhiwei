@@ -19,7 +19,7 @@
 - AI 与资料：[AI诊断设计](ai-diagnosis-design.md)、[Kimi 2.6 接入与实测](kimi-api-integration.md)、[残余问题根因与修复方案](ai-residual-repair-plan-20261004.md)（[验收报告](../output/audits/ai-residual-repair-20261004/report.md)）、[实验包设计](experiment-package-design.md)、[受控上下文](context-construction-plan.md)、[资料包衔接](package-context-evolution-plan.md)。
 - [默认容量与生成合同修复评估](../output/audits/ai-capacity-semantic-followup-20261004/report.md)：10000默认、受控生成、真实回归及教师验收交接。
 - [受控查询复用与框架选型方案](pi-controlled-query-plan-20261007.md)（仅设计）与[GitHub复用评估](agent-reuse-selection-20261007.md)：优先现有LangGraph，PydanticAI备选，Pi按需求激活；含权限、预算、恢复和分阶段验收。
-- [LangGraph受控查询详细执行方案](langgraph-query-execution-plan-20261007.md)（设计时方案）与[新任务交接文本](langgraph-query-handoff-20261007.md)：细化A/B0隔离实现、答复恢复、共同治理、公平对照与阶段门禁；[真实 Kimi 隔离评测及逐例摘要](controlled-query-evaluation-20261008.md)记录已执行结果。
+- [LangGraph受控查询详细执行方案](langgraph-query-execution-plan-20261007.md)（设计时方案）与[新任务交接文本](langgraph-query-handoff-20261007.md)：细化A/B0隔离实现、答复恢复、共同治理、公平对照与阶段门禁；[真实 Kimi 隔离评测及逐例摘要](controlled-query-evaluation-20261008.md)记录已执行结果；[真实资料来源合同方案](query-source-contract-plan-20261009.md)（待审阅设计）定义 DHT11 确定性查询可用的来源、撤权与停止交付条件。
 - 接口与存储：[API设计](api-design.md)、[数据库设计](database-design.md)、[设备协议](device-protocol.md)。
 - 实物准备：[DHT11内部实验指南](experiments/dht11-internal-lab.md)、[施工方案](experiments/dht11-hardware-execution-plan.md)、[到货执行清单](experiments/dht11-arrival-checklist.md)、[内部测试准备](experiments/internal-lab-preparation.md)、[固件说明](../firmware/esp32_dht11/README.md)。
 - 验收补充：[评测要求](evaluation-requirements.md)、[硬件验证计划](hardware-validation-plan.md)、[真人试用模板](usability-trial.md)、[模拟器说明](../simulator/README.md)。
