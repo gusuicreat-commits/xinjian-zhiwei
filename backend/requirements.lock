@@ -34,7 +34,6 @@ psycopg==3.2.13
 pydantic-settings==2.11.0
 pydantic==2.13.4
 pydantic_core==2.46.4
-pypdf==6.19.0
 python-dotenv==1.2.4
 PyYAML==6.0.3
 requests-toolbelt==1.0.0

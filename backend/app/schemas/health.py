@@ -23,8 +23,6 @@ class OpsStatusResponse(BaseModel):
     database: str
     ai_enabled: bool
     ai_configured: bool
-    formal_knowledge_documents: int
-    test_knowledge_documents: int
     pending_interventions: int
     resolved_awaiting_close: int = 0
     active_sessions: int

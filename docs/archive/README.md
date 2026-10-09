@@ -4,6 +4,7 @@
 
 | 文档 | 为什么保留 |
 | --- | --- |
+| [受控查询隔离评测历史方案](langgraph-query-execution-plan-20261007.md) | 已结束并删除的原型设计依据；评测结果摘要继续保留 |
 | [2026-09-19业务规则实施](business-rules-implementation-2026-09-19.md) | 0030/0031实施范围、基线、固定JSON证据及未执行项 |
 | [完整流程第二阶段失败基线](workflow-evaluation-phase2.md) | 最初13通过/3失败的反例和复现记录 |
 | [完整流程整改记录](workflow-remediation.md) | 修复顺序、迁移兼容、故障注入窗口与逐次测试证据 |

@@ -145,76 +145,7 @@ PYTHONPATH=backend python -m app.cli.preview_package_context --strict \
 
 使用[本轮交接说明](../output/audits/ai-capacity-semantic-followup-20261004/teacher-acceptance.md)和[空白记录模板](../output/audits/ai-capacity-semantic-followup-20261004/teacher-acceptance-template.json)准备真实验收，逐项判据仍唯一引用`semantic_rubrics.json`。教师先冻结真实来源、课程允许动作及独立预期，再运行待验版本；预期不进入Provider。合成开发回归、教师语义判断、实物恢复和课堂可用性分别记录，缺材料保持null/not_run，不自动签署通过。
 
-
 <a id="controlled-query"></a>
-## LangGraph 受控查询隔离评测
+## 已结束的查询评测
 
-使用满足项目依赖的 Python 3.10+（本轮验证为 3.12），在仓库根目录运行：
-
-```bash
-PYTHONPATH=backend "$BACKEND_PYTHON" -m app.cli.run_query_evaluation \
-  --mode offline --split all --output output/audits/langgraph-query-b0-20261007/paired.json
-PYTHONPATH=backend "$BACKEND_PYTHON" -m pytest backend/tests/test_query_contract.py \
-  backend/tests/test_query_graph.py backend/tests/test_query_evaluation.py \
-  backend/tests/test_query_governance.py backend/tests/test_query_postgres.py
-```
-
-PostgreSQL 测试只读取显式 `XINJIAN_EVAL_POSTGRES_DSN`；治理跨进程对照另设置
-`TEST_AI_QUOTA_POSTGRES_DSN`，都必须指向专用测试数据库。测试自动创建/删除隔离 schema，
-使用官方 `PostgresSaver`，包括真正终止子进程；缺 DSN 会跳过，不能据此宣称持久恢复通过。
-不继承业务 `DATABASE_URL`，不执行正式迁移。离线命令本身用 SQLite 业务回执与内存 checkpoint，
-其逐例结果不能替代 PostgreSQL 测试。
-
-夹具在 `backend/tests/fixtures/query/`：12开发和24保留情境，输入、预期、固定答复分文件；
-保留集是合成软件情境，语义金标准仍 provisional。`--split development/holdout` 可分别留存结果。
-A 调用真实固定图；B0_scripted 是离线选择替身；确定性查询共用合同。
-相同材料分别跑现有合同探针与有合法外键的实际推理服务回放，保留两层结果，不能算真实模型效果。
-原有产品未提供的新材料生产方与候选支持边不由评测器猜测补齐。
-
-真实调度已实现于 `evaluation/query_real.py`，仅访问显式状态目录中的合成 SQLite 库，不读取业务
-`DATABASE_URL`。所有组先走实际摄入与固定图，再在真实 `knowledge_context` 边界冻结材料，走原推理、
-知识校验、解释、升级/交付流程；相同材料另经规则模式服务回放。各组使用独立合成设备/会话/诊断，
-共享唯一 `AIUsageReservation` 账本；规则回放使用独立审计阶段，不占用或重放 AI 结果。
-
-```bash
-PYTHONPATH=backend "$BACKEND_PYTHON" -m app.cli.run_query_evaluation \
-  --mode real --split all --repeats 3 \
-  --budget-record /absolute/path/confirmed-budget.json \
-  --state-dir output/audits/query-paid-batch \
-  --output output/audits/query-paid-batch/paired.json
-```
-
-`--budget-record` 必须记录用户明确的新批次授权：`authorization=explicit_new_batch_cap`、
-`authorized_by_user=true`、原话 `authorization_text`、有限正数 `cap_cny`；并有本次官方价格核对的
-`price_source/price_verified_at/price_version` 及两个与配置相符的
-`ai_input_cost_per_1k_tokens/ai_output_cost_per_1k_tokens`。这是显式批次边界，不从旧日预算猜余额。
-未取得这种授权时不能伪填 true；原总预算的核对仍可独立报告未知。配置的更严格资源限制继续生效。
-记录不含密钥；模型固定为已配置 `kimi-k2.6`，真实模式仅在进程内启用合成调用，不修改业务开关。
-
-先跑一次 JSON 选择探针，通过后按开发集、保留集顺序执行完整三组配对。每情境默认3次重复，
-`--max-pairs` 可在完整组边界停下，后续相同命令跳过已完成组。源码、资料包、夹具、配置和预算绑定
-批次；改变绑定、丢失账本、存在未完成组时拒绝自动重发。中途进程退出需检查保留的业务/操作回执，
-不是自动重建新任务；查询本身的 PostgreSQL 恢复能力由专项测试验证。
-
-文件锁限制单批次真实并发为1。累计金额在现有治理预留锁内检查全部历史/在途记录，不随24小时窗口
-恢复；每组开始前按最大15次尝试预检剩余额度，不足则保留完整已运行组并标 incomplete。金额是基于
-token估算的治理边界，不冒充服务商精确账单硬上限。缺 usage 或未知请求保留预留。
-
-真实评测仍服从 `ai_require_knowledge`：当前草稿知识可导致 `KNOWLEDGE_NOT_READY`，不能为凑齐
-解释模型调用而关闭此门禁。替身专项另测显式合成无知识配置下的解释服务，不计真实效果。
-`--mode real` 缺必需记录/状态目录返回2且零外发；完成所选批次且软件断言通过返回0，受阻/不完整
-返回2。人工语义、硬件、课堂状态仍分别保存，0不代表全部验收。
-
-续跑实现与实际证据见[本次报告](../output/audits/langgraph-query-s2-20261007/report.md)。
-未来真实阶段必须先核预算、通过软件门禁，使用受管 `kimi-k2.6`、合成材料和完整配对批次；
-不能把 daily budget=10 当作原总预算的剩余额度，不能以打开本机 AI 开关替代隔离运行。
-报告退出0仅表示指定软件断言符合，整体语义/真实模型/硬件/课堂可保持 incomplete。
-
-### 2026-10-07—08真实受控查询批次
-
-本轮真实结果的可提交摘要见[逐例报告](controlled-query-evaluation-20261008.md)，完整回执与脚本保留在本机 `output/audits/langgraph-query-real-20261007/`。开发阶段短时连续请求出现429，
-不能仅凭“串行”认为不会限流。该批随后使用同一CLI `--max-pairs 1`，有新Provider调用的完整组间等待65秒；
-等待在任务外，任何新增Provider错误停批核对，不自动重发旧组。65秒是本次运行参数，不是已确认的服务商限额。
-已完成组续跑应核对原预留和结果不变。批次跨本地日期、解释器重建都不能清空账本或换身份重跑。
-源码/依赖/材料/配置改变必须明确重新划分比较边界；环境修复需核对锁定版本和源码身份。
-本批108组执行完不等于82次模型调用均成功，也不等于已完成人工语义、硬件或课堂验收。
+模型选择动作的隔离原型与运行入口已删除；结论与逐例结果见[受控查询评测摘要](controlled-query-evaluation-20261008.md)。产品资料核对使用确定性查询，来源、任务与失败恢复由 `test_query_sources.py`、`test_query_tasks.py`、`test_query_task_failures.py` 和 `test_query_task_migration.py` 验证，并纳入后端全量门禁。

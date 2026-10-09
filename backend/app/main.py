@@ -14,7 +14,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.ai.diagnosis_graph import build_diagnosis_graph
 from app.api.errors import authorization_denied_handler
 from app.api.http_boundary import ResponseBoundary
-from app.api.knowledge_body_limit import KnowledgeBodyLimit
 from app.api.v1.router import api_router
 from app.api.v1.routes.health import router as health_router
 from app.core.config import get_settings
@@ -74,7 +73,6 @@ app = BoundedFastAPI(
 app.add_exception_handler(AuthorizationDenied, authorization_denied_handler)
 
 
-app.add_middleware(KnowledgeBodyLimit, settings=settings)
 
 app.add_middleware(
     CORSMiddleware,

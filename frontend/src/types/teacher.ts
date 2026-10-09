@@ -62,10 +62,6 @@ export interface TeacherDashboard {
   knowledge_cases: {
     configured: boolean
     framework_ready: boolean
-    source_count: number
-    document_count: number
-    pending_review_count: number
-    approved_chunk_count: number
     case_count: number
     approved_case_count: number
     notice: string

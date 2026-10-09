@@ -18,7 +18,6 @@
 | G2 知识工作区授权 | 10 共享凭证缺少个人身份和对象范围 | 复用 G1，知识服务负责 source/document/chunk 范围；工作区及文档审核全部接入 | 每次操作可归到当前个人和获准资料；整理与正式批准分离 |
 | G3 AI 输入与事实表述 | 2 动态键未脱敏；5 待核验项被写成已缺失；8 自由摘要与 unknown 矛盾 | `ai/context_sanitizer.py`、`ai/output_contract.py`、`services/current_advice.py` 各负责清洗、语义投影、交付资格 | 键和值共同受控；候选、待核验与已确认事实在 API 和页面含义一致 |
 | G4 模型调用生命周期 | 3 总时限/响应体无硬边界；4 崩溃后未知调用重复；7 HTTP 无分类立即重试 | `ai/governance.py` 统一操作身份、额度、重试；`ai/clients.py` 负责单次传输 | 调用有总期限；已发送但结果未知的请求不自动重发；每次物理尝试均有记录 |
-| G5 导入资源预算 | 6 PDF 展开先于限制；11 代理与后端限制不一致 | 配置中的导入预算、应用前置体积限制、`services/knowledge_files.py` 解析边界 | 超标在对应阶段停止；代理与直连后端接受相同合法文件；拒绝不产生半份资料 |
 | G6 启动与版本配置 | 12 环境拼写绕过持久化；14 Prompt 默认版本漂移 | `core/config.py` 和现有 Prompt/缓存版本合同 | 非法环境拒绝启动；两种启动路径得到一致有效配置 |
 | G7 错误响应 | 15 未捕获异常缺少请求 ID 和安全头 | `main.py` 的最外层响应封装及安全异常处理 | 500 仍可用请求 ID 追查，错误正文与日志不泄露原文 |
 
@@ -70,11 +69,11 @@
 
 覆盖两端主动退出、重复点击、网络失败、跨标签旧 token、新登录迟到响应、退出与复核/清理的两种事务顺序。检查响应、AuthSession、审计、缓存删除与实际页面。保留原 AuthSession 历史，不全量撤销其他设备。失败回退时保留已撤销状态；不能回退到无服务端撤销的旧前端并继续宣称退出已生效。可临时关闭受影响管理动作，保留正常规则诊断。
 
-## 4. G2：知识工作区从共享密钥转为个人与资料授权
+## 4. G2：知识工作区授权（历史方案，代码已移除）
 
 这是本轮一项明确的访问合同变更：现有 API 文档承认共享工作区边界，不能只换依赖而不迁移调用方。
 
-- 在 `services/rbac.py` 沿用 `knowledge.organize` 和 `knowledge.review.approve`，分别要求整理者和正式批准者身份。`user.manage` 只允许管理授权，不自动取得整理或批准能力。
+- 在 `services/rbac.py` 保留案例审批所需的 `knowledge.review.approve`；文档工作区与整理能力已移除。`user.manage` 只允许管理授权，不自动取得整理或批准能力。
 - 采用 source 级显式授权关系，document/chunk 从数据库沿外键解析 source，不接受客户端自报归属。拟新增授权表以 `(source_id, user_id, capability)` 唯一，记录授予/撤销审计；索引覆盖按用户列出来源与按 source 校验。新来源由当前整理者创建，自动获得该来源的整理范围；批准者须具备独立的 review 范围和全局批准能力。
 - 授予/撤销范围通过有 `user.manage` 的管理员入口，限定具体来源、目标个人与能力，并复用最终授权。全局知识角色不能授权自己访问所有来源。source 原有 `authorization_scope` 是资料使用许可文字，不可直接当用户 ACL。
 - 列表、统计、来源登记、文本/文件导入、workspace 读取、chunk 修改/拆分/合并/删除、文档审核统一接入。列表按授权过滤，统计不泄露未授权总量；游标基于授权查询并有上限。单对象越界使用统一不披露对象存在性的响应策略。批量操作先检查全部对象，失败不部分写入。
@@ -171,7 +170,7 @@ Retry-After 缺失或非法时使用有限退避；所有等待都不能突破�
 | D 请求与解析资源 | G4 的 4 → 3/7；G5 的 11 → 6；最后接 G2 的解析后核权 | 进程中断/恢复不盲重发，真实代理和解析限额有效，正常流仍可用 |
 | E 独立集成验收 | 跨组浏览器、隔离 PostgreSQL、迁移与完整门禁；修复报告 | 原反例消失、正常/重复/拒绝/恢复有效，源码身份与结果一致 |
 
-每批先跑相关正式测试，不为“数量更多”重复全量。新增/扩展用例优先归入现有 `test_memory_lifecycle.py`、`test_shared_authorization_postgres.py`、`test_classroom_auth.py`、`test_knowledge_workspace.py`、`test_knowledge_final_authorization.py`、`test_ai_provider_boundary.py`、`test_phase95_runtime_governance.py`、`test_ai_reasoning_v2.py` 等对应职责；新的进程中断/请求资源测试可单列，避免大文件继续无边界增长。前端扩展现有 Store/组件用例，再补真实后端 Playwright 场景。
+每批先跑相关正式测试，不为“数量更多”重复全量。新增/扩展用例优先归入现有 `test_memory_lifecycle.py`、`test_shared_authorization_postgres.py`、`test_classroom_auth.py`、`test_knowledge_final_authorization.py`、`test_ai_provider_boundary.py`、`test_phase95_runtime_governance.py`、`test_ai_reasoning_v2.py` 等对应职责；新的进程中断/请求资源测试可单列，避免大文件继续无边界增长。前端扩展现有 Store/组件用例，再补真实后端 Playwright 场景。
 
 ### 必须检查的交接与迁移
 

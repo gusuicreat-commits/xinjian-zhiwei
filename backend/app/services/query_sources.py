@@ -7,6 +7,8 @@ including omitted units; only units are the bounded material projection.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -14,7 +16,6 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 
-from app.evaluation.query_contract import digest, project_units
 from app.knowledge.applicability import context_from_diagnosis, evaluate_case_applicability
 from app.models import (
     Classroom,
@@ -71,6 +72,39 @@ R1 = "firmware_gpio_vs_requirement"
 R2 = "wiring_observation"
 R3 = "approved_reference"
 PROJECTION_BYTES = 8192
+
+
+def digest(value):
+    return hashlib.sha256(encoded(value)).hexdigest()
+
+
+def encoded(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+
+
+def project_units(rows, limit):
+    selected = set()
+    # The serialized omission count is part of the 8 KiB limit. Revisit a
+    # skipped unit when later inclusions shrink that count across a digit edge.
+    while True:
+        changed = False
+        for index in range(len(rows)):
+            if index in selected:
+                continue
+            candidate_indices = selected | {index}
+            candidate = {
+                "rows": [row for i, row in enumerate(rows) if i in candidate_indices],
+                "omitted_count": len(rows) - len(candidate_indices),
+            }
+            if len(encoded(candidate)) <= limit:
+                selected.add(index)
+                changed = True
+        if not changed:
+            break
+    return {
+        "rows": [row for i, row in enumerate(rows) if i in selected],
+        "omitted_count": len(rows) - len(selected),
+    }
 
 
 @dataclass(frozen=True)

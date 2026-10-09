@@ -37,16 +37,6 @@ class Settings(BaseSettings):
     auth_login_max_failures: int = 5
     auth_login_window_seconds: int = 300
     review_access_token: Optional[str] = None
-    knowledge_chunk_size_chars: int = 1200
-    knowledge_chunk_overlap_chars: int = 150
-    knowledge_max_document_chars: int = 500_000
-    knowledge_max_file_bytes: int = 10_485_760
-    knowledge_request_metadata_bytes: int = Field(default=65_536, ge=1024, le=1_048_576)
-    knowledge_parser_memory_bytes: int = Field(default=268_435_456, ge=67_108_864)
-    knowledge_parser_cpu_seconds: int = Field(default=5, ge=1, le=60)
-    knowledge_parser_wall_seconds: int = Field(default=10, ge=1, le=120)
-    knowledge_parser_max_pages: int = Field(default=200, ge=1, le=2000)
-    knowledge_parser_concurrency: int = Field(default=2, ge=1, le=16)
     ai_transport: Literal["disabled", "openai-compatible"] = "openai-compatible"
     ai_provider: Optional[str] = "deepseek"
     ai_base_url: Optional[str] = "https://api.deepseek.com"
@@ -137,24 +127,6 @@ class Settings(BaseSettings):
     def validate_offline_threshold(cls, value: int) -> int:
         if value < 1:
             raise ValueError("device ingestion limits must be positive")
-        return value
-
-    @field_validator(
-        "knowledge_chunk_size_chars",
-        "knowledge_max_document_chars",
-        "knowledge_max_file_bytes",
-    )
-    @classmethod
-    def validate_positive_knowledge_limit(cls, value: int) -> int:
-        if value < 1:
-            raise ValueError("knowledge size limits must be positive")
-        return value
-
-    @field_validator("knowledge_chunk_overlap_chars")
-    @classmethod
-    def validate_non_negative_overlap(cls, value: int) -> int:
-        if value < 0:
-            raise ValueError("knowledge_chunk_overlap_chars must not be negative")
         return value
 
     @field_validator("ai_timeout_seconds")

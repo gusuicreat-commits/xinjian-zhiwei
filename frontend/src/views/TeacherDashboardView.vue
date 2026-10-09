@@ -1024,8 +1024,7 @@ onBeforeUnmount(() => {
               <p>{{ dashboard.knowledge_cases.notice }}</p>
               <p>
                 案例 {{ dashboard.knowledge_cases.case_count ?? 0 }} · 已审核
-                {{ dashboard.knowledge_cases.approved_case_count ?? 0 }} · 待审核
-                {{ dashboard.knowledge_cases.pending_review_count ?? 0 }}
+                {{ dashboard.knowledge_cases.approved_case_count ?? 0 }}
               </p>
             </div>
             <span class="knowledge-status-chip"

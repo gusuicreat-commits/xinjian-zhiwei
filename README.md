@@ -53,3 +53,5 @@ docker compose exec backend python -m app.cli.seed_demo --prefix demo-local-
 - 开发前读[开发入口](AGENTS.md)和[开发准则](docs/development-guidelines.md)，按[文档索引](docs/README.md)定位模块契约。
 - 开发验证入口为 `scripts/verify.sh`，需要 Python 3.10+ 及对应依赖；可用 `BACKEND_PYTHON=/path/to/python scripts/verify.sh` 指定环境。命令和覆盖范围见[测试与评测](docs/evaluation.md)。
 - 当前按[内部技术目标和到货清单](docs/experiments/dht11-arrival-checklist.md)先完成首轮DHT11实物功能与证据链，再按[硬件验证计划](docs/hardware-validation-plan.md)扩展对照；教师课程判据仍单独确认。
+
+知识文档工作区与模型选择动作的查询评测原型已移除；资料核对使用 `query_sources` / `query_tasks`，案例草稿审核与撤回继续沿用原流程。评测结论见[受控查询摘要](docs/controlled-query-evaluation-20261008.md)。

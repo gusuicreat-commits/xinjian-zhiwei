@@ -25,37 +25,6 @@ def test_readiness_reports_missing_external_inputs_without_faking_ready(
     assert by_key["production"]["status"] == "blocked"
 
 
-def test_approved_document_alone_does_not_make_formal_package_ready(api_context):
-    from app.models.knowledge import KnowledgeDocument, KnowledgeSource
-
-    with api_context["session_factory"]() as db:
-        source = KnowledgeSource(
-            source_key="readiness-fixture",
-            source_type="fixture",
-            title="Synthetic readiness fixture",
-            is_test_data=False,
-        )
-        db.add(source)
-        db.flush()
-        db.add(
-            KnowledgeDocument(
-                source_id=source.id,
-                title="Synthetic approved document",
-                media_type="text/plain",
-                content_hash="a" * 64,
-                parser_name="fixture",
-                parser_version="1",
-                review_status="approved",
-                is_test_data=False,
-            )
-        )
-        db.commit()
-    result = api_context["client"].get("/api/v1/readiness/status").json()
-    assert not result["knowledge_ready"]
-    assert (
-        next(item for item in result["items"] if item["key"] == "approved_documents")["status"]
-        == "ready"
-    )
 
 
 def test_loadable_published_non_test_package_does_not_require_real_cases(api_context):

@@ -39,10 +39,6 @@ class UnconfiguredDataset(StrictTeacherModel):
 
 class TeacherKnowledgeSummary(UnconfiguredDataset):
     framework_ready: bool
-    source_count: int
-    document_count: int
-    pending_review_count: int
-    approved_chunk_count: int
     case_count: int = 0
     approved_case_count: int = 0
 

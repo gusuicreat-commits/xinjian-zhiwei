@@ -85,10 +85,6 @@ async function mockTeacherWorkspace(page: Page, extraPermissions: string[] = [])
         knowledge_cases: {
           configured: true,
           framework_ready: true,
-          source_count: 1,
-          document_count: 4,
-          pending_review_count: 0,
-          approved_chunk_count: 4,
           case_count: 5,
           approved_case_count: 4,
           notice: '仅为 Phase 9 合成测试知识。',

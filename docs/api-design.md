@@ -20,8 +20,6 @@
 
 旧模板编辑、审核、发布与版本创建采用同一父模板锁；锁后刷新版本状态和内容hash，拒绝旧快照写入，并重验账号及权限。模板代码、同模板版本号等明确身份冲突返回409，不产生半成品。
 
-知识文件在创建内部文本请求前拒绝空白正文（422 `KNOWLEDGE_FILE_EMPTY`）；不支持的DOCX压缩或坏ZIP返回422 `KNOWLEDGE_FILE_PARSE_FAILED`；编码及展开的DOCX正文超限返回413；上传MIME类型与文本模型、存储保持100字符上限，超长返回422。扫描PDF仍按原契约返回不可提取文本，不自动OCR。
-
 `/docs`、`/redoc`、`/docs/oauth2-redirect` 使用每次响应的脚本nonce及文档专用CSP，响应不缓存；Swagger/ReDoc脚本样式仍来自FastAPI默认CDN。JSON API维持 `default-src 'none'`，文档CSP不会全局开放脚本。
 
 ## 设备接入
@@ -262,14 +260,6 @@ expected_state是预期，不是实测。读取不生成新指导、反馈或模
 
 ## 知识库接口
 
-来源登记、文件导入、工作区、知识块编辑和文档审核统一使用真实 Bearer 会话。整理需要 `knowledge_organizer` 角色及来源的 `organize` 授权，批准需要 `formal_approver` 角色及 `review` 授权；读取允许其中任一当前有效能力。共享 Review-Token 不再授予这些入口权限。无会话401，无角色403，来源不存在或超出授权范围统一404。仓库没有预置正式审核账号。
-
-新建来源自动授予创建整理人该来源的整理能力；旧来源不猜测所有者、默认不授权。管理员通过 `GET /knowledge/source-access-inventory` 分页查询来源ID/标识，再用 `PUT/DELETE /knowledge/sources/{source_id}/grants/{user_id}/{capability}` 显式授予/撤销；capability 为 organize/review，变更留审计，管理员角色本身不自动读取正文。来源列表支持 `after_id` 游标、`limit`（1–100），按ID升序，仅返回可访问来源。
-
-### GET `/knowledge/status`
-
-返回当前来源范围内的文档与知识块统计。未具备来源范围的旧案例不混入工作区统计；教师仪表盘的资料数量也按逐来源授权过滤，诊断案例可用性按独立合同计算。第一阶段不依赖向量检索。
-
 ### GET `/knowledge/case-drafts/pending`
 
 教师或正式批准人查看由已解决诊断事实生成、且通过质量检查的案例草稿。草稿保留原诊断、学生反馈、规则与故障树版本引用，不会被诊断主链使用。
@@ -281,28 +271,6 @@ expected_state是预期，不是实测。读取不生成新指导、反馈或模
 ### POST `/knowledge/case-drafts/{draft_id}/ai-polish`
 
 可选调用已配置 AI，只生成标题、症状描述、教学说明和解决摘要。服务端强制保留 `sourceIds`，禁止修改事实字段或在根因未确认时使用确定因果措辞，并保存模型与 Prompt 审计。调用不持草稿锁；模型返回后重验权限、状态和版本，迟到冲突返回 409，已发生调用仍记账。
-
-### GET/POST `/knowledge/sources`
-
-查询或登记资料来源。`source_key` 是外部稳定标识；同时保存类型、标题、来源 URI、版本、许可证、授权范围、元数据和 `is_test_data`。正式来源类型限定为 `official_hardware`、`course_material`、`confirmed_parameter`、`verified_case` 或 `supplementary`，且必须提供 URI 和版本；重复 `source_key` 返回 409。
-
-### POST `/knowledge/sources/{source_id}/documents/text`
-
-只接收已经提取的 `text/*` 文本，不直接解析 PDF、DOCX 或扫描件。正式导入还必须提供整理人、适用硬件和内容来源类型；官方资料必须有页码、章节或段落定位，已验证案例必须记录最终修复动作与受治理的根因状态。服务端规范化换行、按可配置字符窗口切分、保存字符定位和 SHA-256；同一来源重复导入相同内容返回原文档并设置 `idempotent_replay=true`。新文档从 `draft` 开始。
-
-### PATCH `/knowledge/documents/{document_id}/review`
-
-接受目标状态、审核角色和备注，审核人由服务器当前身份决定。提交人记录于 `submitted_by_user_id`，不能靠客户端元数据修改；提交人与批准人不能相同。旧待审核文档缺可信提交人时返回409，需先退回draft再由整理人重新提交，历史审核不改写。正式流程为：
-
-```text
-draft --organizer--> pending
-pending --formal_approver--> approved
-```
-
-正式批准人也可将 `pending` 驳回为 `rejected`；批准后还支持 `withdrawn` 和
-`superseded`，相应资料可由整理员重新回到 `draft`。整理人不得正式批准自己提交的资料。
-来源未记录 `authorization_scope` 时不能批准。状态同步到文档的全部知识块，并追加不可
-覆盖的审核历史。当前不提供 Embedding 写入或向量搜索 API。
 
 ## 记忆与影响复核
 
@@ -328,11 +296,9 @@ pending --formal_approver--> approved
 - `/auth/session`、`/auth/me`、`/auth/classes`：正式用户会话和资源范围。
 - `/experiments/templates`、`/experiments/template-versions/*`：旧模板草稿与发布门禁。
 - `/experiments/packages/*`、`/experiments/package-versions/*`：实验包校验、导入、版本查询和发布门禁。
-- `/knowledge/sources/{id}/documents/file`、`/knowledge/documents/{id}/workspace`、
-  `/knowledge/chunks/*`：文件导入与草稿分块工作区。
 - `/teacher-workflow/*`：处置动作、时间线、课堂消息和 CSV 报告。
 - `/health/live`、`/health/ready`、`/health/dependencies`、`/ops/status`：运维状态。
-- `/readiness/status`：已批准文档、合格兼容案例、可加载的正式发布包分别列示；新增检查项状态`unverified`，无验收依据的软件/演示/硬件/组织布尔值保持false并说明待核实。
+- `/readiness/status`：合格兼容案例、可加载的正式发布包分别列示；新增检查项状态`unverified`，无验收依据的软件/演示/硬件/组织布尔值保持false并说明待核实。
 - `/ops/status`：`pending_interventions`计open/claimed/unconfirmed；新增`resolved_awaiting_close`单列待关闭。`active_sessions`排除过期、撤销及停用用户。
 
 ## 状态码
@@ -345,10 +311,10 @@ pending --formal_approver--> approved
 | 403 | 当前身份没有权限，或对象超出学生/会话/班级范围 |
 | 404 | 诊断结果不存在或不属于当前设备 |
 | 409 | 资源重复、非法状态流转、实验包版本已存在或审核条件不满足 |
-| 413 | 请求体、批次数量或提取文本超过配置上限 |
+| 413 | 请求体或批次数量超过配置上限 |
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
 | 429 | 遥测写入超过设备共享速率限制，或登录失败/在途额度及总容量已满 |
-| 503 | 工作区未配置或工作流基础设施暂不可用；常规模型失败由确定性降级处理 |
+| 503 | 工作流基础设施暂不可用；常规模型失败由确定性降级处理 |
 
 ## 上下文审计兼容
 
@@ -365,7 +331,6 @@ pending --formal_approver--> approved
 维护者入口为`app.cli.prepare_internal_experiment`，提供plan/apply/status，操作见[准备说明](experiments/internal-lab-preparation.md)。没有新增HTTP接口；CLI显式选择测试PostgreSQL与已登录管理员令牌，调用共同初始化服务。包导入/状态流转仍由上述管理员接口负责，学生会话仍经原学生接口创建。初始化不绕过固定包、授权、测试标记或历史边界。
 
 对象和成功审计同事务提交；同前缀同操作者同包hash/设备性质可恢复原回执，变更或残缺对象拒绝接管。plan/status不写入、不发放凭据；终端输出只含对象ID和状态，秘密由交互或环境变量输入。具体运行限制与回归入口见开发准则BR-LAB-PREP。
-
 
 ## 2026-09-30 共享校验修复契约
 

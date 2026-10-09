@@ -546,10 +546,6 @@ export const reviewTeacherDashboard: TeacherDashboard = {
   knowledge_cases: {
     configured: true,
     framework_ready: true,
-    source_count: 8,
-    document_count: 24,
-    pending_review_count: 2,
-    approved_chunk_count: 0,
     case_count: 5,
     approved_case_count: 3,
     notice: '已接入并审核结构化实验知识案例。',

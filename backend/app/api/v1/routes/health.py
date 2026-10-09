@@ -10,7 +10,6 @@ from app.db.session import get_db
 from app.models.base import utc_now
 from app.models.classroom import AuthSession, User
 from app.models.intervention import InterventionCase
-from app.models.knowledge import KnowledgeDocument
 from app.schemas.health import (
     DependencyHealthResponse,
     HealthResponse,
@@ -71,12 +70,6 @@ def dependencies(db: DatabaseSession) -> DependencyHealthResponse:
 @router.get("/ops/status", response_model=OpsStatusResponse)
 def ops_status(_: ReviewAccess, db: DatabaseSession) -> OpsStatusResponse:
     settings = get_settings()
-    formal = db.scalar(
-        select(func.count(KnowledgeDocument.id)).where(KnowledgeDocument.is_test_data.is_(False))
-    )
-    test = db.scalar(
-        select(func.count(KnowledgeDocument.id)).where(KnowledgeDocument.is_test_data.is_(True))
-    )
     pending = db.scalar(
         select(func.count(InterventionCase.id)).where(
             InterventionCase.status.in_(["open", "claimed", "unconfirmed"])
@@ -97,8 +90,6 @@ def ops_status(_: ReviewAccess, db: DatabaseSession) -> OpsStatusResponse:
         database="ok",
         ai_enabled=settings.ai_enabled,
         ai_configured=bool(settings.ai_api_key),
-        formal_knowledge_documents=int(formal or 0),
-        test_knowledge_documents=int(test or 0),
         pending_interventions=int(pending or 0),
         active_sessions=int(active_sessions or 0),
         resolved_awaiting_close=int(

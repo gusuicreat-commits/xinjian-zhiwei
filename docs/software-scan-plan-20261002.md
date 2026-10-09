@@ -37,11 +37,10 @@
 | S05 检查反馈与教师处置 | `diagnosis_checks.py`、`student_feedback.py`、`interventions.py`；`test_diagnosis_checks*`、`test_feedback*`、`test_intervention*`、`test_check_handling_snapshot.py` | 同ID重放、异载荷冲突、旧证据解决与新异常竞争、双求助/双认领、转交目标撤权；刷新和回执查询无新操作；旧回执保持快照，新检查准确反映处理状态；私密备注不经摘要/导出泄露。 |
 | S06 工作流恢复 | `ai/diagnosis_graph.py`、`diagnosis_workflow.py`、Checkpoint；`test_diagnosis_checkpoint_postgres.py`、`test_diagnosis_workflow*`、`test_shared_recovery_boundary.py` | 在冻结、业务提交、Checkpoint写入和响应交付前后中断；换连接、进程终止后恢复；已应用不重复计数/审核/反馈；已结束会话只协调旧操作，缺状态拒绝猜测，合法历史不被改写。 |
 | S07 包与旧模板 | 装载器、发布服务、旧模板、教学参考；`test_experiment_packages.py`、`test_experiment_templates.py`、`test_template_authorization.py`、`test_teaching_materials.py` | 旧draft覆盖发布、双发布、重复身份、hash/版本/来源错配、工件缺失/循环；固定会话不跟随新版，superseded与revoked分开；旧路径不得弱化来源、权限、动作及测试边界。 |
-| S08 知识工作区与案例 | `knowledge.py`、`knowledge_access.py`、`knowledge/case_drafting.py`；`test_knowledge_scope_repair.py`、`test_teacher_knowledge_scope.py`、`test_knowledge_case*` | 仅共享token拒绝，角色和逐来源授权缺一不可；列表/统计/块编辑/批量操作覆盖同一范围；客户端提交人不可自证，禁止自行批准；导入/润色期间撤权或版本变化；旧资料不猜所有者。 |
+| S08 案例 | `knowledge/case_drafting.py`；`test_knowledge_case*` | 草稿审核、润色期间撤权或版本变化；历史知识工作区已移除。 |
 | S09 来源记忆与清理 | `source_lifecycle.py`、`memory_governance.py`、`memory_restore.py`、`provenance.py`；`test_shared_source*`、`test_memory*`、`test_provenance_contract.py` | 引用创建与来源删除的两种提交顺序；有引用拒绝清理；计划过期/范围变化/撤权；停用穿透缓存、恢复和当前投影；备份恢复重放停用记录；混合测试来源不能洗成正式，历史原文不重写。 |
 | S10 模型输入与事实交付 | `context_builder.py`、`context_sanitizer.py`、`output_contract.py`、`current_advice.py`；`test_context*`、`test_r2_provider_data_boundary.py`、`test_ai_semantic_delivery.py` | 动态键/值、短秘密、引用碰撞、私有源、恶意日志/知识指令、错误实验案例、整单元超预算；捕获实际Mock外发请求。合法JSON夹带伪确认、无关引用、候选外动作在所有当前投影受控；待核验保持未确认，合法教师编辑可追溯。 |
 | S11 AI 调用与资源 | `ai/governance.py`、`clients.py`、推理/解释/润色；`test_ai_operation*`、`test_ai_quota_concurrency.py`、`test_ai_transport_lifecycle.py` | 发送前/后崩溃、同操作并发、成功重放、未知结果不自动再发/退款、新版本合法新调用；输入与策略版本冻结；额度最后一份竞争、零预算、429等待、确定错误停试、滴流/超大/压缩响应总预算及取消回收。 |
-| S12 文件导入 | `knowledge_files.py`、应用请求边界、Nginx、导入配置；`test_knowledge_resource_boundaries.py` | 正常边界文件、空白/坏格式/MIME、Base64和JSON前置字节限制、慢上传/伪造长度、ZIP/PDF高展开与复杂页；直连/代理对照；CPU/内存/时间/页数/并发限制，超限无半资料，解析子进程退出且下一正常请求成功；原生非Linux按当前503合同验证。 |
 | S13 页面与命令恢复 | `frontend/src/api`、Store、学生/教师页面及浏览器测试 | 401/403/409/422/5xx/断网分别处理；不确定结果保留原身份；刷新/切页/返回/重新登录与迟到响应隔离；撤权后DOM无旧敏感数据；双击、页面关闭重开、当前与历史诊断错配、图表卸载、桌面/平板/手机关键任务与离线边界。 |
 | S14 配置错误与运维 | `core/config.py`、`api/http_boundary.py`、Compose/Nginx、探针和扫描脚本；`test_runtime_boundary_repair.py`、`test_readiness.py`、`test_security_scan_contract.py` | 直接/Compose默认与显式覆盖一致；非法环境、生产/预发布内存Checkpoint拒绝；断库→恢复的就绪变化；500/流式失败有安全响应与追踪ID；合成秘密不进扫描/异常日志；API文档实际渲染、安全头与代理路径。 |
 | S15 数据库与恢复 | 模型、全部迁移、`scripts/database_backup.py`、历史审计CLI；`test_migration_r2.py`、`test_backup_restore_boundary.py`、`test_historical_audit_r2.py` | 空库/相关历史升级、唯一Head、模型一致性、唯一/外键/check约束；原数据和未知归属保留；拒绝有损降级；同快照备份恢复与破坏反例；业务库/Checkpoint协调边界和安全清理。 |
@@ -50,7 +49,7 @@
 
 S17 中依赖漏洞、镜像/CI配置、容量和实际部署条件分别报告。配置风险需说明触发前提；没有目标负载、生产拓扑或真实暴露证据时不写成已发生事故。审查当前 CI 文件不代表远端 CI 已运行。
 
-优先深入 S01、S05、S06、S08—S11 的授权、历史归属、恢复与外部副作用，再核对文件/代理和配置交接；其余组仍须完成。旧运维 `GET /diagnosis/interventions`、`GET /ops/status` 与知识工作区的授权合同不同，分别核查调用方、返回范围和启用条件，不因为共享token仍有定义就推断知识工作区可绕过个人授权。
+优先深入 S01、S05、S06、S08—S11 的授权、历史归属、恢复与外部副作用，再核对文件/代理和配置交接；其余组仍须完成。旧运维 `GET /diagnosis/interventions`、`GET /ops/status` 分别核查调用方、返回范围和启用条件；历史知识工作区已移除。
 
 ## 三十一条历史发现的检查去向
 

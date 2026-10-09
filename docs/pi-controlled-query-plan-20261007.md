@@ -2,7 +2,7 @@
 
 日期：2026-10-07。状态：**仅设计，未实施、未运行模型评测、未启用产品能力。**
 
-执行细化见[LangGraph受控查询详细方案](langgraph-query-execution-plan-20261007.md)，转入新窗口可使用[交接文本](langgraph-query-handoff-20261007.md)。用户最新要求本轮只设计，S0–S3待新任务执行；本文保留整体选型与后续产品候选边界。
+执行细化见[LangGraph受控查询详细方案](archive/langgraph-query-execution-plan-20261007.md)，转入新窗口可使用[交接文本](langgraph-query-handoff-20261007.md)。本方案保留设计时的选型边界；S0–S3评测已结束，原型已移除，现行产品采用确定性查询。
 
 目标是验证动态查询和追问能否帮助学生更快取得有效证据。2026-10-07依据[开源复用与框架评估](agent-reuse-selection-20261007.md)修订：优先复用已有 LangGraph 和官方模板，先比较 A/B0；PydanticAI为第一备选，Pi为条件候选。先建设最小隔离对照，再决定产品接入；保留规则诊断、故障树、知识校验和教师确认职责。
 

@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.classroom import Classroom, User
 from app.models.experiment import Experiment, ExperimentVersion
-from app.models.knowledge import KnowledgeCase, KnowledgeDocument
+from app.models.knowledge import KnowledgeCase
 from app.schemas.readiness import ReadinessItem, ReadinessResponse
 from app.services.experiment_packages import (
     ExperimentPackageLoadError,
@@ -23,15 +23,6 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 def readiness_status(db: DatabaseSession) -> ReadinessResponse:
     settings = get_settings()
     db.execute(text("SELECT 1"))
-    formal_approved = int(
-        db.scalar(
-            select(func.count(KnowledgeDocument.id)).where(
-                KnowledgeDocument.review_status == "approved",
-                KnowledgeDocument.is_test_data.is_(False),
-            )
-        )
-        or 0
-    )
     formal_cases = int(
         db.scalar(
             select(func.count(KnowledgeCase.id)).where(
@@ -127,12 +118,6 @@ def readiness_status(db: DatabaseSession) -> ReadinessResponse:
             evidence=f"可加载非测试发布包：{len(packages)}；加载失败：{invalid_packages}。"
             + "；".join(packages),
             required_input=None if packages else "与教学任务相匹配、经过审核并发布的非测试资料包",
-        ),
-        ReadinessItem(
-            key="approved_documents",
-            label="已批准参考文档",
-            status="ready" if formal_approved else "blocked",
-            evidence=f"非测试文档：{formal_approved}；批准文档不等于资料包可运行。",
         ),
         ReadinessItem(
             key="formal_cases",

@@ -26,7 +26,8 @@
 | 检查与流程 | `diagnosis_checks`、`diagnosis_workflow_runs`、`diagnosis_workflow_reviews`；显式检查身份、冻结输入、图业务流水与审核 |
 | 实验内容 | `experiments`、`experiment_versions`、`experiment_package_artifacts`；固定包快照和工件索引 |
 | 旧模板兼容 | `experiment_templates`、`experiment_template_versions`、`diagnostic_artifacts`；既有模板及诊断工件版本 |
-| 知识内容 | `knowledge_sources`、`knowledge_documents`、`knowledge_chunks`、`knowledge_reviews`、`knowledge_cases`、`knowledge_case_drafts`；来源、资料整理审核、正式案例及事实草稿 |
+| 案例 | `knowledge_cases`、`knowledge_case_drafts`；正式案例及事实草稿 |
+| 已停用工作区 | `knowledge_sources`、`knowledge_documents`、`knowledge_chunks`、`knowledge_reviews`、`knowledge_source_grants`；已停用，代码已移除，保留历史数据，待后续单独迁移清理 |
 | 模型调用 | `ai_usage_reservations`、`ai_call_records`、`ai_explanation_cache`；外发尝试的预算预留、调用审计和可重验缓存 |
 | 记忆治理 | `memory_uses`、`memory_events`、`memory_impact_reviews`、`memory_cleanup_plans`；来源使用、停用、影响复核和固定缓存清理计划，不复制事实正文 |
 | 教师处置 | `intervention_cases`、`intervention_events`、`classroom_messages`；工单、公开/私密事件与课堂消息 |
@@ -95,7 +96,9 @@
 会话、任务、诊断和工作流可关联精确版本。发布新版本会替换当前标记，但不改写旧快照；
 固定历史版本使用与撤回边界见 [实验包设计](experiment-package-design.md)。
 
-资料文档以 `(source_id, content_hash)` 唯一，知识块保存来源定位、内容 hash、审核状态及适用注记。
+以下工作区结构已停用，代码已移除，保留历史数据，待后续单独迁移清理。本任务不修改模型、迁移或历史记录。
+
+历史资料文档以 `(source_id, content_hash)` 唯一，知识块保存来源定位、内容 hash、审核状态及适用注记。
 已批准知识块是资料治理结果，不能直接等同于可用于诊断的正式案例。
 诊断案例还须同时满足 approved、confirmed、facts_locked、quality_check_passed 及适用范围。
 
@@ -151,13 +154,13 @@
 
 ## 来源授权与AI操作（0037–0038）
 
-`knowledge_source_grants` 用 `(source_id,user_id,capability)` 唯一约束表达逐来源整理/审核权限，用户+来源索引用于可见列表。`knowledge_documents.submitted_by_user_id` 保存服务器认证的提交人，历史为空，不从旧元数据推断。
+来源授权结构已停用，代码已移除，保留历史数据，待后续单独迁移清理。`knowledge_source_grants` 用 `(source_id,user_id,capability)` 唯一约束表达逐来源整理/审核权限，用户+来源索引用于可见列表。`knowledge_documents.submitted_by_user_id` 保存服务器认证的提交人，历史为空，不从旧元数据推断。
 
 `ai_operations` 以唯一 operation_key 防止同逻辑动作重复发送，保存冻结输入hash、版本、状态、期限、尝试数和有界结果；诊断ID索引用于阶段恢复，状态索引用于未决排查。`ai_usage_reservations.operation_id/attempt_no` 关联物理尝试并以二者唯一约束防重复；操作状态枚举和非负尝试数由CHECK约束保护。旧预留保持空关联和原费用，不猜测归属。0037/0038拒绝丢弃授权、操作及费用状态的降级，回退先关闭受影响增强、保留表与历史。代码Head不代表业务数据库已迁移。
 
-## 知识工作区总量计量（2026-10-03）
+## 已停用的知识工作区总量计量（历史结构）
 
-`knowledge_chunks.overlap_credit_chars`由服务器导入分块时创建，数据库约束为0至实际正文长度。更新不新增额度，拆分分配原额度，合并合计原额度；文档预算使用正文总长度减额度总和，文档锁内检查。0039迁移为历史块填0，不凭旧locator猜测重叠，不修改历史正文/审核/测试标记；有非零额度时拒绝有损降级。运行库升级另行验收。
+工作区代码已移除；历史 `knowledge_chunks.overlap_credit_chars`曾由服务器导入分块时创建，数据库约束为0至实际正文长度。更新不新增额度，拆分分配原额度，合并合计原额度；文档预算使用正文总长度减额度总和，文档锁内检查。0039迁移为历史块填0，不凭旧locator猜测重叠，不修改历史正文/审核/测试标记；有非零额度时拒绝有损降级。运行库升级另行验收。
 
 ## DHT11 查询任务与答复回执（0040，2026-10-09）
 

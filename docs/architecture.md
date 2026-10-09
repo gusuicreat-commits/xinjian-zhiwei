@@ -122,3 +122,5 @@ PostgreSQL 独立连接验证，SQLite 的开发锁结果不能替代。
 维护时从 [API 契约](api-design.md)、[数据库设计](database-design.md) 和
 [测试与评测](evaluation.md) 定位影响。代码检查、模型语义、硬件测量、课堂试用和部署确认分别记录；
 本文不把历史测试数量视为当前通过，也不把本地迁移 Head 视为运行数据库状态。
+
+知识文档工作区与模型选择动作的查询评测原型已移除；资料核对使用 `query_sources` / `query_tasks`，案例草稿审核与撤回继续沿用原流程。评测结论见[受控查询摘要](controlled-query-evaluation-20261008.md)。

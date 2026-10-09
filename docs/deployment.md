@@ -136,15 +136,3 @@ curl --fail -I http://127.0.0.1:8080/student
 `APP_ENV` 仅接受 development/test/staging/production（忽略大小写与两端空白，prod为production别名）；未知值拒绝启动。启用工作流的staging/production必须配置PostgreSQL checkpoint，不能用拼写或别名落入内存模式。
 
 Python Settings维护AI_PROMPT_VERSION默认值；Compose仅转交明确覆盖，不注入另一个默认。显式覆盖须与实际Prompt及指纹一起留档。0037–0038只在隔离库完成升级验证，业务部署另行执行。旧知识来源需管理员逐来源授权；旧待审核文档需真实整理人重新提交后由另一批准人审核。回退时关闭AI/受影响入口并保留新表，不能删除未知费用或权限历史。
-
-### 知识文件导入资源边界（2026-10-02）
-
-文件导入目前要求 Linux 服务：解析器在独立 Python 子进程运行，在导入解析库前设置虚拟内存、CPU 和输出文件限制；父进程按墙钟期限终止并回收子进程。macOS/Windows 或资源限制无法设置时返回 `503 KNOWLEDGE_PARSER_UNAVAILABLE`，不会退回无限制的进程内解析。本机仍可使用受字符数限制的文本导入，文件导入请使用 Linux 容器。
-
-默认预算为原文件 10 MiB、文档 500,000 字符、PDF 200 页、单解析进程 256 MiB 虚拟内存、5 秒 CPU、10 秒墙钟、同服务主机 2 个解析槽。并发槽耗尽返回 `503 KNOWLEDGE_PARSER_BUSY`；超资源预算返回 413，坏格式返回 422。TXT/Markdown/CSV/DOCX/PDF 均经过同一进程边界，DOCX 仍有展开 XML 大小限制。CPU/内存等值是软件保护预算，不是已验证的课堂容量。
-
-配置项为 `KNOWLEDGE_PARSER_MEMORY_BYTES`、`KNOWLEDGE_PARSER_CPU_SECONDS`、`KNOWLEDGE_PARSER_WALL_SECONDS`、`KNOWLEDGE_PARSER_MAX_PAGES`、`KNOWLEDGE_PARSER_CONCURRENCY`。本轮正常样本探针为 20 页 PDF、8,043 文件字节、640 字符、约 30 MiB RSS；上限附近文本和恶意资源消耗另在隔离 Linux 测试中验证。
-
-应用在 JSON 解析前限制导入请求的实际字节数，文件请求预算为 `4 × ceil(KNOWLEDGE_MAX_FILE_BYTES / 3) + KNOWLEDGE_REQUEST_METADATA_BYTES`，文本请求预算为 `12 × KNOWLEDGE_MAX_DOCUMENT_CHARS + KNOWLEDGE_REQUEST_METADATA_BYTES`（覆盖 JSON 转义）。上传总时限为 30 秒；导入路径关闭 Nginx 请求缓冲，使后端期限从接收上传时开始，代理另设30秒空闲期限。不支持压缩请求体。默认元数据预算为 65,536 字节。超限、断连或解析失败不会创建半份文档。
-
-Compose 将文件、文档及元数据三项预算通过同一 YAML anchor 传给后端与前端。Nginx 启动脚本据此生成两个导入路径的上限，不改变其他 API 路径。单独启动前端镜像必须显式设置 `KNOWLEDGE_MAX_FILE_BYTES`、`KNOWLEDGE_MAX_DOCUMENT_CHARS`、`KNOWLEDGE_REQUEST_METADATA_BYTES` 三项，并与后端配置一致；缺值启动失败。修改环境后须重建/重启相关服务使生成配置生效。

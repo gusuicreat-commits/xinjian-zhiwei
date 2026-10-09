@@ -25,7 +25,6 @@ ROLE_PERMISSIONS = {
         "intervention.manage",
         "user.manage",
     },
-    "knowledge_organizer": {"knowledge.organize"},
     "formal_approver": {"knowledge.review.approve"},
 }
 

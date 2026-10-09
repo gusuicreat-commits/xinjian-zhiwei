@@ -1,8 +1,6 @@
 import json
 from datetime import datetime, timezone
 
-import pytest
-
 from app.ai.clients import AICompletion
 from app.core.config import Settings
 from app.diagnosis.lightweight_schemas import DiagnosisCore
@@ -13,7 +11,6 @@ from app.models import (
     DiagnosisResult,
 )
 from app.services.ai_diagnosis import _explain_diagnosis as explain_diagnosis
-from app.services.hybrid_retrieval import hybrid_retrieve
 from app.services.lightweight_diagnosis import decide_ai_policy, explanation_fingerprint
 
 
@@ -164,11 +161,6 @@ def test_policy_and_fingerprint_are_deterministic() -> None:
         )
         != left
     )
-
-
-def test_hybrid_retrieval_is_disabled_for_the_mvp() -> None:
-    with pytest.raises(RuntimeError, match="outside the MVP"):
-        hybrid_retrieve()
 
 
 def test_ai_explanation_cache_prevents_duplicate_provider_call(

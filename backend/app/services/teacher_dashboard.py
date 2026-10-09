@@ -327,10 +327,6 @@ def build_teacher_dashboard(
         knowledge_cases=TeacherKnowledgeSummary(
             configured=knowledge_status.content_available,
             framework_ready=knowledge_status.framework_ready,
-            source_count=knowledge_status.source_count,
-            document_count=knowledge_status.document_count,
-            pending_review_count=knowledge_status.pending_review_count,
-            approved_chunk_count=knowledge_status.approved_chunk_count,
             case_count=knowledge_status.case_count,
             approved_case_count=knowledge_status.approved_case_count,
             notice=knowledge_status.notice,

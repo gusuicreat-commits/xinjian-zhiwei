@@ -1,6 +1,6 @@
 # 新任务交接：受控查询与追问评测
 
-以下内容可直接复制到新任务窗口。它是下一轮执行请求模板；本次对话只完成设计。
+以下是历史交接文本，原型评测已结束并删除；不再作为执行入口。产品资料核对使用确定性查询，现行状态见[实现状态](implementation-status.md)。
 
 ---
 
@@ -18,7 +18,7 @@
 
 - `AGENTS.md`、`README.md`、`docs/development-guidelines.md`。
 - `docs/product-background-prd.md`、`docs/ai-diagnosis-design.md`、`docs/evaluation.md`、`docs/test-reporting.md`、当前实现/真实性状态。
-- **主要执行文件：`docs/langgraph-query-execution-plan-20261007.md`。**
+- **主要执行文件：`docs/archive/langgraph-query-execution-plan-20261007.md`。**
 - 背景：`docs/pi-controlled-query-plan-20261007.md`、`docs/agent-reuse-selection-20261007.md`。文件名带 pi 不代表当前选择 Pi。
 
 ## 工作区与本轮范围

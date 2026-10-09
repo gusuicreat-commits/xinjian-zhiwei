@@ -1,13 +1,10 @@
 """Independent regressions for the 2026-09-30 whole-project audit."""
 
-import base64
 import hashlib
-import io
 import json
 import os
 import sys
 import time
-import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock
 from uuid import uuid4
@@ -240,57 +237,6 @@ def test_parallel_failed_logins_are_bounded(audit_env, monkeypatch):
     assert sorted(responses) == [401] * 5 + [429] * 3
 
 
-@pytest.mark.parametrize("unsupported", [False, True])
-@pytest.mark.skipif(sys.platform != "linux", reason="Bounded parsing verified in Linux container")
-def test_empty_or_unsupported_docx_is_client_error(api_context, unsupported):
-    import struct
-
-    from test_knowledge_api import _review_headers
-
-    from app.main import app
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(
-            "word/document.xml",
-            '<w:document xmlns:w="http://schemas.openxmlformats.org/'
-            'wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>',
-        )
-    raw = bytearray(buffer.getvalue())
-    if unsupported:
-        struct.pack_into("<H", raw, raw.index(b"PK\x03\x04") + 8, 99)
-        struct.pack_into("<H", raw, raw.index(b"PK\x01\x02") + 10, 99)
-    headers = _review_headers(api_context)["organizer"]
-    with TestClient(app, raise_server_exceptions=False) as client:
-        source = client.post(
-            "/api/v1/knowledge/sources",
-            headers=headers,
-            json={
-                "source_key": "bad-docx",
-                "source_type": "synthetic",
-                "title": "test",
-                "is_test_data": True,
-            },
-        )
-        assert source.status_code == 201
-        response = client.post(
-            f"/api/v1/knowledge/sources/{source.json()['id']}/documents/file",
-            headers=headers,
-            json={
-                "filename": "empty.docx",
-                "content_base64": base64.b64encode(raw).decode(),
-                "media_type": (
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                ),
-            },
-        )
-    assert response.status_code == 422
-    assert response.json()["detail"]["code"] in {
-        "KNOWLEDGE_FILE_EMPTY",
-        "KNOWLEDGE_FILE_PARSE_FAILED",
-    }
-
-
 def test_docs_scripts_are_allowed_without_weakening_json_api(api_context):
     import re
 
@@ -362,7 +308,6 @@ def test_expired_reservation_cannot_issue_session(audit_env):
 
 def test_login_limits_survive_separate_processes(audit_env):
     import subprocess
-    import sys
 
     # Separate interpreters have no shared Python locks or in-memory counters.
     code = """
@@ -457,41 +402,6 @@ def test_concurrent_template_publications_leave_one_current(audit_env):
     with env.sessions() as db:
         statuses = [db.get(ExperimentTemplateVersion, version_id).status for version_id in ids]
         assert sorted(statuses) == ["published", "superseded"]
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Bounded parsing verified in Linux container")
-def test_expanded_docx_is_bounded_before_parsing():
-    from app.services.knowledge import KnowledgeServiceError
-    from app.services.knowledge_files import decode_and_extract
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("word/document.xml", "x" * 100_000)
-    assert len(buffer.getvalue()) < 1000
-    with pytest.raises(KnowledgeServiceError) as error:
-        decode_and_extract("large.docx", base64.b64encode(buffer.getvalue()).decode(), 1000)
-    assert error.value.code == "KNOWLEDGE_FILE_TOO_LARGE"
-
-
-@pytest.mark.parametrize("length, expected", [(100, 404), (101, 422), (150, 422)])
-def test_file_media_type_matches_internal_storage_limit(api_context, length, expected):
-    from test_knowledge_api import _review_headers
-
-    from app.main import app
-
-    headers = _review_headers(api_context)["organizer"]
-    with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.post(
-            "/api/v1/knowledge/sources/missing/documents/file",
-            headers=headers,
-            json={
-                "filename": "valid.txt",
-                "content_base64": base64.b64encode(b"valid text").decode(),
-                "media_type": "x" * length,
-            },
-        )
-    # A valid length proceeds to source lookup; invalid lengths never enter the service.
-    assert response.status_code == expected
 
 
 def test_login_reservations_bound_capacity_and_clean_expired_rows(audit_env, monkeypatch):
