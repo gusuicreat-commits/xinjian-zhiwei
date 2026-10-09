@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import threading
 import time
@@ -12,7 +13,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, inspect, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,8 @@ from app.ai.clients import AIClient, AICompletion, AIProviderError
 from app.core.config import Settings
 from app.models.ai_operation import AIOperation
 from app.models.ai_usage_reservation import AIUsageReservation
+from app.models.base import utc_now
+from app.models.classroom import AuditEvent
 from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_result import DiagnosisResult
 from app.services.diagnosis_episode import episode_for_diagnosis, issue_links
@@ -28,6 +31,7 @@ from app.services.lightweight_diagnosis import budget_allowed, estimate_ai_cost
 # PostgreSQL also locks across workers. The process lock supports SQLite's
 # single-connection in-memory test mode; file SQLite additionally locks writes.
 _reservation_lock = threading.RLock()
+logger = logging.getLogger(__name__)
 
 
 class AIQuotaDenied(AIProviderError):
@@ -144,7 +148,73 @@ class GovernedAIInvocation:
         self.cumulative_budget_limit = cumulative_budget_limit
         self._delivery_scope = None
         self.operation = None
+        self.completion_available_for_delivery = False
         self.deadline = time.monotonic() + settings.ai_total_timeout_seconds
+
+    def audit_delivery_denial(self, error_code: str) -> bool:
+        """Link a refused delivery to its paid operation, without copying content or cost.
+
+        The operation row serializes writers across PostgreSQL workers; the process
+        lock also protects single-connection SQLite fixtures. Roll back any draft
+        mutation before persisting this independent event. Audit failure must never
+        replace the caller's authorization refusal or permit delivery.
+        """
+        if not self.completion_available_for_delivery or self.operation is None:
+            return False
+        # A final write refusal can expire the ORM object. Its persistent identity
+        # avoids an unaudited SELECT before the storage-error handler is active.
+        identity = inspect(self.operation).identity
+        if identity is None:
+            return False
+        operation_id = identity[0]
+        try:
+            self.db.rollback()
+        except SQLAlchemyError:
+            logger.error("ai_delivery_denial_audit_unavailable")
+            return False
+        if not _reservation_lock.acquire(timeout=2):
+            logger.error("ai_delivery_denial_audit_unavailable")
+            return False
+        try:
+            if self.db.get_bind().dialect.name == "postgresql":
+                self.db.execute(text(
+                    "SELECT set_config('lock_timeout', '2000', true), "
+                    "set_config('statement_timeout', '2000', true)"
+                ))
+            operation = self.db.scalar(select(AIOperation).where(
+                AIOperation.id == operation_id
+            ).with_for_update().execution_options(populate_existing=True))
+            if operation is None or operation.status != "succeeded":
+                self.db.rollback()
+                return False
+            existing = self.db.scalar(select(AuditEvent.id).where(
+                AuditEvent.action == "ai.delivery_denied",
+                AuditEvent.resource_type == "ai_operation",
+                AuditEvent.resource_id == operation.id,
+            ))
+            if existing is None:
+                self.db.add(AuditEvent(
+                    action="ai.delivery_denied",
+                    resource_type="ai_operation",
+                    resource_id=operation.id,
+                    details_json={"call_stage": operation.call_stage,
+                                  "attempt_no": operation.attempt_no,
+                                  "error_code": error_code},
+                    is_test_data=self.diagnosis.is_test_data,
+                    created_at=utc_now(),
+                ))
+            self.db.commit()
+            return True
+        except SQLAlchemyError:
+            try:
+                self.db.rollback()
+            except SQLAlchemyError:
+                # Best-effort audit cleanup cannot replace the delivery refusal.
+                pass
+            logger.error("ai_delivery_denial_audit_unavailable")
+            return False
+        finally:
+            _reservation_lock.release()
 
     @staticmethod
     def _aware(value):
@@ -528,6 +598,7 @@ class GovernedAIInvocation:
         # A prior succeeded operation can be loaded during a new, conflicting request.
         # Only a response settled by this invocation may create a post-response audit.
         self.response_settled_this_call = False
+        self.completion_available_for_delivery = False
         try:
             self._bound_database_wait()
             delivery_scope = current_delivery_scope(self.db, self.diagnosis)
@@ -546,6 +617,7 @@ class GovernedAIInvocation:
             self.db.rollback()
             raise
         if reservation is None:
+            self.completion_available_for_delivery = True
             return AICompletion(**self.operation.completion)
         try:
             call = getattr(client, "complete_json_once", client.complete_json)
@@ -591,6 +663,7 @@ class GovernedAIInvocation:
         self.operation.retry_allowed = False
         self._settle()
         self.response_settled_this_call = True
+        self.completion_available_for_delivery = True
         try:
             self._bound_database_wait()
             if self.recheck_access is not None:

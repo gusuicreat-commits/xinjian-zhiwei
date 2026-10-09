@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient, build_ai_client
 from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_payload
-from app.ai.governance import GovernedAIInvocation
+from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
 from app.core.config import Settings
 from app.models.base import utc_now
 from app.models.classroom import User
@@ -22,6 +22,7 @@ from app.models.guidance_history import GuidanceHistory
 from app.models.knowledge import KnowledgeCase, KnowledgeCaseDraft
 from app.schemas.knowledge_case import AICasePolishFields
 from app.services.auth import ActorContext, AuthorizationDenied, current_actor
+from app.services.data_scope import ScopeViolation
 from app.services.knowledge_authorization import authorize_case_write
 from app.services.provenance import derive_test_flag
 
@@ -480,9 +481,12 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
                                  generated.model_dump(mode="json", by_alias=True)}
             validate_grounded_polish(draft, candidate_payload)
             break
-        except AuthorizationDenied:
+        except (AuthorizationDenied, ScopeViolation):
+            governor.audit_delivery_denial("AI_DELIVERY_ACCESS_REVOKED")
             raise
         except Exception as exc:
+            if isinstance(exc, AIQuotaDenied):
+                governor.audit_delivery_denial(exc.code)
             if not governor.retry(exc) or attempt == settings.ai_max_retries:
                 raise CaseDraftError("AI case polish failed validation or quota check") from exc
     polished = deepcopy(draft.template_payload or {})
@@ -498,17 +502,23 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
         "attempt_count": governor.attempts,
         "estimated_cost": governor.estimated_cost,
     }
-    if recheck_access is not None:
-        recheck_access()
-    return apply_ai_assisted_polish(
-        db,
-        draft,
-        polished,
-        expected_version=expected_version,
-        expected_status=expected_status,
-        ai_audit=ai_audit,
-        actor_context=actor_context,
-    )
+    try:
+        if recheck_access is not None:
+            recheck_access()
+        return apply_ai_assisted_polish(
+            db,
+            draft,
+            polished,
+            expected_version=expected_version,
+            expected_status=expected_status,
+            ai_audit=ai_audit,
+            actor_context=actor_context,
+        )
+    except (AuthorizationDenied, ScopeViolation, AIQuotaDenied) as exc:
+        governor.audit_delivery_denial(
+            exc.code if isinstance(exc, AIQuotaDenied) else "AI_DELIVERY_ACCESS_REVOKED"
+        )
+        raise
 
 
 def submit_case_draft_for_review(

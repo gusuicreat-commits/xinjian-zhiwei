@@ -135,6 +135,10 @@ def test_polish_revoked_while_waiting_never_sends(persisted_draft, monkeypatch):
     assert db.scalar(select(func.count(AIUsageReservation.id))) == 0
     db.refresh(draft)
     assert draft.version_no == version and draft.polished_payload is None
+    from app.models import AuditEvent
+
+    assert db.scalar(select(func.count(AuditEvent.id)).where(
+        AuditEvent.action == "ai.delivery_denied")) == 0
 
 
 def test_fixed_graph_reasoning_revalidates_runtime_actor(api_context, monkeypatch):
