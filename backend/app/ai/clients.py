@@ -14,10 +14,11 @@ import anyio
 import httpx
 
 from app.core.config import Settings
-from app.core.errors import DomainError
+from app.core.errors import ConflictError, DomainError, InvalidRequest, TemporarilyUnavailable
 
 
 class AIProviderError(DomainError, RuntimeError):
+    """Compatibility base; new producers use the certainty-specific subclasses."""
     def __init__(
         self,
         message: str,
@@ -34,6 +35,41 @@ class AIProviderError(DomainError, RuntimeError):
         self.retryable = retryable
         self.retry_after = retry_after
         self.outcome_unknown = outcome_unknown
+
+
+class ProviderRequestRejected(AIProviderError, InvalidRequest):
+    """Known request rejection: unchanged input must not be retried."""
+
+    def __init__(self, message, **metadata):
+        metadata.update(retryable=False, outcome_unknown=False)
+        super().__init__(message, **metadata)
+
+
+class ProviderTemporaryFailure(AIProviderError, TemporarilyUnavailable):
+    """Known failure admitted by the existing bounded retry policy (e.g. 429)."""
+
+    def __init__(self, message, **metadata):
+        metadata.update(retryable=True, outcome_unknown=False)
+        super().__init__(message, **metadata)
+
+
+class ProviderOutcomeUnknown(AIProviderError, ConflictError):
+    """Reconcile the original operation; never automatically resend or refund."""
+
+    def __init__(self, message, **metadata):
+        metadata.update(retryable=False, outcome_unknown=True)
+        super().__init__(message, **metadata)
+
+
+def classified_provider_error(error: AIProviderError) -> AIProviderError:
+    """Adapt legacy/fake clients without changing their safe retry metadata."""
+    if isinstance(error, (ProviderRequestRejected, ProviderTemporaryFailure,
+                          ProviderOutcomeUnknown)):
+        return error
+    category = (ProviderOutcomeUnknown if error.outcome_unknown else
+                ProviderTemporaryFailure if error.retryable else ProviderRequestRejected)
+    return category(str(error), code=error.code, status_code=error.status_code,
+                    retry_after=error.retry_after)
 
 
 def retry_after_seconds(value: str | None) -> float | None:
@@ -76,7 +112,7 @@ class DisabledAIClient:
 
     def complete_json(self, *, system_prompt: str, user_prompt: str) -> AICompletion:
         del system_prompt, user_prompt
-        raise AIProviderError("AI Provider is not configured")
+        raise ProviderRequestRejected("AI Provider is not configured")
 
 
 class OpenAICompatibleClient:
@@ -148,13 +184,15 @@ class OpenAICompatibleClient:
             content = response["choices"][0]["message"]["content"]
             usage = response.get("usage")
         except (KeyError, IndexError, TypeError) as exc:
-            raise AIProviderError("AI Provider returned an unsupported response shape") from exc
+            raise ProviderOutcomeUnknown(
+                "AI Provider returned an unsupported response shape"
+            ) from exc
         if not isinstance(content, str) or not content.strip():
-            raise AIProviderError("AI Provider returned empty content")
+            raise ProviderOutcomeUnknown("AI Provider returned empty content")
         if usage is None:
             usage = {}
         if not isinstance(usage, dict):
-            raise AIProviderError("AI Provider returned unsupported usage metadata")
+            raise ProviderOutcomeUnknown("AI Provider returned unsupported usage metadata")
         return AICompletion(
             content=content,
             input_tokens=_optional_int(usage.get("prompt_tokens")),
@@ -185,20 +223,21 @@ class OpenAICompatibleClient:
                     ) as response:
                         status = response.status_code
                         if status >= 400:
-                            known = status < 500
-                            raise AIProviderError(
+                            # Existing policy: 5xx does not prove non-execution.
+                            category = (ProviderOutcomeUnknown if status >= 500 else
+                                        ProviderTemporaryFailure if status == 429 else
+                                        ProviderRequestRejected)
+                            raise category(
                                 "AI Provider HTTP rejection",
                                 code=f"HTTP_{status}",
                                 status_code=status,
-                                retryable=status == 429,
                                 retry_after=retry_after_seconds(
                                     response.headers.get("retry-after")
                                 ),
-                                outcome_unknown=not known,
                             )
                         encoding = response.headers.get("content-encoding", "identity").lower()
                         if encoding not in {"identity", "gzip", "deflate"}:
-                            raise AIProviderError(
+                            raise ProviderOutcomeUnknown(
                                 "Unsupported response encoding", code="RESPONSE_ENCODING"
                             )
                         decoder = (
@@ -211,18 +250,18 @@ class OpenAICompatibleClient:
                         async for chunk in response.aiter_raw(chunk_size=16384):
                             wire_size += len(chunk)
                             if wire_size > self._response_max_bytes:
-                                raise AIProviderError(
+                                raise ProviderOutcomeUnknown(
                                     "AI response too large", code="RESPONSE_LIMIT"
                                 )
                             available = self._response_max_bytes - len(body)
                             decoded = decoder.decompress(chunk, available + 1) if decoder else chunk
                             if len(decoded) > available or (decoder and decoder.unconsumed_tail):
-                                raise AIProviderError(
+                                raise ProviderOutcomeUnknown(
                                     "AI response too large", code="RESPONSE_LIMIT"
                                 )
                             body.extend(decoded)
                         if decoder and not decoder.eof:
-                            raise AIProviderError(
+                            raise ProviderOutcomeUnknown(
                                 "AI response truncated", code="RESPONSE_TRUNCATED"
                             )
                         if time.monotonic() >= deadline:
@@ -243,20 +282,22 @@ class OpenAICompatibleClient:
             httpx.WriteError,
             httpx.RemoteProtocolError,
         ) as exc:
-            raise AIProviderError("AI Provider outcome unknown", code="OUTCOME_UNKNOWN") from exc
+            raise ProviderOutcomeUnknown(
+                "AI Provider outcome unknown", code="OUTCOME_UNKNOWN"
+            ) from exc
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
-            raise AIProviderError(
-                "AI Provider not connected", code="NOT_SENT", retryable=True, outcome_unknown=False
+            raise ProviderTemporaryFailure(
+                "AI Provider not connected", code="NOT_SENT"
             ) from exc
         except (ValueError, zlib.error, RecursionError) as exc:
-            raise AIProviderError(
+            raise ProviderTemporaryFailure(
                 "AI Provider invalid JSON",
                 code="INVALID_RESPONSE",
-                retryable=True,
-                outcome_unknown=False,
             ) from exc
         except httpx.HTTPError as exc:
-            raise AIProviderError("AI Provider transport failed", code="OUTCOME_UNKNOWN") from exc
+            raise ProviderOutcomeUnknown(
+                "AI Provider transport failed", code="OUTCOME_UNKNOWN"
+            ) from exc
 
 
 def build_ai_client(settings: Settings) -> AIClient:
@@ -322,5 +363,5 @@ def _optional_int(value: Any) -> int | None:
         or (isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()))
         or value < 0
     ):
-        raise AIProviderError("AI Provider returned invalid token usage")
+        raise ProviderOutcomeUnknown("AI Provider returned invalid token usage")
     return int(value)

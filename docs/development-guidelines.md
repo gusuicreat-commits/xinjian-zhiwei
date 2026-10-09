@@ -119,7 +119,7 @@
 |PKC|`knowledge/applicability.py`、`projection.py`、`experiment_packages/registry.py`|条件/top-k/来源/1.0hash/当前建议；`test_package_context*`、`test_case_applicability.py`|
 |CTX/STAGE|`ai/context_builder.py`、`context_status.py`、`experiment_packages/context_preview.py`|整单元/51条/秘密/实际预算；`test_context*`、`test_stage_context_admission.py`|
 |AI/SEM|`ai/reasoning.py`、`output_contract.py`、`current_advice.py`|两阶段许可/支持上限/unknown/旧别名/合法动作；`test_explanation_handoff.py`、`test_residual_semantic_contract.py`|
-|AI/治理外发|`ai/governance.py`、`clients.py`、`context_sanitizer.py`|三入口/未知发送/费用/等锁撤权及超时；`test_ai_operation*`、`test_ai_dispatch*`、`test_r2_provider_data_boundary.py`|
+|AI/治理外发/XJ-014|`ai/governance.py`、`clients.py`、`context_sanitizer.py`|三入口/未知发送/费用/等锁撤权及超时；确定拒绝、存储临时故障、Provider确定失败与结果未知分别分类，保持原外发/重发/计费/退款及润色409合同；`test_ai_error_semantics.py`、`test_ai_operation*`、`test_ai_dispatch*`、`test_r2_provider_data_boundary.py`|
 |AI/拒绝审计|`ai/governance.py::audit_delivery_denial`|Provider后0/1审计、回滚失败不吞撤权；`test_knowledge_case_drafting.py`|
 |QUERY/XJ-003..005|`query_sources.py`、`query_tasks.py`|8KiB/幂等/503非stale/409/结束403/GET无写；`test_query_*`|
 |UI|两端store、诊断/查询组件、`userLanguage.ts`、图表/样式、`review/state`|对象/迟到/原ID/私密/中文、卸载/五路由三宽度/离线；组件/store、`frontend/tests/e2e/`及`integration/`测试，截图人工审查|

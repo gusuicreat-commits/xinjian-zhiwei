@@ -1,41 +1,13 @@
 {
   "note": "XJ-010 audited baseline; files are relative to backend/app. Category 1=确定性降级, 2=应改为分类异常（后续工作）, 3=其他兼容/观测边界. Counts may only decrease; every site is documented.",
   "files": {
-    "ai/governance.py": 4,
     "ai/reasoning.py": 1,
     "api/http_boundary.py": 1,
     "evaluation/context_runner.py": 1,
     "evaluation/workflow_runner.py": 1,
-    "knowledge/case_drafting.py": 1,
     "services/diagnosis_workflow.py": 4
   },
   "reasons": {
-    "ai/governance.py": [
-      {
-        "line": 96,
-        "category": 2,
-        "reason": "current_delivery_scope 将范围存储故障转成混合 AIQuotaDenied；后续拆分临时不可用与确定额度/范围拒绝。",
-        "function": "current_delivery_scope"
-      },
-      {
-        "line": 573,
-        "category": 2,
-        "reason": "_reserve 回滚后重抛撤权或 _storage_error 包装；后续分类额度预留存储失败，保留原逻辑操作身份及发送前持久化语义。",
-        "function": "GovernedAIInvocation._reserve"
-      },
-      {
-        "line": 585,
-        "category": 2,
-        "reason": "_settle 回滚后转成 AIQuotaDenied；费用预留已持久化，需专门结算故障分类，不能自动退款或重发 Provider。",
-        "function": "GovernedAIInvocation._settle"
-      },
-      {
-        "line": 630,
-        "category": 2,
-        "reason": "complete_json 将 Provider 失败保存为 failed_known/outcome_unknown 并重抛混合包装；需按发送结果分类，未知结果不得标成可自动重试。",
-        "function": "GovernedAIInvocation.complete_json"
-      }
-    ],
     "ai/reasoning.py": [
       {
         "line": 554,
@@ -66,14 +38,6 @@
         "category": 3,
         "reason": "评测逐案例脱敏记录error及异常类型，保持报告失败语义，不暴露DSN，不是业务降级。",
         "function": "run_workflow_evaluation"
-      }
-    ],
-    "knowledge/case_drafting.py": [
-      {
-        "line": 488,
-        "category": 2,
-        "reason": "generate_ai_assisted_polish 在重试分支吞当前异常，耗尽时混合成 CaseDraftError；后续拆分输入/状态冲突、临时故障和发送结果未知，同时保留现有409契约。",
-        "function": "generate_ai_assisted_polish"
       }
     ],
     "services/diagnosis_workflow.py": [

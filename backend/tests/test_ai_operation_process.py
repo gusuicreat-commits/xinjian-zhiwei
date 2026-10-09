@@ -8,9 +8,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+from test_migration_r2 import migration_db as migration_db
 
 from app.ai.clients import OpenAICompatibleClient
-from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
+from app.ai.governance import AIOutcomeUnknown, GovernedAIInvocation
 from app.core.config import Settings
 from app.db.base import Base
 from app.models import Device, DiagnosisResult
@@ -25,6 +26,9 @@ def _settings():
         ai_require_knowledge=False,
         ai_calls_per_device_hour=10,
         ai_calls_per_episode=10,
+        ai_output_token_limit=10,
+        ai_input_cost_per_1k_tokens=1,
+        ai_output_cost_per_1k_tokens=2,
     )
 
 
@@ -47,12 +51,18 @@ def _worker(url, diagnosis_id, endpoint):
         governor.complete_json(_client(endpoint), system_prompt="test", user_prompt="test")
 
 
-def test_kill_after_server_receives_does_not_resend(tmp_path, monkeypatch):
+@pytest.mark.parametrize("storage", ["sqlite", "postgresql"])
+def test_kill_after_server_receives_does_not_resend(tmp_path, monkeypatch, request, storage):
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
-    url = f"sqlite:///{tmp_path / 'operation.sqlite'}"
-    engine = create_engine(url)
-    Base.metadata.create_all(engine)
+    if storage == "postgresql":
+        engine, migrate = request.getfixturevalue("migration_db")
+        migrate("upgrade", "head")
+        url = engine.url.render_as_string(hide_password=False)
+    else:
+        url = f"sqlite:///{tmp_path / 'operation.sqlite'}"
+        engine = create_engine(url)
+        Base.metadata.create_all(engine)
     with Session(engine) as db:
         device = Device(
             device_key="synthetic-process",
@@ -109,10 +119,14 @@ def test_kill_after_server_receives_does_not_resend(tmp_path, monkeypatch):
             governor = GovernedAIInvocation(
                 db, db.get(DiagnosisResult, diagnosis_id), _settings(), call_stage="process-test"
             )
-            with pytest.raises(AIQuotaDenied, match="AI_OUTCOME_UNKNOWN"):
+            with pytest.raises(AIOutcomeUnknown, match="AI_OUTCOME_UNKNOWN"):
                 governor.complete_json(_client(endpoint), system_prompt="test", user_prompt="test")
             assert len(list(db.scalars(select(AIUsageReservation)))) == 1
             assert len(calls) == 1
+            reservation = db.scalar(select(AIUsageReservation))
+            # "test" + "test" = 3 estimated input tokens, output ceiling = 10.
+            assert (reservation.reserved_cost, reservation.accounted_cost) == (.023, .023)
+            assert db.scalar(select(AIOperation)).attempt_no == 1
     finally:
         release.set()
         if process.is_alive():

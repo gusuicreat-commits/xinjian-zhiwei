@@ -17,14 +17,29 @@ from sqlalchemy import func, inspect, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.ai.clients import AIClient, AICompletion, AIProviderError
+from app.ai.clients import (
+    AIClient,
+    AICompletion,
+    AIProviderError,
+    ProviderOutcomeUnknown,
+    classified_provider_error,
+)
 from app.core.config import Settings
+from app.core.errors import (
+    AccessDenied,
+    ConflictError,
+    InvalidRequest,
+    StaleError,
+    TemporarilyUnavailable,
+)
 from app.models.ai_operation import AIOperation
 from app.models.ai_usage_reservation import AIUsageReservation
 from app.models.base import utc_now
 from app.models.classroom import AuditEvent
 from app.models.diagnosis_episode import DiagnosisEpisode
 from app.models.diagnosis_result import DiagnosisResult
+from app.services.auth import AuthorizationDenied
+from app.services.data_scope import ScopeViolation
 from app.services.diagnosis_episode import episode_for_diagnosis, issue_links
 from app.services.lightweight_diagnosis import budget_allowed, estimate_ai_cost
 
@@ -35,8 +50,40 @@ logger = logging.getLogger(__name__)
 
 
 class AIQuotaDenied(AIProviderError):
+    """Compatibility base; refusals and storage failures have distinct subclasses."""
     def __init__(self, code: str):
         super().__init__(code, code=code, outcome_unknown=False)
+
+
+class AIQuotaRejected(AIQuotaDenied, ConflictError):
+    """Definite gate/budget/state refusal; no new physical attempt admitted."""
+
+
+class AIInputRejected(AIQuotaDenied, InvalidRequest):
+    """Definite preflight input/configuration refusal."""
+
+
+class AIScopeRejected(AIQuotaDenied, AccessDenied):
+    """Definite teaching/source scope refusal; storage failure is separate."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.status_code = 403
+
+
+class AIResultStale(AIQuotaDenied, StaleError):
+    """The source/version is known to have changed."""
+
+
+class AIStorageUnavailable(AIQuotaDenied, TemporarilyUnavailable):
+    """Storage unavailable; retain durable reservations and never authorize resend."""
+
+
+class AIOutcomeUnknown(AIQuotaDenied, ProviderOutcomeUnknown):
+    """Compatibility refusal when recovering an unresolved/dispatching operation."""
+
+    def __init__(self, code):
+        AIProviderError.__init__(self, code, code=code, outcome_unknown=True)
 
 
 @dataclass(frozen=True)
@@ -69,15 +116,15 @@ def current_delivery_scope(db, diagnosis):
     try:
         db.refresh(diagnosis)
         if diagnosis.matched_rules and episode_for_diagnosis(db, diagnosis) is None:
-            raise AIQuotaDenied("EPISODE_SCOPE_UNRESOLVED")
+            raise AIScopeRejected("EPISODE_SCOPE_UNRESOLVED")
         owner = diagnosis_session(db, diagnosis)
         if (diagnosis.context_snapshot or {}).get("feedback_scope") and owner is None:
-            raise ValueError("diagnosis owner is unresolved")
+            raise AIScopeRejected("AI_DIAGNOSIS_OWNER_UNRESOLVED")
         if owner is not None:
             db.refresh(owner)
             student = db.get(User, owner.student_user_id, populate_existing=True)
             if student is None or not student.is_active or owner.status != "active":
-                raise ValueError("student session is no longer active")
+                raise AIScopeRejected("AI_SESSION_SCOPE_DENIED")
             if not is_demo_session(db, owner):
                 assert_student_session_access(db, student, owner)
         if diagnosis.experiment_version_id:
@@ -85,7 +132,7 @@ def current_delivery_scope(db, diagnosis):
         from app.services.memory import diagnosis_sources_available
 
         if not diagnosis_sources_available(db, diagnosis):
-            raise AIQuotaDenied("AI_KNOWLEDGE_WITHDRAWN")
+            raise AIScopeRejected("AI_KNOWLEDGE_WITHDRAWN")
         result = []
         for link in issue_links(db, diagnosis):
             db.refresh(link.episode)
@@ -93,10 +140,12 @@ def current_delivery_scope(db, diagnosis):
         return tuple(sorted(result))
     except AIQuotaDenied:
         raise
-    except Exception as exc:
+    except (AuthorizationDenied, ScopeViolation):
+        raise
+    except SQLAlchemyError as exc:
         if getattr(getattr(exc, "orig", None), "sqlstate", None) in {"55P03", "57014"}:
-            raise AIQuotaDenied("AI_DEADLINE_EXCEEDED") from exc
-        raise AIQuotaDenied("AI_TEACHING_SCOPE_UNAVAILABLE") from exc
+            raise AIStorageUnavailable("AI_DEADLINE_EXCEEDED") from exc
+        raise AIStorageUnavailable("AI_TEACHING_SCOPE_UNAVAILABLE") from exc
 
 
 def estimate_prompt_tokens(system_prompt: str, user_prompt: str) -> int:
@@ -249,7 +298,7 @@ class GovernedAIInvocation:
             return bool(changed)
         except SQLAlchemyError as error:
             self.db.rollback()
-            raise AIQuotaDenied("AI_QUOTA_STORAGE_UNAVAILABLE") from error
+            raise AIStorageUnavailable("AI_QUOTA_STORAGE_UNAVAILABLE") from error
 
     def _wait_retry(self):
         operation = self.db.scalar(
@@ -274,7 +323,7 @@ class GovernedAIInvocation:
                 else 0.0
             )
             if delay >= remaining or time.monotonic() + delay >= self.deadline:
-                raise AIQuotaDenied("AI_DEADLINE_EXCEEDED")
+                raise AIQuotaRejected("AI_DEADLINE_EXCEEDED")
             self.db.commit()  # no DB transaction during backoff
             if delay:
                 time.sleep(delay)
@@ -291,7 +340,7 @@ class GovernedAIInvocation:
                 current_source(self.db, source, is_test_data=self.diagnosis.is_test_data)
                 for source in self.source_snapshot
             ):
-                raise AIQuotaDenied("AI_KNOWLEDGE_CHANGED")
+                raise AIResultStale("AI_KNOWLEDGE_CHANGED")
         if self.diagnosis.experiment_version_id:
             snapshot = [
                 package_source(
@@ -305,10 +354,10 @@ class GovernedAIInvocation:
             for case_id in sorted(self.knowledge_case_ids):
                 case = self.db.get(KnowledgeCase, case_id, populate_existing=True)
                 if not approved_case(case, is_test_data=self.diagnosis.is_test_data):
-                    raise AIQuotaDenied("AI_KNOWLEDGE_WITHDRAWN")
+                    raise AIScopeRejected("AI_KNOWLEDGE_WITHDRAWN")
                 snapshot.append(case_source(case))
         if self._knowledge_snapshot is not None and snapshot != self._knowledge_snapshot:
-            raise AIQuotaDenied("AI_KNOWLEDGE_CHANGED")
+            raise AIResultStale("AI_KNOWLEDGE_CHANGED")
         self._knowledge_snapshot = snapshot
 
     @property
@@ -323,7 +372,7 @@ class GovernedAIInvocation:
     def _bound_database_wait(self):
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
-            raise AIQuotaDenied("AI_DEADLINE_EXCEEDED")
+            raise AIQuotaRejected("AI_DEADLINE_EXCEEDED")
         if self.db.get_bind().dialect.name == "postgresql":
             # Transaction-local: pool reuse must not inherit this request's limit.
             millis = str(max(1, int(remaining * 1000)))
@@ -336,7 +385,7 @@ class GovernedAIInvocation:
     def _reservation_slot(self):
         remaining = max(0.0, self.deadline - time.monotonic())
         if not _reservation_lock.acquire(timeout=remaining):
-            raise AIQuotaDenied("AI_DEADLINE_EXCEEDED")
+            raise AIQuotaRejected("AI_DEADLINE_EXCEEDED")
         try:
             yield
         finally:
@@ -345,7 +394,7 @@ class GovernedAIInvocation:
     @staticmethod
     def _storage_error(exc):
         code = getattr(getattr(exc, "orig", None), "sqlstate", None)
-        return AIQuotaDenied(
+        return AIStorageUnavailable(
             "AI_DEADLINE_EXCEEDED" if code in {"55P03", "57014"}
             else "AI_QUOTA_STORAGE_UNAVAILABLE"
         )
@@ -353,10 +402,10 @@ class GovernedAIInvocation:
     def _reserve(self, client: AIClient, system_prompt: str, user_prompt: str):
         settings = self.settings
         if not settings.ai_enabled or not client.configured:
-            raise AIQuotaDenied("AI_NOT_CONFIGURED")
+            raise AIInputRejected("AI_NOT_CONFIGURED")
         tokens = estimate_prompt_tokens(system_prompt, user_prompt)
         if tokens > settings.ai_input_token_limit:
-            raise AIQuotaDenied("INPUT_TOKEN_LIMIT")
+            raise AIInputRejected("INPUT_TOKEN_LIMIT")
         projected = estimate_ai_cost(tokens, settings.ai_output_token_limit, settings)
         with self._reservation_slot():
             # Existing business rows must be durable before reserving and sending.
@@ -369,13 +418,13 @@ class GovernedAIInvocation:
                 elif dialect == "sqlite":
                     self.db.connection().exec_driver_sql("BEGIN IMMEDIATE")
                 else:
-                    raise AIQuotaDenied("AI_QUOTA_STORAGE_UNSUPPORTED")
+                    raise AIInputRejected("AI_QUOTA_STORAGE_UNSUPPORTED")
                 # Both backoff and quota-lock acquisition can outlive authority.
                 # Validate before *either* a new reservation or a saved completion.
                 if self.recheck_access is not None:
                     self.recheck_access()
                 if current_delivery_scope(self.db, self.diagnosis) != self._delivery_scope:
-                    raise AIQuotaDenied("AI_RESULT_STALE")
+                    raise AIResultStale("AI_RESULT_STALE")
                 self._check_knowledge()
                 from app.ai.context_contract import CONTEXT_POLICY_VERSION
                 from app.ai.output_contract import (
@@ -442,7 +491,7 @@ class GovernedAIInvocation:
                         .limit(1)
                     )
                     if legacy:
-                        raise AIQuotaDenied("AI_LEGACY_OUTCOME_UNRESOLVED")
+                        raise AIOutcomeUnknown("AI_LEGACY_OUTCOME_UNRESOLVED")
                     operation = AIOperation(
                         operation_key=self.operation_key,
                         diagnosis_result_id=self.diagnosis.id,
@@ -458,7 +507,7 @@ class GovernedAIInvocation:
                     self.db.flush()
                 self.operation = operation
                 if operation.input_hash != fingerprint:
-                    raise AIQuotaDenied("AI_OPERATION_INPUT_CONFLICT")
+                    raise AIQuotaRejected("AI_OPERATION_INPUT_CONFLICT")
                 if operation.status == "succeeded" and operation.completion:
                     self.reservations = list(
                         self.db.scalars(
@@ -470,16 +519,16 @@ class GovernedAIInvocation:
                     self.db.commit()
                     return None
                 if operation.status in {"dispatching", "outcome_unknown"}:
-                    raise AIQuotaDenied("AI_OUTCOME_UNKNOWN")
+                    raise AIOutcomeUnknown("AI_OUTCOME_UNKNOWN")
                 if operation.status == "failed_known" and not operation.retry_allowed:
-                    raise AIQuotaDenied("AI_OPERATION_FAILED")
+                    raise AIQuotaRejected("AI_OPERATION_FAILED")
                 if operation.attempt_no >= settings.ai_max_retries + 1:
-                    raise AIQuotaDenied("AI_OPERATION_ATTEMPTS_EXHAUSTED")
+                    raise AIQuotaRejected("AI_OPERATION_ATTEMPTS_EXHAUSTED")
                 if (
                     self._aware(operation.deadline_at) <= datetime.now(timezone.utc)
                     or time.monotonic() >= self.deadline
                 ):
-                    raise AIQuotaDenied("AI_DEADLINE_EXCEEDED")
+                    raise AIQuotaRejected("AI_DEADLINE_EXCEEDED")
                 if effective_limits is not None:
                     attempts = self.db.scalar(select(func.count(AIUsageReservation.id)).where(
                         AIUsageReservation.diagnosis_result_id == self.diagnosis.id
@@ -489,10 +538,10 @@ class GovernedAIInvocation:
                         AIUsageReservation.call_stage == "query_select",
                     ))
                     if attempts >= effective_limits.total:
-                        raise AIQuotaDenied("AI_TASK_ATTEMPTS_EXHAUSTED")
+                        raise AIQuotaRejected("AI_TASK_ATTEMPTS_EXHAUSTED")
                     if (self.call_stage == "query_select"
                             and selections >= effective_limits.selection):
-                        raise AIQuotaDenied("AI_SELECTION_ATTEMPTS_EXHAUSTED")
+                        raise AIQuotaRejected("AI_SELECTION_ATTEMPTS_EXHAUSTED")
                 if effective_budget is not None:
                     # Under the same quota lock as reservation creation, count failed,
                     # in-flight and older-day calls. Do not introduce another ledger.
@@ -503,16 +552,16 @@ class GovernedAIInvocation:
                         func.sum(AIUsageReservation.accounted_cost), 0.0
                     )))
                     if projected is None or unknown_costs:
-                        raise AIQuotaDenied("AI_CUMULATIVE_COST_UNRESOLVED")
+                        raise AIQuotaRejected("AI_CUMULATIVE_COST_UNRESOLVED")
                     if float(spent) + projected > effective_budget:
-                        raise AIQuotaDenied("AI_CUMULATIVE_BUDGET_LIMIT")
+                        raise AIQuotaRejected("AI_CUMULATIVE_BUDGET_LIMIT")
                 if self.episode is None:
                     self.episode = episode_for_diagnosis(self.db, self.diagnosis)
                 if self.episode is not None:
                     # expire_on_commit=False sessions may retain a pre-lock count.
                     self.db.refresh(self.episode)
                 if self.episode is None and self.diagnosis.matched_rules:
-                    raise AIQuotaDenied("EPISODE_SCOPE_UNRESOLVED")
+                    raise AIScopeRejected("EPISODE_SCOPE_UNRESOLVED")
                 episodes = {
                     link.episode_id: link.episode for link in issue_links(self.db, self.diagnosis)
                 }
@@ -529,12 +578,12 @@ class GovernedAIInvocation:
                         projected_call_cost=projected,
                     )
                     if not allowed:
-                        raise AIQuotaDenied(reason or "AI_BUDGET_LIMIT")
+                        raise AIQuotaRejected(reason or "AI_BUDGET_LIMIT")
                 if projected is None and (
                     settings.ai_daily_budget is not None
                     or settings.ai_max_cost_per_call is not None
                 ):
-                    raise AIQuotaDenied("AI_COST_ESTIMATE_UNAVAILABLE")
+                    raise AIInputRejected("AI_COST_ESTIMATE_UNAVAILABLE")
                 reservation = AIUsageReservation(
                     diagnosis_result_id=self.diagnosis.id,
                     operation_id=operation.id,
@@ -570,23 +619,21 @@ class GovernedAIInvocation:
             except AIQuotaDenied:
                 self.db.rollback()
                 raise
-            except Exception as exc:
+            except (AuthorizationDenied, ScopeViolation):
                 self.db.rollback()
-                from app.services.auth import AuthorizationDenied
-                from app.services.data_scope import ScopeViolation
-
-                if isinstance(exc, (AuthorizationDenied, ScopeViolation)):
-                    raise
+                raise
+            except SQLAlchemyError as exc:
+                self.db.rollback()
                 raise self._storage_error(exc) from exc
 
     def _settle(self):
         try:
             self.db.commit()
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             self.db.rollback()
             # The pre-I/O reservation remains durable and charged. Never retry a
             # provider request just because its settlement could not be saved.
-            raise AIQuotaDenied("AI_QUOTA_STORAGE_UNAVAILABLE") from exc
+            raise AIStorageUnavailable("AI_QUOTA_STORAGE_UNAVAILABLE") from exc
 
     def complete_json(
         self,
@@ -627,12 +674,8 @@ class GovernedAIInvocation:
             if isinstance(client, OpenAICompatibleClient):
                 kwargs["timeout_seconds"] = max(0.001, self.deadline - time.monotonic())
             completion = call(**kwargs)
-        except Exception as exc:
-            safe = (
-                exc
-                if isinstance(exc, AIProviderError)
-                else AIProviderError("AI Provider outcome unknown", code="OUTCOME_UNKNOWN")
-            )
+        except AIProviderError as exc:
+            safe = exc if isinstance(exc, AIQuotaDenied) else classified_provider_error(exc)
             reservation.status = "failed"
             reservation.error_code = safe.code
             self.operation.status = "outcome_unknown" if safe.outcome_unknown else "failed_known"
@@ -646,6 +689,8 @@ class GovernedAIInvocation:
                 )
                 self.operation.retry_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
             self._settle()
+            if safe is exc:
+                raise
             raise safe from exc
         reservation.status = "succeeded"
         reservation.input_tokens = completion.input_tokens
@@ -670,7 +715,7 @@ class GovernedAIInvocation:
                 self.recheck_access()
             self._check_knowledge()
             if current_delivery_scope(self.db, self.diagnosis) != delivery_scope:
-                raise AIQuotaDenied("AI_RESULT_STALE")
+                raise AIResultStale("AI_RESULT_STALE")
         except AIQuotaDenied:
             self.db.rollback()
             raise

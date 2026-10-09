@@ -6,11 +6,12 @@ from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
-from app.ai.clients import AIClient, build_ai_client
+from app.ai.clients import AIClient, AIProviderError, build_ai_client
 from app.ai.context_sanitizer import ProviderInputError, sanitize_provider_payload
 from app.ai.governance import AIQuotaDenied, GovernedAIInvocation
 from app.core.config import Settings
@@ -485,7 +486,7 @@ sourceIds 必须原样保留。root_cause.status 不是 confirmed 时，禁止�
         except (AuthorizationDenied, ScopeViolation):
             governor.audit_delivery_denial("AI_DELIVERY_ACCESS_REVOKED")
             raise
-        except Exception as exc:
+        except (AIProviderError, ValidationError, CaseDraftError) as exc:
             if isinstance(exc, AIQuotaDenied):
                 governor.audit_delivery_denial(exc.code)
             if not governor.retry(exc) or attempt == settings.ai_max_retries:

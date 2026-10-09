@@ -415,6 +415,22 @@ manifest修订不一致、MemoryEvent停用、固定包或范围变化、证据�
 
 清洗必须覆盖授权原始源的秘密、动态键和值、短敏感串及嵌套知识；数值保持类型，不任意豁免id或改编号，必需身份与秘密冲突取消增强。失败/重试均按实际尝试计费、在途占额，同请求及多问题不重复扣；有限非负金额、零预算禁调用，记范围/时区/币种/价目版本，只有可靠最大成本预留可称费用硬上限。未知费用独立待核对。
 
+错误按发送确定性分类，`AIProviderError`/`AIQuotaDenied` 只保留兼容捕获入口；分类本身不授予重发权限，实际策略仍由原操作状态、次数、期限、预算与 `retry()` 共同决定。`AIStorageUnavailable` 虽属临时不可用，仍被原额度兼容分支阻止 Provider 自动重发；已提交预留保持原状。
+
+| 失败类型（分类） | 是否重试 Provider | 是否计费 | 对外响应（沿用入口合同） |
+| --- | --- | --- | --- |
+| `AIInputRejected`（InvalidRequest）、`AIQuotaRejected`（Conflict）、`AIScopeRejected`（AccessDenied）、`AIResultStale`（Stale） | 否 | 发送前拒绝不新增预留；返回后拒绝保留原费用 | 诊断/解释保留确定性结果；润色 409，原 detail 不变 |
+| `AIStorageUnavailable`（TemporarilyUnavailable）：范围读取/预留/结算故障 | 否；结算故障恢复按原 dispatching 状态处理 | 发送前失败不新增费用；发送后保留已持久化预留，不退款 | 诊断/解释确定性回退；润色 409，存储失败不伪称范围失效 |
+| `ProviderRequestRejected`（InvalidRequest）：确定 4xx 请求错误 | 否 | 每次实际尝试保留原保守预留 | 诊断/解释确定性回退；润色 409 |
+| `ProviderTemporaryFailure`（TemporarilyUnavailable）：429、确定未连接或原策略允许重试的无效 JSON | 仅原策略允许时；429 不早于 Retry-After | 每次实际尝试单独记账，成功按可用 token 结算 | 重试成功沿用成功响应；耗尽后确定性回退/润色 409 |
+| `ProviderOutcomeUnknown` / 恢复时 `AIOutcomeUnknown`（Conflict）：读写中断、超时、截断、5xx、未决旧预留 | 否；必须核对原操作 | 保留原预留/失败费用，不自动退款 | 确定性回退/润色 409；恢复不新增外发 |
+| `ValidationError` / `CaseDraftError`（Conflict）：响应已完成但 Schema/事实校验拒绝 | 沿用原输出校验重试次数，不视为未知发送 | 每次已完成响应保留结算费用 | 润色耗尽后原 409/detail |
+| `AuthorizationDenied` / `ScopeViolation`（AccessDenied）：当前身份/权限撤回 | 否，显式传播 | 已返回并结算的费用保留 | 原 401/403 状态与响应体；拒绝交付 |
+
+表中确定性回退指诊断/解释的既有增强失败边界；若错误传播至工作流启动、审核或反馈路由，仍沿用各入口原有 503 响应体与原请求身份，不因类型继承改变 HTTP 合同。已结算成功后的来源/版本拒绝仍显式阻断交付。
+
+5xx 继续按现行未知结果策略处理，不能因其通常属于临时服务故障就改为重试。分类回归 `test_ai_error_semantics.py` 使用改动前 HEAD `d36e1c0` 的固定独立预期，真实隔离 PostgreSQL 验证存储失败与恢复金额；`test_ai_operation_process.py` 验证进程中断后不重发。
+
 `audit_delivery_denial` 的审计存储及清理回滚失败不能替换原交付拒绝；同操作仅一条 `ai.delivery_denied`，不补猜历史。回归由 `test_ai_operation*`、`test_ai_transport_lifecycle.py`、`test_ai_dispatch*`、`test_knowledge_case_drafting.py` 覆盖，软件通过不证明真实语义。
 
 ## 上下文完整性与后续取舍

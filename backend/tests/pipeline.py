@@ -172,6 +172,21 @@ def publish_package(db, name="dht11_temperature_humidity") -> ExperimentVersion:
     return version
 
 
+def diagnose_device(db, device: Device) -> DiagnosisResult:
+    """Persist the real unscoped deterministic flow, without fabricating derived rows.
+
+    For isolated governance tests that deliberately have no session/package or
+    telemetry. The consuming test conservatively marks its saved result as test data.
+    """
+    from app.core.config import Settings
+    from app.services.diagnosis_episode import upsert_episode
+
+    context = build_diagnosis_context(db, device)
+    result = save_diagnosis_result(db, device, context, diagnose(context))
+    upsert_episode(db, device, result, [], Settings(_env_file=None))
+    return result
+
+
 def diagnose_session(
     db,
     session: ExperimentSession,
