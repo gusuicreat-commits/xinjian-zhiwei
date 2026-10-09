@@ -305,6 +305,7 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 | 规则 | 唯一执行位置 | 入口与必须保留的反例 |
 | --- | --- | --- |
 | AUTH/R1：短事务最终授权 | `services/auth.py`的`ActorContext/authorize_actor`、`data_scope`、`student_authorization`、`knowledge_authorization` | HTTP/服务/图终结/CLI使用运行时身份引用，不把授权结果或令牌写Checkpoint；权限支持行受事务保护，等待后重验，拒绝无成功副作用；`test_shared_authorization*`、`test_template_authorization.py`、`test_knowledge_final_authorization.py`。Review-Token仅沿现有契约用于`GET /diagnosis/interventions`和`GET /ops/status`旧运维查询，不获得个人教师权限。 |
+| AUTH/XJ-008：全部 HTTP 操作登记 | `api/access_policy.py::ACCESS_POLICIES`；`test_access_policy.py` 执行门禁 | 按方法＋有效路径模板双向核对，包括根路径别名、OpenAPI JSON/HEAD 和隐藏文档路由；展开 FastAPI 惰性路由，与新生成 OpenAPI 可见操作一致，递归检查鉴权依赖及依赖权限/角色。新增、删除、鉴权变化必须同步登记；无凭据请求不能成功，公开操作须说明理由。设备缺凭据422须逐项登记状态、detail.code和来源并精确断言（见[设备协议](device-protocol.md#稳定错误)），其余非公开操作须401/403。处理函数内鉴权须显式登记可定位函数；服务内权限及写事务复查按源码如实声明，False 保留待办，不以登记或冒烟代替事务撤权测试。 |
 | ADVICE/R2、IDENTITY/R3：当前建议与实验身份 | `services/current_advice.py::assess_current_advice`、`knowledge/applicability.py::context_from_diagnosis` | 工作流/学生状态说明/解释记录共用来源、结构、策略校验；绑定冻结调用，保留教师编辑；未知/冲突实验不匹配，sensor_type不扩大范围；`test_shared_advice_regression.py`。 |
 | SOURCE/R4：原始来源保留 | `services/source_lifecycle.py` | 原始输入引用持久化和测试运行清理共用设备事务锁；校验冻结来源仍存在，全部引用/旧在途情况整次拒绝409，无引用允许清理及空重放；`test_shared_source_cleanup.py`、`test_shared_source_postgres.py`。 |
 | PROVENANCE/R5：测试来源传播 | `services/provenance.py::derive_test_flag` | 消息/导出/诊断/工作流/工单/案例/包/指导及审计的新记录；任一来源为测试或必要来源未知则不能标正式，不批量改历史；`test_provenance_contract.py`。 |

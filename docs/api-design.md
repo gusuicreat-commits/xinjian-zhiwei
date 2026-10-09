@@ -5,6 +5,8 @@
 ## 通用约定
 
 - API 前缀：`/api/v1`。
+- 新增、删除或变更 HTTP 操作的鉴权时，必须同步更新 `backend/app/api/access_policy.py` 登记表（方法＋完整路径模板），并通过 `backend/tests/test_access_policy.py` 门禁。根路径别名、OpenAPI JSON/HEAD 和 `include_in_schema=False` 路由也在范围内；登记鉴权方式、权限/角色、公开理由及实际写行为（包括 GET 的审计/状态写入），写操作如实声明事务内授权复查。依赖树核对和无凭据冒烟不代替服务权限、归属与撤权并发验证。
+- 设备凭据缺失返回 `422`、`detail.code=DEVICE_CREDENTIALS_REQUIRED` 是[设备协议契约](device-protocol.md#稳定错误)，仅逐项声明 `missing_credentials_status`、`missing_credentials_code` 和 `missing_credentials_source` 的操作可使用此例外；门禁核对精确状态与错误码，不接受框架校验列表或其他 422。其余非公开操作无凭据时必须返回 401/403（包括先检查身份的学生受控查询操作）。
 - 通常请求和响应使用 JSON；文件上传、CSV 导出等按各端点定义。旧单条遥测要求带时区时间；批量设备协议对缺失或不可信设备时间有明确回退规则。
 - 声明为严格模型的请求拒绝未知字段；`metadata` 等扩展对象按各 Schema 保留。不能将自由字典等同于整份请求免校验。
 - 测试数据显式标记；常规接口为 `is_test_data: true`，批量协议为 `isTestData: true`。
