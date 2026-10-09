@@ -6,11 +6,13 @@ from threading import Barrier
 from uuid import uuid4
 
 import pytest
+from shared_error_boundary import workflow_environment
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 from test_diagnosis_checks import check, ingest
 from test_teaching_materials import start
 
-from app.evaluation.workflow_environment import workflow_environment
+from app.core.errors import TemporarilyUnavailable
 from app.models import DiagnosisCheck, DiagnosisResult, DiagnosisWorkflowRun
 
 
@@ -56,7 +58,7 @@ def test_restart_after_graph_failure_keeps_input_and_original_identity(pg_env, m
     original = graph.invoke
 
     def fail(*args, **kwargs):
-        raise RuntimeError("synthetic worker interruption before graph start")
+        raise TemporarilyUnavailable("synthetic worker interruption before graph start")
 
     monkeypatch.setattr(graph, "invoke", fail)
     identity = str(uuid4())
@@ -86,7 +88,11 @@ def test_restart_after_business_commit_does_not_repeat_provider_or_diagnosis(pg_
     with monkeypatch.context() as patch:
 
         def fail(*args):
-            raise RuntimeError("synthetic lost receipt")
+            # A lost response is not a server exception. Here the receipt read
+            # fails temporarily after business commit, so the client misses it.
+            raise OperationalError(
+                "synthetic receipt read", {}, Exception("synthetic receipt storage outage"),
+            )
 
         patch.setattr(service, "comparison", fail)
         assert check(env, request_id=identity).status_code == 503

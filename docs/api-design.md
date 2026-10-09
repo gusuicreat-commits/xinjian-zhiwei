@@ -41,24 +41,51 @@
 混合不同含义（如 `CaseDraftError` 的校验/状态/AI失败和仅用于CLI的 `PreparationError`）；
 归类只沿用主要现有边界，不能把所有旧生产者解释为已完成精确细分。
 
-四个混合包装仅纳入 `DomainError`，不注册统一 HTTP 映射：`AIProviderError` 及其子类
-`AIQuotaDenied` 同时承载确定拒绝、故障和发送结果未知；`DiagnosisNodeExecutionError`
-携带任意节点失败的观测元数据；`ProtocolIngestError` 携带多状态协议错误信封。
-它们的单类别归类尚未完成，必须先按实际生产原因拆分，不能仅以继承关系假称临时可重试。
-Provider 已发送结果未知仍禁止自动重发/退款，协议既有401/409/413/422/429及错误体保持原样。
+`AIProviderError` 及其子类 `AIQuotaDenied` 仍是未拆分的 `DomainError` 混合包装，
+同时承载确定拒绝、故障和发送结果未知；不注册统一 HTTP 映射。本轮不改变其路由兼容
+503、调用治理或费用语义，Provider 已发送结果未知仍禁止自动重发/退款。
+
+XJ-013 保留 `DiagnosisNodeExecutionError` 作为观测信封：服务保存节点名、耗时和错误
+类型，路由通过 `original_error` 解开显式 `__cause__`，按原异常分类；没有 cause 的
+信封不能证明临时故障。`ProtocolIngestError` 是设备协议的显式信封，按实例的
+`status_code/retryable` 映射，无需强拆成单一类别；401/403/409/413/422 均不可原样重试，
+429 限流实例在退避后沿原 request_id/载荷重试。逐实例核对未发现相互矛盾的声明，
+协议响应体保持原样。
+
+工作流启动/审核与学生反馈只把可识别的临时故障适配为原有503错误体：
+`TemporarilyUnavailable`、连接/连接池失败、SQL语句或锁超时、死锁、序列化竞争、
+服务关闭/资源暂不可用。已分类拒绝/冲突/请求错误/失效传播，已有特定范围与授权响应
+保持原合同；其余未预期异常交给全局500，固定
+`detail={code: INTERNAL_ERROR, message: Request failed}`，不暴露异常正文。
+失败事务先回滚，已合法提交的原请求、回执和有界观测记录仍供同身份恢复。
+前端 `resilience.ts` 对所有 `>=500` 使用同一类别/重试操作，`commandOutcome.ts`
+对500/503均保留载荷及未知结果；检查沿原 request_id，反馈重试沿原载荷，教师审核
+保留原 workflow_id 并要求只读核查，不会自动换ID。前端源码本轮只读。
+
+来源读取仅将明确的 `OSError`/`TemporarilyUnavailable` 投影为 error，DBAPI异常保留
+SQLSTATE供命令边界回滚/503映射；已分类错误先于OSError传播（拒绝也可能继承
+PermissionError）。程序缺陷传播为500；读取故障和程序缺陷均不能制造stale。
+数据库就绪/依赖探针失败统一抛 `DatabaseProbeUnavailable`，它同时具有
+`TemporarilyUnavailable` 语义和原HTTP适配，保持503
+`detail={code: DATABASE_UNAVAILABLE, message: 异常类型名}`。
 
 兼容例外仍由原路由适配器执行：工作流的范围拒绝有专属 code/message，部分范围错误在
 查找/恢复接口返回404或403，教师审核范围冲突返回409 `DIAGNOSIS_SCOPE_INVALID`；
 工作流 `AuthorizationDenied` 使用字符串 detail 且先回滚，权限依赖的复核也使用字符串 detail；
-实验包加载错误在学生会话选择返回409，工作流启动/包校验返回422，某些恢复捕获返回503。
+实验包加载错误在学生会话选择返回409，工作流启动/包校验返回422。
 普通 `ValueError` 在包/模板状态和版本操作返回409，在干预动作返回422，在查询操作返回
-422 `invalid_query_request` 且回滚。这些捕获不能被新的默认映射覆盖。
-所有旧手写映射本轮保留：除了状态/响应差异，还包括回滚、后续宽泛捕获及只注册授权
+422 `invalid_query_request` 且回滚。查询命令适配器先回滚并重抛已分类的
+`AccessDenied/ConflictError/InvalidRequest/StaleError`，避免它们被普通 `ValueError`
+分支改写成422；原 `QueryConflict/QueryUnavailable` 专属适配保持不变。
+这些捕获不能被新的默认映射覆盖。
+除上述XJ-013分流外，旧手写映射保留：除了状态/响应差异，还包括回滚、后续宽泛捕获及只注册授权
 处理器的隔离评测应用。不能只删除某个 `except`，让它掉入后面的 ValueError/Exception 捕获。
 
 [`test_error_handling_gate.py`](../backend/tests/test_error_handling_gate.py) 扫描全部 `app/**/*.py`
 中的 `except Exception`、`except BaseException` 和裸捕获（含导入别名和元组），只有可见路径
-全部重新抛出或转为五类异常才豁免；混合包装仍需登记。条件重抛、嵌套函数中的 raise、
+全部重新抛出或转为五类异常才豁免；另仅接受 `DiagnosisNodeExecutionError(...) from exc`
+显式保留当前捕获实例的观测传播，丢失cause、替换exc或提前返回仍拒绝。
+其他混合包装仍需登记。条件重抛、嵌套函数中的 raise、
 改抛普通 ValueError/HTTPException 都不能掩盖吞异常路径。循环、嵌套try/context manager
 采取保守判定，不声称证明任意动态Python控制流。
 [`broad_except_allowlist.json`](../backend/tests/broad_except_allowlist.json) 逐文件计数，逐处记录
@@ -257,7 +284,7 @@ expected_state是预期，不是实测。读取不生成新指导、反馈或模
 | 相同 request_id、相同 action/note/episode_id | 已应用则返回原反馈（仍为 201）；未决则恢复或补确认原提交，不重复推进 |
 | 相同 request_id、不同 action/note/episode_id | 409，无新增副作用 |
 | 新 request_id | 视为有意的新尝试，受会话和工作流状态约束；有其他未决反馈时 409 |
-| 网络结果不明或 503 | 保留原 request_id 和原载荷重试；503 detail.code 为 `DIAGNOSIS_FEEDBACK_RETRY_REQUIRED` |
+| 网络结果不明或 500/503 | 保留原 request_id 和原载荷恢复；503 detail.code 为 `DIAGNOSIS_FEEDBACK_RETRY_REQUIRED`，500使用全局脱敏合同 |
 
 反馈在等待串行锁、生命周期锁、工作流行锁后重新核验当前身份、会话和原归属，返回前也重新鉴权；
 等待期间被撤权的请求不能靠早先校验继续操作或取得回执。已提交的业务记录保留原身份用于恢复。
@@ -389,6 +416,7 @@ expected_state是预期，不是实测。读取不生成新指导、反馈或模
 | 413 | 请求体或批次数量超过配置上限 |
 | 422 | 缺少认证头、字段缺失、类型错误、时间戳无时区或存在额外字段 |
 | 429 | 遥测写入超过设备共享速率限制，或登录失败/在途额度及总容量已满 |
+| 500 | 未预期程序缺陷，固定脱敏 `INTERNAL_ERROR`；保留原请求身份核查结果 |
 | 503 | 工作流基础设施暂不可用；常规模型失败由确定性降级处理 |
 
 ## 上下文审计兼容
@@ -433,6 +461,7 @@ expected_state是预期，不是实测。读取不生成新指导、反馈或模
 开始不创建任务/问题，查看不更改已保存状态，提交不写回执或消费问题；恢复后可重试同任务、
 同问题和同 `request_id`。已保存的120秒累计执行预算耗尽仍为409 `query_execution_timeout`，
 属于确定的任务上限，重试不重置已成功操作的累计预算。
+来源程序缺陷使用全局脱敏500，同样回滚整次事务并保留原请求身份，不能据此推断stale。
 503不是stale；manifest不一致、来源登记停用、包/范围修订变化、证据修改/删除仍为确定失效，
 维持下表的stale投影。当前撤权优先返回无存在性信息的403。
 

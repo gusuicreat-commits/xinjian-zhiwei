@@ -36,6 +36,13 @@ from app.services.device_protocol import _parse_device_time
 
 @dataclass(frozen=True)
 class ProtocolIngestError(DomainError):
+    """Explicit device-protocol envelope, mapped by each instance's HTTP status.
+
+    This is not a single retryability category: 401/403/409/413/422 are definitive
+    rejections (retryable=False); 429 quota admission is retryable=True after
+    backoff with the original request_id and payload. Routes retain this envelope.
+    """
+
     status_code: int
     error_code: str
     message: str

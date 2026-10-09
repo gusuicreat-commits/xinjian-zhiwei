@@ -8,9 +8,13 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from psycopg import OperationalError as DriverOperationalError
+from shared_error_boundary import workflow_environment
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
-from app.evaluation.workflow_environment import DEVICE_KEY, workflow_environment
+from app.core.errors import TemporarilyUnavailable
+from app.evaluation.workflow_environment import DEVICE_KEY
 from app.evaluation.workflow_runner import DATA, snapshot
 from app.models import DiagnosisFeedback, DiagnosisResult, ExperimentSession
 
@@ -55,7 +59,9 @@ def test_lost_http_acknowledgement_replays_without_advancing(monkeypatch):
 
         def lose_ack(*args, **kwargs):
             original(*args, **kwargs)
-            raise RuntimeError("synthetic lost response after committed feedback")
+            # A lost HTTP response is not a server exception. Approximate the same
+            # missing receipt with temporary service unavailability after commit.
+            raise TemporarilyUnavailable("synthetic lost response after committed feedback")
 
         monkeypatch.setattr(route, "submit_student_feedback", lose_ack)
         payload = {"request_id": str(uuid4()), "action": "unresolved"}
@@ -75,7 +81,7 @@ def test_pending_feedback_requires_same_request_and_recovers(monkeypatch):
     with live_workflow() as env:
 
         def fail_resume(*args, **kwargs):
-            raise RuntimeError("synthetic failure before graph resume")
+            raise TemporarilyUnavailable("synthetic worker interruption before graph resume")
 
         monkeypatch.setattr(service, "resume_workflow_with_feedback", fail_resume)
         payload = {"request_id": str(uuid4()), "action": "unresolved"}
@@ -101,7 +107,10 @@ def test_checkpoint_reached_next_pause_before_business_ack_is_reconciled(monkeyp
     with live_workflow() as env:
 
         def fail_sync(*args, **kwargs):
-            raise RuntimeError("synthetic failure after graph reached next interrupt")
+            raise OperationalError(
+                "synthetic business synchronization", {},
+                Exception("synthetic storage outage after graph reached next interrupt"),
+            )
 
         monkeypatch.setattr(service, "_sync_business_record", fail_sync)
         payload = {"request_id": str(uuid4()), "action": "unresolved"}
@@ -197,7 +206,11 @@ def test_closed_session_can_acknowledge_already_consumed_pending_feedback(
     with live_workflow(dsn) as env:
 
         def fail_sync(*args, **kwargs):
-            raise RuntimeError("synthetic business acknowledgement loss after checkpoint")
+            # Simulate unavailable business storage after the checkpoint advanced.
+            raise OperationalError(
+                "synthetic business acknowledgement", {},
+                Exception("synthetic storage outage after checkpoint"),
+            )
 
         monkeypatch.setattr(service, "_sync_business_record", fail_sync)
         payload = {"request_id": str(uuid4()), "action": action}
@@ -248,7 +261,9 @@ def test_closed_session_cannot_consume_unapplied_pending_feedback(monkeypatch, b
     with live_workflow(dsn) as env:
 
         def fail_before_resume(*args, **kwargs):
-            raise RuntimeError("synthetic failure before feedback is consumed")
+            raise TemporarilyUnavailable(
+                "synthetic worker interruption before feedback is consumed"
+            )
 
         monkeypatch.setattr(service, "resume_workflow_with_feedback", fail_before_resume)
         payload = {"request_id": str(uuid4()), "action": "unresolved"}
@@ -290,7 +305,11 @@ def test_interrupted_checkpoint_write_finishes_one_feedback(
             nonlocal calls
             calls += 1
             if calls == write_index:
-                raise RuntimeError("synthetic checkpoint write interruption")
+                # PostgresSaver uses psycopg directly; SQLite uses the classified
+                # storage-availability boundary rather than a programming defect.
+                if backend == "postgres":
+                    raise DriverOperationalError("synthetic checkpoint write interruption")
+                raise TemporarilyUnavailable("synthetic checkpoint write interruption")
             return original(*args, **kwargs)
 
         monkeypatch.setattr(saver, write_method, interrupt_one_write)

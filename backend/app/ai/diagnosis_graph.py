@@ -10,7 +10,11 @@ from typing import Any, Literal
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
+from psycopg import Error as DriverDatabaseError
+from psycopg import OperationalError as DriverOperationalError
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.exc import TimeoutError as DatabasePoolTimeout
 from sqlalchemy.orm import Session
 
 from app.ai.clients import AIClient
@@ -18,7 +22,7 @@ from app.ai.context_sanitizer import _sensitive_values, sanitize_text
 from app.ai.reasoning import build_evidence_registry, reason_about_causes
 from app.ai.schemas import AIExplanationResponse, AIKnowledgeReference
 from app.core.config import Settings
-from app.core.errors import DomainError
+from app.core.errors import DomainError, TemporarilyUnavailable
 from app.diagnosis.schemas import DiagnosisContext, DiagnosisOutcome, ExperimentTemplateContext
 from app.diagnosis.workflow_schemas import DiagnosisState
 from app.knowledge.validation import (
@@ -62,13 +66,44 @@ class DiagnosisGraphContext:
 
 
 class DiagnosisNodeExecutionError(DomainError, RuntimeError):
-    """A redacted node failure carrying only bounded observability metadata."""
+    """Cause-preserving observation envelope, never a retryability category.
+
+    Services persist bounded node metadata before rethrowing this envelope.
+    Business boundaries must classify original_error; missing causes are defects.
+    """
 
     def __init__(self, node: str, duration_ms: float, error_type: str) -> None:
         super().__init__(f"diagnosis graph node {node} failed")
         self.node = node
         self.duration_ms = duration_ms
         self.error_type = error_type
+
+    @property
+    def original_error(self) -> Exception:
+        error = self
+        while isinstance(error, DiagnosisNodeExecutionError) and isinstance(
+            error.__cause__, Exception
+        ):
+            error = error.__cause__
+        return error
+
+
+def is_temporary_failure(error: Exception) -> bool:
+    """Recognize infrastructure failures without labeling arbitrary defects retryable."""
+    if isinstance(error, DiagnosisNodeExecutionError):
+        error = error.original_error
+    if isinstance(error, (TemporarilyUnavailable, DatabasePoolTimeout)):
+        return True
+    if not isinstance(error, (DBAPIError, DriverDatabaseError)):
+        return False
+    original = error.orig if isinstance(error, DBAPIError) else error
+    state = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None) or ""
+    return (
+        state in {"57014", "55P03", "40P01", "40001", "57P01", "57P02", "57P03", "53300"}
+        or state.startswith("08")
+        or bool(getattr(error, "connection_invalidated", False))
+        or (not state and isinstance(error, (OperationalError, DriverOperationalError)))
+    )
 
 
 def observed_node(name: str):

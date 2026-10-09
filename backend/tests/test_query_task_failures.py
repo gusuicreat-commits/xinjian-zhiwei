@@ -17,6 +17,7 @@ from test_query_tasks import account_headers, answer_payload, begin, evidence
 from test_query_tasks import api_context as postgres_api_context
 from test_query_tasks import task as source_task_fixture
 
+from app.core.errors import ConflictError, TemporarilyUnavailable
 from app.models import (
     Device,
     Enrollment,
@@ -50,9 +51,66 @@ def assert_retryable(response):
 
 def break_loader(monkeypatch):
     def unavailable(*args, **kwargs):
-        raise RuntimeError("private-database-host and secret-source-payload")
+        raise TemporarilyUnavailable("private-database-host and secret-source-payload")
 
     monkeypatch.setattr(query_sources, "load_experiment_package_runtime", unavailable)
+
+
+@pytest.mark.parametrize("operation", ["start", "read", "answer"])
+@pytest.mark.parametrize("entry", ["query", "delivery"])
+@pytest.mark.parametrize("kind,status", [
+    ("temporary", 503), ("database", 503), ("defect", 500), ("conflict", 409),
+])
+def test_xj013_source_fault_http_rolls_back_and_retains_request(
+    api_context, task, monkeypatch, operation, entry, kind, status
+):
+    headers = {**account_headers(api_context, task), "X-Request-ID": "xj013-original"}
+    client = api_context["client"]
+    result = begin(task) if operation != "start" else None
+    payload = answer_payload(result) if operation == "answer" else None
+    before = saved_rows(task)
+    failures = {
+        "temporary": TemporarilyUnavailable("private source details"),
+        "database": OperationalError("SQL", {}, DriverOperationalError("private DSN")),
+        "defect": RuntimeError("private defect details"),
+        "conflict": ConflictError("source conflict"),
+    }
+    with monkeypatch.context() as patch:
+        def fail(*args):
+            raise failures[kind]
+
+        patch.setattr(query_sources, (
+            "load_experiment_package_runtime" if entry == "query"
+            else "diagnosis_sources_available"
+        ), fail)
+        if operation == "start":
+            response = client.post(
+                f"/api/v1/student/diagnoses/{task['diagnosis'].id}/queries", headers=headers
+            )
+        elif operation == "read":
+            response = client.get(f"/api/v1/student/queries/{result['id']}", headers=headers)
+        else:
+            response = client.post(
+                f"/api/v1/student/queries/{result['id']}/answers", headers=headers, json=payload
+            )
+        assert response.status_code == status, response.text
+        assert response.headers["X-Request-ID"] == "xj013-original"
+        assert "private" not in response.text
+        if status == 503:
+            assert response.json() == {"detail": "query_temporarily_unavailable"}
+        elif status == 500:
+            assert response.json() == {
+                "detail": {"code": "INTERNAL_ERROR", "message": "Request failed"}
+            }
+        else:
+            assert response.json() == {"detail": "source conflict"}
+        assert saved_rows(task) == before
+    if operation == "answer":
+        recovered = client.post(
+            f"/api/v1/student/queries/{result['id']}/answers", headers=headers, json=payload
+        )
+        assert recovered.status_code == 200, recovered.text
+        assert recovered.json()["request_id"] == payload["request_id"]
 
 
 def test_read_transient_failure_preserves_task_and_allows_answer(api_context, task, monkeypatch):
@@ -200,7 +258,7 @@ def test_delivery_dependency_checker_fault_is_retryable(api_context, task, monke
     with monkeypatch.context() as patch:
 
         def fail_dependency(*args):
-            raise RuntimeError("private source details")
+            raise TemporarilyUnavailable("private source details")
 
         patch.setattr(query_sources, "diagnosis_sources_available", fail_dependency)
         assert_retryable(

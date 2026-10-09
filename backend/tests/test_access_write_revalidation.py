@@ -2,6 +2,7 @@
 
 import pytest
 from sqlalchemy import delete, select
+from sqlalchemy.exc import OperationalError
 from test_knowledge_case_scope import _login
 from test_knowledge_case_scope import case_scope as _case_scope
 from test_shared_authorization import review_setup
@@ -110,7 +111,9 @@ def test_review_failure_reauthorizes_before_trace(api_context, monkeypatch, revo
                     )
                 )
                 revoker.commit()
-        raise DiagnosisNodeExecutionError("persist_result", 1.0, "SyntheticFailure")
+        # Persist-result storage failure retains its node observation and cause.
+        cause = OperationalError("synthetic persist result", {}, Exception("storage unavailable"))
+        raise DiagnosisNodeExecutionError("persist_result", 1.0, "OperationalError") from cause
 
     monkeypatch.setattr(graph, "invoke", fail)
     monkeypatch.setattr(diagnosis_workflows, "_graph", lambda request: graph)
@@ -128,7 +131,7 @@ def test_review_failure_reauthorizes_before_trace(api_context, monkeypatch, revo
         assert (response.status_code, after) == (403, before)
     else:
         assert response.status_code == 503
-        assert "SyntheticFailure" in after[1]
+        assert "OperationalError" in after[1]
         assert any(m["status"] == "failed" for m in after[0])
 
 

@@ -9,11 +9,12 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
+from shared_error_boundary import workflow_environment
 from sqlalchemy import delete, select, text
 from test_business_identity import account_headers
 from test_teaching_materials import start
 
-from app.evaluation.workflow_environment import workflow_environment
+from app.core.errors import TemporarilyUnavailable
 from app.evaluation.workflow_runner import snapshot
 from app.models import (
     AuthSession,
@@ -159,7 +160,7 @@ def test_pending_recovery_rechecks_login_after_workflow_row_wait(monkeypatch):
         with monkeypatch.context() as patch:
 
             def unavailable(*args, **kwargs):
-                raise RuntimeError("synthetic interruption before resume")
+                raise TemporarilyUnavailable("synthetic worker interruption before resume")
 
             patch.setattr(service, "resume_workflow_with_feedback", unavailable)
             assert env.request("POST", path, json=payload).status_code == 503

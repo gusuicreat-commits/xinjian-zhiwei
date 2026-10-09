@@ -1,11 +1,17 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from psycopg import Error as DriverDatabaseError
 from sqlalchemy import exists, func, select
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as DatabasePoolTimeout
 from sqlalchemy.orm import Session
 
+from app.ai.clients import AIProviderError
+from app.ai.diagnosis_graph import DiagnosisNodeExecutionError, is_temporary_failure
 from app.api.dependencies import get_student_device, require_permission, revalidate_student_access
 from app.core.config import Settings, get_settings
+from app.core.errors import TemporarilyUnavailable
 from app.db.session import get_db
 from app.diagnosis.workflow_schemas import (
     DiagnosisWorkflowMetricsResponse,
@@ -104,6 +110,7 @@ def start_diagnosis_workflow(
             student_actor=identity,
         )
     except WorkflowScopeViolation as exc:
+        db.rollback()
         raise HTTPException(
             status_code=403,
             detail={"code": "DIAGNOSIS_SCOPE_DENIED", "message": str(exc)},
@@ -112,17 +119,32 @@ def start_diagnosis_workflow(
         db.rollback()
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except WorkflowConflict as exc:
+        db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (ExperimentDefinitionLoadError, ExperimentPackageLoadError) as exc:
+        db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={
+    except (DiagnosisNodeExecutionError, AIProviderError, DBAPIError, DriverDatabaseError,
+            DatabasePoolTimeout, TemporarilyUnavailable) as exc:
+        db.rollback()
+        cause = exc.original_error if isinstance(exc, DiagnosisNodeExecutionError) else exc
+        # Provider envelopes keep their existing adapter until the billing task;
+        # retaining its 503 does not classify an unknown send as safely retryable.
+        if is_temporary_failure(cause) or isinstance(cause, AIProviderError):
+            raise HTTPException(status_code=503, detail={
                 "code": "DIAGNOSIS_WORKFLOW_FAILED",
                 "message": "workflow failed; the legacy deterministic diagnosis remains available",
-            },
-        ) from exc
+            }) from exc
+        if isinstance(cause, AuthorizationDenied):
+            raise HTTPException(status_code=cause.status_code, detail=str(cause)) from exc
+        if isinstance(cause, WorkflowScopeViolation):
+            raise HTTPException(status_code=403, detail={
+                "code": "DIAGNOSIS_SCOPE_DENIED", "message": str(cause),
+            }) from exc
+        raise cause from cause.__cause__
+    except Exception:
+        db.rollback()
+        raise
     revalidate_student_access(request, db)
     result = serialize_workflow(workflow, audience="student")
     result.check = receipt(command)
@@ -374,13 +396,21 @@ def review_diagnosis_workflow(
         db.rollback()
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     except WorkflowConflict as exc:
+        db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={
+    except (DiagnosisNodeExecutionError, AIProviderError, DBAPIError, DriverDatabaseError,
+            DatabasePoolTimeout, TemporarilyUnavailable) as exc:
+        db.rollback()
+        cause = exc.original_error if isinstance(exc, DiagnosisNodeExecutionError) else exc
+        if is_temporary_failure(cause) or isinstance(cause, AIProviderError):
+            raise HTTPException(status_code=503, detail={
                 "code": "DIAGNOSIS_WORKFLOW_RESUME_FAILED",
                 "message": "workflow resume failed; review can be retried after recovery",
-            },
-        ) from exc
+            }) from exc
+        if isinstance(cause, AuthorizationDenied):
+            raise HTTPException(status_code=cause.status_code, detail=str(cause)) from exc
+        raise cause from cause.__cause__
+    except Exception:
+        db.rollback()
+        raise
     return serialize_workflow(updated)

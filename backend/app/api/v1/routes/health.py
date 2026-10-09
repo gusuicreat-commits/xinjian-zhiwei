@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_review_access
 from app.core.config import get_settings
+from app.core.errors import TemporarilyUnavailable
 from app.db.session import get_db
 from app.models.base import utc_now
 from app.models.classroom import AuthSession, User
@@ -42,14 +43,25 @@ def readiness(db: DatabaseSession) -> DependencyHealthResponse:
     try:
         db.execute(text("SELECT 1"))
     except Exception as error:
-        raise HTTPException(
-            status_code=503,
-            detail={"code": "DATABASE_UNAVAILABLE", "message": type(error).__name__},
-        ) from error
+        raise DatabaseProbeUnavailable(error) from error
     return DependencyHealthResponse(
         status="ok",
         dependencies={"database": {"status": "ok", "required": True}},
     )
+
+
+class DatabaseProbeUnavailable(HTTPException, TemporarilyUnavailable):
+    """Readiness boundary: every failed probe means unavailable, with legacy detail.
+
+    HTTPException precedes the domain category so the existing probe envelope
+    remains authoritative. No business rejection is inferred from SELECT 1.
+    """
+
+    def __init__(self, error: Exception):
+        super().__init__(
+            status_code=503,
+            detail={"code": "DATABASE_UNAVAILABLE", "message": type(error).__name__},
+        )
 
 
 @router.get("/health/dependencies", response_model=DependencyHealthResponse)

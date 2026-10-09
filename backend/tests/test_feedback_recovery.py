@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from test_feedback_reliability import live_workflow
 
+from app.core.errors import TemporarilyUnavailable
 from app.evaluation.workflow_environment import DEVICE_KEY
 from app.evaluation.workflow_runner import snapshot
 from app.models import DiagnosisFeedback, DiagnosisResult, ExperimentSession, User
@@ -30,7 +31,7 @@ def make_pending(env, monkeypatch, payload):
     with monkeypatch.context() as patch:
 
         def fail_before_resume(*args, **kwargs):
-            raise RuntimeError("synthetic interruption after accepting feedback")
+            raise TemporarilyUnavailable("synthetic worker interruption after accepting feedback")
 
         patch.setattr(service, "resume_workflow_with_feedback", fail_before_resume)
         assert env.request("POST", env.feedback_path, json=payload).status_code == 503
@@ -96,7 +97,9 @@ def test_recovery_restores_applied_receipt_without_repeating_work(recovery_env, 
 
     def lose_ack(*args, **kwargs):
         original(*args, **kwargs)
-        raise RuntimeError("synthetic lost successful acknowledgement")
+        # A lost HTTP response has no server exception. Model temporary
+        # service unavailability after commit to leave the receipt unobserved.
+        raise TemporarilyUnavailable("synthetic lost successful acknowledgement")
 
     with monkeypatch.context() as patch:
         patch.setattr(route, "submit_student_feedback", lose_ack)

@@ -11,6 +11,7 @@ from shared_authorization import session_actor_fixture
 from sqlalchemy import select
 from test_experiment_packages import PACKAGE_ROOT
 
+from app.core.errors import TemporarilyUnavailable
 from app.experiment_packages.loader import (
     load_experiment_package,
     load_experiment_package_payload,
@@ -613,7 +614,7 @@ def test_scope_does_not_accept_wrong_diagnosis_owner(task):
 
 def test_source_error_is_not_empty_and_does_not_expose_exception(task, monkeypatch):
     def broken(*args, **kwargs):
-        raise RuntimeError("private connection details")
+        raise TemporarilyUnavailable("private connection details")
 
     monkeypatch.setattr("app.services.query_sources.load_experiment_package_runtime", broken)
     result = query(task, "package_requirement")
@@ -836,7 +837,7 @@ def test_source_failure_cannot_enable_followup_question(real_task, monkeypatch):
     task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
 
     def broken(*args, **kwargs):
-        raise RuntimeError("synthetic source failure")
+        raise TemporarilyUnavailable("synthetic source failure")
 
     monkeypatch.setattr("app.services.query_sources.load_experiment_package_runtime", broken)
     r1 = compare_gpio(query(task, "firmware_reported_config"), query(task, "package_requirement"))

@@ -1,10 +1,12 @@
 from copy import deepcopy
 from uuid import uuid4
 
+from shared_error_boundary import workflow_environment
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 from test_teaching_materials import start
 
-from app.evaluation.workflow_environment import DEVICE_KEY, workflow_environment
+from app.evaluation.workflow_environment import DEVICE_KEY
 from app.models import DiagnosisCheck, DiagnosisResult
 
 
@@ -133,7 +135,10 @@ def test_snapshot_is_frozen_before_workflow_and_resume_after_receipt_failure(mon
         identity = str(uuid4())
 
         def fail_receipt(*args):
-            raise RuntimeError("synthetic receipt outage after business commit")
+            raise OperationalError(
+                "synthetic receipt read", {},
+                Exception("synthetic receipt storage outage after business commit"),
+            )
 
         monkeypatch.setattr(service, "comparison", fail_receipt)
         assert check(env, request_id=identity).status_code == 503

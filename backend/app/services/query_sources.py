@@ -16,7 +16,13 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 
-from app.core.errors import StaleError
+from app.core.errors import (
+    AccessDenied,
+    ConflictError,
+    InvalidRequest,
+    StaleError,
+    TemporarilyUnavailable,
+)
 from app.knowledge.applicability import context_from_diagnosis, evaluate_case_applicability
 from app.models import (
     Classroom,
@@ -598,8 +604,13 @@ class ArchivedSource:
             # Preserve SQLSTATE: after a timeout PostgreSQL aborts the transaction.
             # The command boundary must roll it back before any further SQL.
             raise
-        except Exception:
-            # Neither database details nor inaccessible object identities leave the service.
+        except (AccessDenied, ConflictError, InvalidRequest, StaleError):
+            # AccessDenied also inherits PermissionError/OSError; keep it out of
+            # the read-fault projection below. Existing scope projections win above.
+            raise
+        except (OSError, TemporarilyUnavailable):
+            # Identified read faults retain error/whole-command rollback semantics.
+            # Unexpected defects propagate to the redacted 500 boundary, never stale.
             return SourceResult("error", reason_code="source_error")
 
     def revalidate(
@@ -694,7 +705,9 @@ def revalidate_delivery(
         return "stale"
     except DBAPIError:
         raise
-    except Exception:
+    except (AccessDenied, ConflictError, InvalidRequest, StaleError):
+        raise
+    except (OSError, TemporarilyUnavailable):
         return "error"
 
 

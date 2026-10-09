@@ -108,7 +108,7 @@ def test_definitely_stale_source_keeps_200_projection(api_context, http_task):
     }
 
 
-def test_source_failure_keeps_503_and_allows_recovery(api_context, http_task, monkeypatch):
+def test_source_defect_keeps_500_and_allows_recovery(api_context, http_task, monkeypatch):
     headers = account_headers(api_context, http_task)
     path = f"/api/v1/student/diagnoses/{http_task['diagnosis'].id}/queries"
 
@@ -118,8 +118,10 @@ def test_source_failure_keeps_503_and_allows_recovery(api_context, http_task, mo
     with monkeypatch.context() as patch:
         patch.setattr(query_sources, "load_experiment_package_runtime", fail_source)
         response = api_context["client"].post(path, headers=headers)
-        assert response.status_code == 503
-        assert response.json() == {"detail": "query_temporarily_unavailable"}
+        assert response.status_code == 500
+        assert response.json() == {
+            "detail": {"code": "INTERNAL_ERROR", "message": "Request failed"}
+        }
     response = api_context["client"].post(path, headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "waiting_answer"

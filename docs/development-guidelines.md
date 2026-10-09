@@ -98,7 +98,7 @@
 |规则|共享执行点|入口与独立反例/门禁|
 |---|---|---|
 |TEST/XJ-009|`tests/pipeline.py`|摄入→保存；`test_fixture_provenance.py`；手工白名单仅降|
-|ERROR/XJ-010|`core/errors.py`、`api/errors.py`|分类/兼容/吞异常；`test_error_handling_gate.py`，捕获白名单仅降|
+|ERROR/XJ-010..013|`core/errors.py`、`api/errors.py`、`ai/diagnosis_graph.py`、`query_sources.py`|分类异常传播、临时故障503回滚、程序缺陷脱敏500/原ID恢复、节点cause观测与按实例协议映射；`test_business_error_classification.py`、`test_query_task_failures.py`、`test_error_handling_gate.py`，捕获白名单仅降|
 |AUTH/XJ-008|`api/access_policy.py`|全路由/隐藏别名/设备422；`test_access_policy.py`|
 |AUTH|`auth.py`、`data_scope.py`、`api/dependencies.py`|全入口/反馈/恢复锁后撤权；`test_shared_authorization*`、`test_feedback_authorization_wait.py`|
 |AUTH/登录退出|`auth.py`、`login_limits.py`|共享在途额度/原token撤销；`test_session_security_repair.py`|

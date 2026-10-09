@@ -1,28 +1,15 @@
 {
   "note": "XJ-010 audited baseline; files are relative to backend/app. Category 1=确定性降级, 2=应改为分类异常（后续工作）, 3=其他兼容/观测边界. Counts may only decrease; every site is documented.",
   "files": {
-    "ai/diagnosis_graph.py": 1,
     "ai/governance.py": 4,
     "ai/reasoning.py": 1,
     "api/http_boundary.py": 1,
-    "api/v1/routes/diagnosis_workflows.py": 2,
-    "api/v1/routes/health.py": 1,
-    "api/v1/routes/student.py": 1,
     "evaluation/context_runner.py": 1,
     "evaluation/workflow_runner.py": 1,
     "knowledge/case_drafting.py": 1,
-    "services/diagnosis_workflow.py": 4,
-    "services/query_sources.py": 2
+    "services/diagnosis_workflow.py": 4
   },
   "reasons": {
-    "ai/diagnosis_graph.py": [
-      {
-        "line": 86,
-        "category": 2,
-        "reason": "observed_node.wrapped 将任意失败包装成 DiagnosisNodeExecutionError；需保留节点观测元数据并区分确定拒绝、请求错误和临时故障，不能统一冒充可重试。",
-        "function": "observed_node.decorate.wrapped"
-      }
-    ],
     "ai/governance.py": [
       {
         "line": 96,
@@ -63,36 +50,6 @@
         "category": 3,
         "reason": "ResponseBoundary 统一500脱敏，完整响应后阻止服务器再次泄漏原异常；流中断仍以脱敏异常失败，不转成业务成功。",
         "function": "ResponseBoundary.__call__"
-      }
-    ],
-    "api/v1/routes/diagnosis_workflows.py": [
-      {
-        "line": 118,
-        "category": 2,
-        "reason": "start_diagnosis_workflow 兼容503 DIAGNOSIS_WORKFLOW_FAILED，后续由服务分类后集中适配原响应体，避免任意程序错误均被标成临时故障。",
-        "function": "start_diagnosis_workflow"
-      },
-      {
-        "line": 378,
-        "category": 2,
-        "reason": "review_diagnosis_workflow 兼容503 DIAGNOSIS_WORKFLOW_RESUME_FAILED，需服务分类并保留同一检查点恢复语义。",
-        "function": "review_diagnosis_workflow"
-      }
-    ],
-    "api/v1/routes/health.py": [
-      {
-        "line": 44,
-        "category": 2,
-        "reason": "readiness 将数据库探针错误适配成503 DATABASE_UNAVAILABLE，后续改为临时不可用并保留探针响应契约。",
-        "function": "readiness"
-      }
-    ],
-    "api/v1/routes/student.py": [
-      {
-        "line": 258,
-        "category": 2,
-        "reason": "create_student_feedback 回滚后兼容503 DIAGNOSIS_FEEDBACK_RETRY_REQUIRED，需区分已应用/未知结果，始终保留原request_id和载荷。",
-        "function": "create_student_feedback"
       }
     ],
     "evaluation/context_runner.py": [
@@ -143,20 +100,6 @@
         "category": 3,
         "reason": "resume_workflow_with_feedback 回滚后只协调已有终态反馈，其他路径重抛；保留原请求的幂等恢复，不凭异常制造新决策。",
         "function": "resume_workflow_with_feedback"
-      }
-    ],
-    "services/query_sources.py": [
-      {
-        "line": 601,
-        "category": 2,
-        "reason": "ArchivedSource.query 将非DBAPI来源读取失败投影成 SourceResult(error)，后续可转成临时不可用；绝不能改为stale，现调用方依赖error完成整单回滚。",
-        "function": "ArchivedSource.query"
-      },
-      {
-        "line": 697,
-        "category": 2,
-        "reason": "revalidate_delivery 将依赖复核失败转成error，后续由分类异常传播故障；不得改变当前拒绝优先和query_tasks的503回滚语义。",
-        "function": "revalidate_delivery"
       }
     ]
   }

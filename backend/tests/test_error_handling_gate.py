@@ -1,4 +1,4 @@
-"""XJ-010: broad catches must propagate or raise a classified domain error.
+"""XJ-010/013: broad catches propagate, classify, or preserve a node-error cause.
 
 Conservative AST control-flow check, not a proof of arbitrary Python execution.
 Count a handler if any visible path returns, breaks/continues or falls through.
@@ -134,9 +134,10 @@ def _visible_nodes(node):
         yield from _visible_nodes(child)
 
 
-def _outcomes(body, aliases, classified, instances):
+def _outcomes(body, aliases, classified, instances, caught_instances=None):
     outcomes = {"fallthrough"}
     instances = set(instances)
+    caught_instances = set(instances if caught_instances is None else caught_instances)
     aliases = dict(aliases)
     for node in body:
         if "fallthrough" not in outcomes:
@@ -144,22 +145,43 @@ def _outcomes(body, aliases, classified, instances):
         outcomes.remove("fallthrough")
         current = {"fallthrough"}
         if isinstance(node, ast.Raise):
+            # XJ-013's observation envelope is propagation only when the original
+            # caught instance is explicitly retained as its cause. This is not a
+            # classified/retryable error and no other wrapper gets this exemption.
+            observed = (
+                isinstance(node.exc, ast.Call)
+                and _symbol(node.exc.func, aliases)
+                == "app.ai.diagnosis_graph.DiagnosisNodeExecutionError"
+                and isinstance(node.cause, ast.Name)
+                and node.cause.id in caught_instances
+            )
             current = {
-                "safe" if node.exc is None or _safe_exception(
+                "safe" if observed or node.exc is None or _safe_exception(
                     node.exc, aliases, classified, instances
                 ) else "unsafe"
             }
         elif isinstance(node, (ast.Return, ast.Break, ast.Continue)):
             current = {"unsafe"}
         elif isinstance(node, ast.If):
-            current = _outcomes(node.body, aliases, classified, instances) | _outcomes(
-                node.orelse, aliases, classified, instances
+            current = _outcomes(
+                node.body, aliases, classified, instances, caught_instances
+            ) | _outcomes(
+                node.orelse, aliases, classified, instances, caught_instances
             )
+            # A later envelope cannot prove retention of the caught instance if
+            # a preceding branch may have rebound it (even to a classified error).
+            for part in _visible_nodes(node):
+                if isinstance(part, (ast.Assign, ast.AnnAssign)):
+                    targets = part.targets if isinstance(part, ast.Assign) else [part.target]
+                    for target in targets:
+                        if isinstance(target, ast.Name):
+                            caught_instances.discard(target.id)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             safe = _safe_exception(node.value, aliases, classified, instances)
             for target in targets:
                 if isinstance(target, ast.Name):
+                    caught_instances.discard(target.id)
                     instances.discard(target.id)
                     if safe:
                         instances.add(target.id)
@@ -287,6 +309,34 @@ def test_scanner_resolves_domain_subclasses_across_imports():
         ),
     }
     assert scan_broad_catches(sources) == {}
+
+
+@pytest.mark.parametrize("body,count", [
+    ("raise NodeError('node', 1, 'TypeError') from exc", 0),
+    ("raise NodeError('node', 1, 'TypeError')", 1),
+    ("raise NodeError('node', 1, 'TypeError') from None", 1),
+    ("exc = ValueError('replaced')\n        raise NodeError('node', 1, 'TypeError') from exc", 1),
+    (
+        "exc = ConflictError('replaced')\n        "
+        "raise NodeError('node', 1, 'TypeError') from exc",
+        1,
+    ),
+    ("if condition: return None\n        raise NodeError('node', 1, 'TypeError') from exc", 1),
+    ("raise RuntimeError('node') from exc", 1),
+    (
+        "if condition: exc = ConflictError('replacement')\n        "
+        "raise NodeError('node', 1, 'TypeError') from exc",
+        1,
+    ),
+])
+def test_only_explicit_cause_preserving_node_observation_is_propagation(body, count):
+    source = (
+        "from app.ai.diagnosis_graph import DiagnosisNodeExecutionError as NodeError\n"
+        "from app.core.errors import ConflictError\n"
+        "try: operation()\nexcept Exception as exc:\n    "
+        + body.replace("\n        ", "\n    ") + "\n"
+    )
+    assert len(scan_broad_catches({"scenario.py": source}).get("scenario.py", [])) == count
 
 
 def test_ratchet_blocks_growth_and_demands_reduction():

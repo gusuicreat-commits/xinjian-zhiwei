@@ -1,11 +1,23 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from psycopg import Error as DriverDatabaseError
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import TimeoutError as DatabasePoolTimeout
 from sqlalchemy.orm import Session
 
+from app.ai.clients import AIProviderError
+from app.ai.diagnosis_graph import DiagnosisNodeExecutionError, is_temporary_failure
 from app.api.dependencies import get_current_user, get_student_device, revalidate_student_access
 from app.core.config import Settings, get_settings
+from app.core.errors import (
+    AccessDenied,
+    ConflictError,
+    InvalidRequest,
+    StaleError,
+    TemporarilyUnavailable,
+)
 from app.db.session import get_db
 from app.experiment_packages.loader import ExperimentPackageLoadError
 from app.models.classroom import DeviceBinding, ExperimentAssignment, ExperimentSession, User
@@ -255,15 +267,23 @@ def create_student_feedback(
     except WorkflowConflict as exc:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except Exception as exc:
+    except (DiagnosisNodeExecutionError, AIProviderError, DBAPIError, DriverDatabaseError,
+            DatabasePoolTimeout, TemporarilyUnavailable) as exc:
         db.rollback()
-        raise HTTPException(
-            status_code=503,
-            detail={
+        cause = exc.original_error if isinstance(exc, DiagnosisNodeExecutionError) else exc
+        # Preserve the excluded Provider envelope's existing adapter; this is
+        # not permission to retry an unknown model send or alter billing.
+        if is_temporary_failure(cause) or isinstance(cause, AIProviderError):
+            raise HTTPException(status_code=503, detail={
                 "code": "DIAGNOSIS_FEEDBACK_RETRY_REQUIRED",
-                "message": "retry the same request_id and payload; do not create a new submission",
-            },
-        ) from exc
+                "message": (
+                    "retry the same request_id and payload; do not create a new submission"
+                ),
+            }) from exc
+        raise cause from cause.__cause__
+    except Exception:
+        db.rollback()
+        raise
     return StudentFeedbackItem(
         id=record.id,
         episode_id=record.episode_id,
@@ -366,6 +386,9 @@ def _query_command(db, operation, *args, **kwargs):
         raise HTTPException(status_code=503, detail="query_temporarily_unavailable") from exc
     except QueryConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (AccessDenied, ConflictError, InvalidRequest, StaleError):
+        db.rollback()
+        raise
     except ValueError as exc:
         # Invalid scenarios/enum pairs never expose database or source payloads.
         db.rollback()
