@@ -119,6 +119,38 @@ def test_missing_or_invalid_budget_cannot_enable_provider():
             checked_profile(config(), value)
 
 
+@pytest.mark.parametrize("limit,value", [("model_attempts", 0), ("input_tokens", 1)])
+def test_query_profile_stricter_than_batch_settings_blocks_task_provider(
+    tmp_path, monkeypatch, limit, value
+):
+    from app.evaluation import query_real
+    from app.evaluation.query_runner import scenario_contract as original
+
+    def limited(case):
+        contract = original(case)
+        if case["id"] == "d01":
+            return contract.model_copy(update={
+                "profile": contract.profile.model_copy(update={limit: value})
+            })
+        return contract
+
+    monkeypatch.setattr(query_real, "scenario_contract", limited)
+    provider = SyntheticProvider()
+    result = evaluate_real(
+        tmp_path / "batch", budget(), config(),
+        fixtures=fixture_subset(tmp_path, {"d01"}), repeats=1, client=provider,
+    )
+    assert result["execution_status"] == "completed"
+    arms = result["pairs"][0]["arms"]
+    assert arms["A"]["reasoning_mode"] == "ai"
+    assert all(
+        arms[name]["reasoning_mode"] == "deterministic_fallback"
+        and all(record["attempt_count"] == 0 for record in arms[name]["call_records"])
+        for name in ("B0", "deterministic")
+    )
+    assert len(provider.calls) == 2  # Compatibility probe and unrelated A control.
+
+
 def test_cumulative_allowance_keeps_old_and_unknown_reservations(tmp_path):
     provider = SyntheticProvider()
     fixtures = fixture_subset(tmp_path, {"d01"})

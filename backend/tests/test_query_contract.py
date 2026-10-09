@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 
 import pytest
@@ -144,6 +145,26 @@ def test_projection_uses_utf8_bytes_and_does_not_truncate_units():
     assert result["omitted_count"] == 1
 
 
+@pytest.mark.parametrize(
+    "text_length,serialized_length", [(7792, 8191), (7793, 8192), (7794, 8193)]
+)
+def test_projection_keeps_complete_unit_at_byte_boundary(text_length, serialized_length):
+    c = contract()
+    first = evidence(c, source="first", text="x" * text_length)
+    rows = [first] + [
+        evidence(c, source=f"other{i}", text="y" * 8000) for i in range(9)
+    ]
+    expected = {"rows": [first], "omitted_count": 9}
+    actual_size = len(json.dumps(
+        expected, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8"))
+    assert actual_size == serialized_length
+    if serialized_length <= 8192:
+        assert project_units(rows, 8192) == expected
+    else:
+        assert project_units(rows, 8192) == {"rows": [], "omitted_count": 10}
+
+
 def test_old_contract_and_unbounded_profile_rejected():
     c = contract().model_dump()
     old = deepcopy(c)
@@ -152,3 +173,25 @@ def test_old_contract_and_unbounded_profile_rejected():
         TaskContract.model_validate(old)
     with pytest.raises(ValueError):
         Profile(queries=5)
+
+
+@pytest.mark.parametrize(
+    "field,below,at,above",
+    [
+        ("selection_attempts", 0, 3, 4),
+        ("model_attempts", 0, 5, 6),
+        ("queries", 0, 4, 5),
+        ("questions", 0, 1, 2),
+        ("projection_bytes", 256, 8192, 8193),
+        ("active_seconds", 0.01, 120.0, 120.01),
+        ("input_tokens", 1, 10000, 10001),
+    ],
+)
+def test_profile_below_at_and_above_each_ceiling(field, below, at, above):
+    assert getattr(Profile(**{field: below}), field) == below
+    assert getattr(Profile(**{field: at}), field) == at
+    with pytest.raises(ValueError):
+        Profile(**{field: above})
+    if field not in {"active_seconds"}:
+        with pytest.raises(ValueError):
+            Profile(**{field: True})

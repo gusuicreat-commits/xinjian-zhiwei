@@ -72,6 +72,11 @@ class QueryRuntime:
             raise QueryRejected("unavailable")
         if not doc["owner"] or doc["owner"]["token"] != self.token:
             raise QueryRejected("execution_owner_changed")
+        if self.recheck is not None:
+            try:
+                self.recheck(doc)
+            except Exception as exc:
+                raise QueryRejected("unavailable") from exc
 
     def plan(self, task_id):
         doc = self.checked(task_id)
@@ -90,7 +95,9 @@ class QueryRuntime:
         if self.selector is not None and doc["policy"] == "model" and len(actions) > 1:
             with self.store.edit(task_id) as latest:
                 self.owned(latest)
-                if latest["counts"]["selection_attempts"] >= contract.profile.selection_attempts:
+                if latest["counts"]["selection_attempts"] >= min(
+                    contract.profile.selection_attempts, contract.profile.model_attempts
+                ):
                     latest["status"] = "stopped_budget"
                     return "end"
                 # Stable across death before/after checkpoint. This is an intent;

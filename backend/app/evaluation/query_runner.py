@@ -162,6 +162,7 @@ def collect(
                     question_version=q["version"],
                     revision=q["revision"],
                     value=answer_script,
+                    recheck=recheck,
                 )
             except QueryRejected:
                 if fault != "revoke_wait":

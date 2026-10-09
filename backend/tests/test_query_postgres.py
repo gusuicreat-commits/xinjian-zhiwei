@@ -305,6 +305,38 @@ def test_query_wait_holds_no_db_lock_revocation_wins(pg):
     assert store.read("task")["records"] == []
 
 
+def test_external_authorization_rechecked_at_postgres_answer_commit(pg):
+    dsn, schema, store = pg
+    c = contract()
+    store.create(c)
+    with graph_for(dsn, schema) as graph:
+        first = run_query(
+            graph, QueryRuntime(store, "actor", {"query_evidence": lambda r: []}), "task"
+        )
+    q = first["question"]
+    access = [False]
+
+    def recheck(doc):
+        if not access[0]:
+            raise QueryRejected("revoked")
+
+    with pytest.raises(QueryRejected, match="unavailable"):
+        store.submit_answer(
+            "task", "actor", request_id="same-request", question_id=q["id"],
+            question_version=q["version"], revision=q["revision"], value="off",
+            recheck=recheck,
+        )
+    assert store.read("task")["receipts"] == {}
+    access[0] = True
+    receipt = store.submit_answer(
+        "task", "actor", request_id="same-request", question_id=q["id"],
+        question_version=q["version"], revision=q["revision"], value="off",
+        recheck=recheck,
+    )
+    assert receipt["request_id"] == "same-request"
+    assert len(store.read("task")["receipts"]) == 1
+
+
 def test_different_content_race_preserves_original_receipt(pg):
     wait_task(pg)
 

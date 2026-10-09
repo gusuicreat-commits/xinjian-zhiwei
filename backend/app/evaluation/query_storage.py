@@ -166,7 +166,8 @@ class QueryStore:
                 doc["segment_started"] = None
 
     def submit_answer(
-        self, task_id, actor_id, *, request_id, question_id, question_version, revision, value
+        self, task_id, actor_id, *, request_id, question_id, question_version, revision, value,
+        recheck=None,
     ):
         if not isinstance(request_id, str) or not 1 <= len(request_id) <= 80:
             raise QueryRejected("invalid_request_id")
@@ -182,6 +183,11 @@ class QueryStore:
         with self.edit(task_id) as doc:
             if self.guard(doc, actor_id):
                 raise QueryRejected("unavailable")
+            if recheck is not None:
+                try:
+                    recheck(doc)
+                except Exception as exc:
+                    raise QueryRejected("unavailable") from exc
             prior = doc["receipts"].get(request_id)
             if prior:
                 if prior["hash"] != fingerprint:

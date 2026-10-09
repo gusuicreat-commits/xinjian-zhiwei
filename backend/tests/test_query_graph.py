@@ -265,6 +265,30 @@ def test_fourth_model_selection_is_blocked_before_next_side_effect(setup):
     assert result["counts"]["queries"] == 3
 
 
+@pytest.mark.parametrize("total,expected_calls", [(0, 0), (1, 1), (2, 2)])
+def test_stricter_total_model_attempts_limit_selection(setup, total, expected_calls):
+    store, graph = setup
+    c = contract(
+        tools=["query_evidence", "query_approved_cases", "query_package_requirement"],
+        model_attempts=total,
+    )
+    data = c.model_dump()
+    data["requirements"].append({**data["requirements"][0], "id": "r2"})
+    c = TaskContract.model_validate(data)
+    store.create(c)
+    calls = []
+
+    def selector(view, key):
+        calls.append(key)
+        return view["eligible_actions"][0]
+
+    rt = runtime(store, selector=selector)
+    rt.tools = {name: lambda rid: [] for name in c.requirements[0].tools}
+    result = run_query(graph, rt, "task")
+    assert result["status"] == "stopped_budget"
+    assert len(calls) == expected_calls
+
+
 def test_unknown_selection_retains_attempt_and_does_not_retry(setup):
     from app.ai.clients import AIProviderError
 
@@ -313,3 +337,60 @@ def test_revocation_between_last_check_and_result_commit_blocks_adoption(setup):
     result = run_query(graph, rt, "task")
     assert result["evidence"] == []
     assert store.read("task")["records"] == []
+
+
+def test_external_revocation_at_query_commit_does_not_adopt_material(setup):
+    store, graph = setup
+    c = contract()
+    store.create(c)
+    access = [True]
+    returned = [False]
+
+    def recheck(doc):
+        if not access[0]:
+            raise QueryRejected("external_access_revoked")
+
+    def tool(rid):
+        returned[0] = True
+        return [evidence(c)]
+
+    rt = QueryRuntime(store, "actor", {"query_evidence": tool}, recheck=recheck)
+    original_owned = rt.owned
+
+    def revoke_before_commit(doc):
+        if returned[0] and doc["pending"] and doc["pending"].get("started"):
+            access[0] = False
+        return original_owned(doc)
+
+    rt.owned = revoke_before_commit
+    result = run_query(graph, rt, "task")
+    assert result["evidence"] == []
+    assert store.read("task")["records"] == []
+
+
+def test_external_revocation_before_answer_submit_does_not_create_receipt(setup):
+    store, graph = setup
+    store.create(contract())
+    first = run_query(graph, runtime(store), "task")
+    access = [False]
+
+    def recheck(doc):
+        if not access[0]:
+            raise QueryRejected("external_access_revoked")
+
+    q = first["question"]
+    with pytest.raises(QueryRejected, match="unavailable"):
+        store.submit_answer(
+            "task", "actor", request_id="late-reply", question_id=q["id"],
+            question_version=q["version"], revision=q["revision"], value="off",
+            recheck=recheck,
+        )
+    assert store.read("task")["receipts"] == {}
+
+    access[0] = True
+    store.submit_answer(
+        "task", "actor", request_id="late-reply", question_id=q["id"],
+        question_version=q["version"], revision=q["revision"], value="off",
+        recheck=recheck,
+    )
+    assert len(store.read("task")["receipts"]) == 1

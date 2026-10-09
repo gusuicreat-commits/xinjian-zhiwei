@@ -206,11 +206,25 @@ def choose_rule(view):
 
 
 def project_units(rows, limit):
-    selected, omitted = [], []
-    for row in rows:
-        candidate = {"rows": selected + [row], "omitted_count": len(rows)}
-        if len(encoded(candidate)) <= limit:
-            selected.append(row)
-        else:
-            omitted.append(digest(row))
-    return {"rows": selected, "omitted_count": len(omitted)}
+    selected = set()
+    # The serialized omission count is part of the 8 KiB limit. Revisit a
+    # skipped unit when later inclusions shrink that count across a digit edge.
+    while True:
+        changed = False
+        for index in range(len(rows)):
+            if index in selected:
+                continue
+            candidate_indices = selected | {index}
+            candidate = {
+                "rows": [row for i, row in enumerate(rows) if i in candidate_indices],
+                "omitted_count": len(rows) - len(candidate_indices),
+            }
+            if len(encoded(candidate)) <= limit:
+                selected.add(index)
+                changed = True
+        if not changed:
+            break
+    return {
+        "rows": [row for i, row in enumerate(rows) if i in selected],
+        "omitted_count": len(rows) - len(selected),
+    }

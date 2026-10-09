@@ -271,7 +271,10 @@ def safe_records(db, workflow_id):
     ]
 
 
-def terminal(env, db, workflow, frozen, settings, client, cap, *, query=None, task_id=None):
+def terminal(
+    env, db, workflow, frozen, settings, client, cap, *, query=None, task_id=None,
+    task_attempt_limits=None,
+):
     """Same frozen material through rules and actual fixed graph AI+validator+explanation."""
     device = db.get(Device, workflow.device_id)
     actor = StudentActorContext(
@@ -301,7 +304,7 @@ def terminal(env, db, workflow, frozen, settings, client, cap, *, query=None, ta
                 callback()
 
         kwargs["recheck_access"] = both
-        kwargs["task_attempt_limits"] = TaskAttemptLimits()
+        kwargs["task_attempt_limits"] = task_attempt_limits or TaskAttemptLimits()
         result = GovernedAIInvocation(*args, **kwargs)
         result.deadline = min(result.deadline, started + max(0, 120 - prior_active))
         return result
@@ -401,6 +404,17 @@ def run_pair(case, answer, engine, settings, client, cap, pair_id):
                     }
                 )
                 contract = contract.model_copy(update={"scope": scope})
+                task_settings = settings.model_copy(
+                    update={
+                        "ai_input_token_limit": min(
+                            settings.ai_input_token_limit, contract.profile.input_tokens
+                        )
+                    }
+                )
+                task_limits = TaskAttemptLimits(
+                    total=contract.profile.model_attempts,
+                    selection=contract.profile.selection_attempts,
+                )
                 query = None
                 if arm == "A":
                     rows = records(contract, case["initial_values"], "initial")
@@ -424,16 +438,17 @@ def run_pair(case, answer, engine, settings, client, cap, pair_id):
                     )
 
                     def selector_factory(
-                        key, clone=clone, store=store, contract=contract, actor=actor
+                        key, clone=clone, store=store, contract=contract, actor=actor,
+                        task_settings=task_settings, task_limits=task_limits,
                     ):
                         return GovernedAIInvocation(
                             db,
                             clone,
-                            settings,
+                            task_settings,
                             call_stage="query_select",
                             cumulative_budget_limit=cap,
                             operation_key=key,
-                            task_attempt_limits=TaskAttemptLimits(),
+                            task_attempt_limits=task_limits,
                             recheck_access=lambda: _query_access(store, contract, db, actor),
                         )
 
@@ -472,11 +487,12 @@ def run_pair(case, answer, engine, settings, client, cap, pair_id):
                     db,
                     workflow,
                     frozen,
-                    settings,
+                    task_settings if query else settings,
                     client,
                     cap,
                     query=query,
                     task_id=scope.task_id if query else None,
+                    task_attempt_limits=task_limits if query else None,
                 )
                 result["arms"][arm] = {
                     "status": "delivered",
