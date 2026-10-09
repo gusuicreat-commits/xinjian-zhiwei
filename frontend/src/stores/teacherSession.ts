@@ -81,7 +81,7 @@ export const useTeacherSessionStore = defineStore('teacher-session', () => {
     const token = accessToken.value
     resetLocal()
     const request = revision
-    const confirmed = !token || REVIEW_MODE || await revokeUserSession(token)
+    const confirmed = !token || REVIEW_MODE || (await revokeUserSession(token))
     if (!confirmed && request === revision) {
       errorMessage.value = '本机已退出，服务端退出未确认。'
     }

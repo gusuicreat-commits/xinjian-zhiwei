@@ -370,7 +370,9 @@ test('a rejected teacher action removes stale protected data from the page', asy
   await page.getByRole('button', { name: /phase9-browser-device.*查看详情/ }).click()
   await page.getByRole('button', { name: '认领', exact: true }).click()
   await expect(
-    page.locator('#app').getByText('数据加载失败：实验会话或访问权限已变化，请重新登录。', { exact: true }),
+    page
+      .locator('#app')
+      .getByText('数据加载失败：实验会话或访问权限已变化，请重新登录。', { exact: true }),
   ).toBeVisible()
   await expect(
     page.getByRole('button', { name: 'Phase 9 浏览器测试设备', exact: true }),

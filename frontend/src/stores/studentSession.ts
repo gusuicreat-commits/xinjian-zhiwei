@@ -302,7 +302,7 @@ export const useStudentSessionStore = defineStore('student-session', () => {
     const token = accountToken.value || credentials.value?.accessToken
     resetLocal()
     const revision = authRevision
-    const confirmed = !token || REVIEW_MODE || await revokeUserSession(token)
+    const confirmed = !token || REVIEW_MODE || (await revokeUserSession(token))
     if (!confirmed && revision === authRevision) {
       errorMessage.value = '本机已退出，服务端退出未确认。'
     }

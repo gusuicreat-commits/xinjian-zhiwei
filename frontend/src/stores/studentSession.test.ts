@@ -56,7 +56,10 @@ it('restores an account session without requiring the device secret', async () =
   expect(store.credentials?.accessToken).toBe('account')
 })
 
-vi.mock('@/api/auth', () => ({ createUserSession: vi.fn(), revokeUserSession: vi.fn().mockResolvedValue(true) }))
+vi.mock('@/api/auth', () => ({
+  createUserSession: vi.fn(),
+  revokeUserSession: vi.fn().mockResolvedValue(true),
+}))
 
 it('a definitive forbidden start permits another authorized task', async () => {
   const { createUserSession } = await import('@/api/auth')

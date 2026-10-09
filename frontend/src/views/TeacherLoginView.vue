@@ -40,7 +40,9 @@ async function submit(): Promise<void> {
       <div class="auth-card auth-card--teacher">
         <p class="auth-kicker">SECURE ACCOUNT</p>
         <h1 id="teacher-login-title">登录教师工作台</h1>
-        <p class="auth-panel-copy">使用已分配教师或管理员角色的正式账号登录，数据范围按班级权限隔离。</p>
+        <p class="auth-panel-copy">
+          使用已分配教师或管理员角色的正式账号登录，数据范围按班级权限隔离。
+        </p>
         <el-alert v-if="store.errorMessage" :title="store.errorMessage" type="error" show-icon />
         <el-form class="login-form" @submit.prevent="submit">
           <el-form-item>

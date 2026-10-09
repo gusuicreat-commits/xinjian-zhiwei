@@ -3,11 +3,21 @@ import type { TeachingReference } from '@/types/student'
 import TeachingReferencePanel from './TeachingReferencePanel.vue'
 
 const material: TeachingReference = {
-  contract_version: 'teaching-reference-v1', status: 'available',
-  experiment_version_id: 'version-a', package_version: '2.0.3', package_hash: 'hash-a',
+  contract_version: 'teaching-reference-v1',
+  status: 'available',
+  experiment_version_id: 'version-a',
+  package_version: '2.0.3',
+  package_hash: 'hash-a',
   is_test_data: true,
   concepts: [{ concept_id: 'a', description: 'GPIO4 只是待确认示例。', references: [] }],
-  steps: [{ step_id: 'connect', title: '核对接线', expected_state: '连接正确', prerequisite_step_ids: [] }],
+  steps: [
+    {
+      step_id: 'connect',
+      title: '核对接线',
+      expected_state: '连接正确',
+      prerequisite_step_ids: [],
+    },
+  ],
 }
 
 it('shows reference and expected observation without claiming completion or confirmation', () => {
@@ -31,9 +41,16 @@ it('handles legacy, missing and unavailable material without guessing', async ()
 })
 
 it('renders source prose as text, never executable HTML', () => {
-  const wrapper = mount(TeachingReferencePanel, { props: { material: {
-    ...material, concepts: [{ concept_id: 'x', description: '<img src=x onerror=alert(1)>', references: [] }],
-  } } })
+  const wrapper = mount(TeachingReferencePanel, {
+    props: {
+      material: {
+        ...material,
+        concepts: [
+          { concept_id: 'x', description: '<img src=x onerror=alert(1)>', references: [] },
+        ],
+      },
+    },
+  })
   expect(wrapper.find('img').exists()).toBe(false)
   expect(wrapper.text()).toContain('<img')
 })
