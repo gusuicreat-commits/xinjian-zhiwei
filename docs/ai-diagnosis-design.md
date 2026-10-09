@@ -13,9 +13,9 @@ LangGraph 编排固定诊断流程，不负责自主规划。AI 默认关闭；�
 故障树。因此诊断不使用 RAG、Embedding 或向量召回。历史 pgvector 迁移和旧字段只作兼容；
 未来扩展须先有独立需求、召回评测和架构决策，不因保留旧表就恢复旧链路。
 
-2026-09-28形成[受控上下文建设实施方案](context-construction-plan.md)：优先改善现有材料的完整打包、来源清单与分层评测，暂不增加通用RAG架构。该方案的P0–P3已接入，采用整单元预算选择与内部来源清单；实际验收见实施报告，P4真实效果待验收。
+2026-09-28形成[上下文完整性合同](ai-diagnosis-design.md#上下文完整性与后续取舍)：优先改善现有材料的完整打包、来源清单与分层评测，暂不增加通用RAG架构。该方案的P0–P3已接入，采用整单元预算选择与内部来源清单；实际验收见实施报告，P4真实效果待验收。
 
-[资料包与上下文衔接方案](package-context-evolution-plan.md)的P0–P3已实施：接通案例适用限制，增加来源登记和调用预检；P4概念解释保留后续阶段，教学原文仍不外发。
+[资料包与上下文合同](experiment-package-design.md#格式11来源登记与案例条件)的P0–P3已实施：接通案例适用限制，增加来源登记和调用预检；P4概念解释保留后续阶段，教学原文仍不外发。
 
 | 内容 | 执行位置 |
 | --- | --- |
@@ -299,7 +299,7 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 `reported_evidence` 独立展示当前诊断的来源记录，即使排序为unknown仍可见；来源类型和状态同时显示，不能将文本自动当作类型化配置比对或硬件真值。当前读取重新加载该诊断的证据，并从绑定的有效解释或配对推理记录恢复动作许可；预算跳过解释不抹掉合法推理指导。源/权限不合格仍降级，历史和已授权教师编辑保留。
 
-调用治理新增持久逻辑操作，具体状态与失败恢复合同见[修复方案G4](agent-security-repair-plan.md#6-g4一次逻辑操作与每次物理请求分开记录)，数据字段见[数据库设计](database-design.md)。本地恶意输出与故障注入只能验证程序合同，不能证明真实模型的语义质量。
+调用治理新增持久逻辑操作，具体状态与失败恢复合同见[调用恢复合同](ai-diagnosis-design.md#调用恢复合同)，数据字段见[数据库设计](database-design.md)。本地恶意输出与故障注入只能验证程序合同，不能证明真实模型的语义质量。
 
 ## 真实 API 修复后的表达与等待合同（2026-10-03）
 
@@ -307,7 +307,7 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 案例整理 Prompt 为 knowledge-case-polish-v4。四个文字字段逐字选择当前锁定材料/固定状态说明组成的字段专属 expression_choices；Schema 枚举及本地共同校验，不再接受任意自由改写。symptom/teacherNotes 不可从旁路改变。生成、直接写入、提交审核及审批均复核已有润色内容；旧无据草稿保留原文但不能继续发布，需重新整理。教师独立提供的根因确认和修复步骤仍沿审核合同。该保守限制降低自由润色能力，不能称为已解决任意自然语言的语义保真。
 
-润色交付拒绝复用 `GovernedAIInvocation.audit_delivery_denial()` 和现有 `AuditEvent`：行动 `ai.delivery_denied` 关联原 `ai_operation`，仅存阶段、尝试序号及固定错误码，正文与费用不复制。Provider 后撤权、已取得原响应后的复核拒绝、最终写入拒绝均先回滚草稿，再串行查重记录；同一操作最多一条，原用量仍按实际尝试保留。发送前拒绝不伪造 Provider 后事件，审计存储失败仍拒绝交付并记录固定运行日志。推理/解释原有无输出拒绝 `AICallRecord` 保留。方案与验收入口见[交付审计修复方案](ai-delivery-audit-repair-plan-20261008.md)。
+润色交付拒绝复用 `GovernedAIInvocation.audit_delivery_denial()` 和现有 `AuditEvent`：行动 `ai.delivery_denied` 关联原 `ai_operation`，仅存阶段、尝试序号及固定错误码，正文与费用不复制。Provider 后撤权、已取得原响应后的复核拒绝、最终写入拒绝均先回滚草稿，再串行查重记录；同一操作最多一条，原用量仍按实际尝试保留。发送前拒绝不伪造 Provider 后事件，审计存储失败仍拒绝交付并记录固定运行日志。推理/解释原有无输出拒绝 `AICallRecord` 保留。方案与验收入口见[交付审计合同](ai-diagnosis-design.md#调用恢复合同)。
 
 无效但结果已知的模型输出可按 `ai_max_retries` 在同一操作内重试，每次保存已发生用量；默认 `1` 表示最多两次物理尝试，显式 `0` 表示最多一次。撤权、来源失效和结果未知不按输出无效重试；恢复不重置上限，成功响应重放不重复外发或增加用量。测试显式覆盖 `0/1`，不依赖本机 `.env`。
 
@@ -326,7 +326,7 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 ## 残余问题的共同合同修复（2026-10-04）
 
-执行范围见[修复设计](ai-residual-repair-plan-20261004.md)，实际证据统一见[验收报告](../output/audits/ai-residual-repair-20261004/report.md)。解释输入投影`explanation-input-v1`仅将清洗后完全相同的sensor_values/sensor_data、possible_causes/reasoned_causes用明确别名表示，Schema只去掉title注释；不删证据、来源、条件或不同ID的同文记录。manifest的payload_sha256对应实际发送input。
+执行范围见[共同合同修复](ai-diagnosis-design.md#残余问题的共同合同修复2026-10-04)，实际证据统一见[验收报告](../output/audits/ai-residual-repair-20261004/report.md)。解释输入投影`explanation-input-v1`仅将清洗后完全相同的sensor_values/sensor_data、possible_causes/reasoned_causes用明确别名表示，Schema只去掉title注释；不删证据、来源、条件或不同ID的同文记录。manifest的payload_sha256对应实际发送input。
 
 分阶段准入由`stage_context_skip_code`统一：推理可无历史案例，解释遵守配置的知识要求。预检支持白名单配置快照和`--profile`，显式profile与场景预算冲突时拒绝，声明的runtime_snapshot来源不自动认证生产部署。Settings、Compose和示例默认已统一为10000；本机显式配置同步，AI仍关闭。配置存在不表示运行服务已更新，业务启用另验收。
 
@@ -404,3 +404,23 @@ manifest修订不一致、MemoryEvent停用、固定包或范围变化、证据�
 ### 已结束的隔离原型
 
 模型选择动作的受控查询评测已结束，未显示额外收益；原型、CLI、专用夹具与测试已删除。结论见[受控查询评测摘要](controlled-query-evaluation-20261008.md)，产品资料核对继续使用上述确定性来源与查询任务服务。
+
+## 调用恢复合同
+
+`ai/governance.py` 与 `ai/clients.py` 分别拥有逻辑操作和单次传输；`AIOperation` 唯一键固定业务动作，输入指纹及 Provider/模型/Prompt/Schema/验证器版本用于冲突核对，不能改指纹就重发原阶段。每次物理尝试使用原 `AIUsageReservation` 账本。`prepared → dispatching → succeeded / failed_known / outcome_unknown`：发送前短事务提交 dispatching、尝试号及预留，等待 Provider 不持业务锁；结果保存后推进 checkpoint，业务已保存而 checkpoint 未推进只能补进度。
+
+成功只重放并重验当前权限/来源/版本；failed_known 仅在政策、剩余次数、时间及预算允许时重试，每次重新准入。dispatching/结果未知、发送后超时/截断/保存失败不能自动重发或退款，不假定 Provider 支持幂等查询或跨系统恰好一次；未知旧预留不猜归属或费用。并发只有一个发送者，不能租约过期后直接补发，恢复不重置截止时间/预算。回退优先关闭增强，保留操作、预留和审计，不恢复不识别发送状态的旧代码后继续外发。
+
+总期限使用单调时钟覆盖连接/发送/读取/等待/解析及取消回收，限制编码前后字节；不以 Future 超时后放任后台下载，拒绝无法有界解压的编码。确定请求错误不盲重试；429 的秒数/HTTP日期 Retry-After 不截短提前重试；5xx 不等于确定未执行。响应/异常只留安全状态、固定原因、重试时点及未知标志，不记完整 Provider 错误体。Provider 输入Schema必填/允许值与本地业务一致，约束取清洗后的实际输入。
+
+清洗必须覆盖授权原始源的秘密、动态键和值、短敏感串及嵌套知识；数值保持类型，不任意豁免id或改编号，必需身份与秘密冲突取消增强。失败/重试均按实际尝试计费、在途占额，同请求及多问题不重复扣；有限非负金额、零预算禁调用，记范围/时区/币种/价目版本，只有可靠最大成本预留可称费用硬上限。未知费用独立待核对。
+
+`audit_delivery_denial` 的审计存储及清理回滚失败不能替换原交付拒绝；同操作仅一条 `ai.delivery_denied`，不补猜历史。回归由 `test_ai_operation*`、`test_ai_transport_lifecycle.py`、`test_ai_dispatch*`、`test_knowledge_case_drafting.py` 覆盖，软件通过不证明真实语义。
+
+## 上下文完整性与后续取舍
+
+`context_builder.py/context_contract.py` 只做纯投影，不查库/调用模型/改历史；服务层负责授权与冻结，推理/解释各自白名单。候选与关联证据、案例与全部前提整单元保留或省略，完整可信校验集合与实际外发集合分开。先看全量冲突再限数量，不能截JSON、丢第51条所需关联或只留结论；只在本次同来源/版本/hash内去重，不永久排除已读资料，同文独立观测不合并。
+
+空召回只证明本次范围内没有合格匹配，不能推出全库未收录/未审核；来源身份与有限条件检查不认证硬件/自由文本前提。manifest只保存授权身份/版本/hash、实际payload及Prompt指纹、选择和省略计数，matched/prepared/provided/cited/derived分开，缓存无本阶段新provided；尝试不证明Provider收到或模型利用，旧记录缺清单保持未知。知识关系图不替代故障树，统计由代码/数据库承担；未来检索须独立需求和对照，不因旧表恢复RAG。
+
+P4真实效果仍待两实验独立材料及语义审阅，材料入口见[评测要求](evaluation-requirements.md#p4-真实效果待验材料)。原型选型已结束：当时优先既有LangGraph，PydanticAI/Pi仅条件备选，没有换框架的收益证据；当前产品沿用确定性来源/任务服务，不建设Node桥接或第二套费用账本。

@@ -31,7 +31,7 @@ D 包为 [DHT11 包](../backend/experiment_packages/dht11_temperature_humidity/)
 | --- | --- | --- |
 | DHT11 已确定接线设计（待实测） | ESP32-DevKitC V4/WROOM-32E、四针裸 DHT11、DATA→GPIO4、3.3V、4.7kΩ上拉；见 D 包 hardware.yaml、[固件说明](../firmware/esp32_dht11/README.md)及 Aosong 原始说明书 | 硬件负责人核对实物引脚与供电，做连续读取和断线对照 |
 | 失败阈值 | 窗口累计阈值5是可配置示例，连续失败阈值未知；见 D 包 rules.yaml / truth_status.failure_threshold | 实测成功/失败序列，教师确认可接受误报 |
-| 真实故障日志与可区分性 | `DHT11_READ_FAILED→sensor.read_failed` 是当前契约；断线、错GPIO、未供电与器件异常可能同表现，placeholder故障树不足以确认唯一根因 | 固件/硬件负责人保存逐次日志、版本与独立测量，按[历史审计矩阵](archive/experiment-knowledge-audit.md)做单因素对照 |
+| 真实故障日志与可区分性 | `DHT11_READ_FAILED→sensor.read_failed` 是当前契约；断线、错GPIO、未供电与器件异常可能同表现，placeholder故障树不足以确认唯一根因 | 固件/硬件负责人保存逐次日志、版本与独立测量，按[不可辨识组与试验](hardware-validation-plan.md#不可辨识组与来源沿革)做单因素对照 |
 | 心跳、采样与超时 | 固件项目请求间隔与采样周期均为3秒，厂商要求严格大于2秒；平台90秒是监测时限，不是实测周期。见 D 包和 firmware_config.h | 测量周期、延迟、断网恢复，教师确认课堂容差 |
 | LED GPIO、有效电平与回路 | GPIO2、active_level=1是示例，限流和回流未确认；见 L 包 hardware.yaml / truth_status.final_gpio | 核对板载/外接、器件型号、原理图和实物 |
 | LED `level` 来源 | 未知是真实固件的变量、寄存器还是引脚采样；见 truth_status.level_source | 固件负责人提供源码、构建版本和测量位置 |
@@ -68,7 +68,7 @@ D 包为 [DHT11 包](../backend/experiment_packages/dht11_temperature_humidity/)
 | --- | --- | --- |
 | AI语义、CoT效果与成本 | 前轮v2.13对照和本轮v2.14已知合成回归已有开发方逐项审阅；本组候选利用不证明一般准确率、CoT增益或物理根因，费用估算与账单分开。当前调用数与成本见本轮报告 | 按[评测对应表](evaluation-requirements.md)补教师独立保留集、教学范围和因果支持审阅；核实际账单与正式材料容量。结构正确不代表语义正确。 |
 | 记忆真实性与保留策略 | 来源、审核、版本与停用检查已实施；配置事实不代表实物核验，经验不代表当前根因，工作上下文不自动成为长期知识。证据、Checkpoint、备份及外部副本尚无获定保留策略 | 确认各类数据保留期限与删除范围；在选定恢复环境验证最新可信停用登记。缓存清理不能证明所有副本已删除。 |
-| 上下文真实效果 | 软件已有整单元选择、来源清单与独立合成评测；真实保留集和人工语义审阅尚未完成 | 按[方案P4材料清单](context-construction-plan.md#p4-已整理的材料清单)补齐两实验来源与实际模型输出；不以合成回归或完整代码门禁推断效果提升 |
+| 上下文真实效果 | 软件已有整单元选择、来源清单与独立合成评测；真实保留集和人工语义审阅尚未完成 | 按[P4待验材料清单](evaluation-requirements.md#p4-真实效果待验材料)补齐两实验来源与实际模型输出；不以合成回归或完整代码门禁推断效果提升 |
 | 运行环境与CI | 本地隔离库检查不等于已部署、运行库已迁移或远端CI通过；没有当前生产容量结论 | 对选定环境核对数据库、持久化Checkpoint、备份恢复、容量与CI实际执行记录；参见[部署说明](deployment.md) |
 
 只有出现新证据才更新对应状态，记录来源版本、范围和确认依据。`truth_status` 是审阅注记，不参与阈值计算；参数来自 runtime_expectations、rules 和 expected_behaviors。硬件确认与教师确认互不替代；已修复项移出当前缺口，保留历史失败和验收报告，维护方式遵守[开发准则](development-guidelines.md)。

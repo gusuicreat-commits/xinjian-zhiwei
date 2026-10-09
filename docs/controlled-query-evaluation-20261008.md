@@ -75,4 +75,4 @@
 | h23 | identity-overwrite-model-output | delivered | 3 | 3 |
 | h24 | wrong-task-tail-in-batch | failed | 0 | 0 |
 
-详细实施边界见[执行方案](langgraph-query-execution-plan-20261007.md)，测试命令与恢复限制见[评测指南](evaluation.md#controlled-query)。
+详细实施边界见[执行方案](archive/README.md)，测试命令与恢复限制见[评测指南](evaluation.md#controlled-query)。
