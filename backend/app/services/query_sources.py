@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 
 from app.evaluation.query_contract import digest, project_units
 from app.knowledge.applicability import context_from_diagnosis, evaluate_case_applicability
@@ -48,7 +49,7 @@ from app.services.student_authorization import StudentActorContext, authorize_st
 SourceStatus = Literal[
     "present", "checked_empty", "conflicting", "not_available", "denied", "error"
 ]
-Revalidation = Literal["ok", "stale", "denied"]
+Revalidation = Literal["ok", "stale", "denied", "error"]
 SourceKind = Literal[
     "task_evidence", "firmware_reported_config", "package_requirement", "approved_case"
 ]
@@ -558,6 +559,10 @@ class ArchivedSource:
             return SourceResult("denied", reason_code="access_denied")
         except _Stale:
             return SourceResult("not_available", reason_code="source_stale")
+        except DBAPIError:
+            # Preserve SQLSTATE: after a timeout PostgreSQL aborts the transaction.
+            # The command boundary must roll it back before any further SQL.
+            raise
         except Exception:
             # Neither database details nor inaccessible object identities leave the service.
             return SourceResult("error", reason_code="source_error")
@@ -568,7 +573,9 @@ class ArchivedSource:
         result = self.query(db, scope)
         if result.status == "denied":
             return "denied"
-        if result.status in {"error", "not_available"}:
+        if result.status == "error":
+            return "error"
+        if result.status == "not_available":
             return "stale"
         return "ok" if result.manifest == tuple(manifest) else "stale"
 
@@ -625,6 +632,8 @@ def revalidate_r1(db, scope, reported_manifest, requirement_manifest) -> Revalid
     ]
     if "denied" in checks:
         return "denied"
+    if "error" in checks:
+        return "error"
     return "stale" if "stale" in checks else "ok"
 
 
@@ -639,13 +648,19 @@ def revalidate_delivery(
         ]
         if "denied" in checks:
             return "denied"
+        if "error" in checks:
+            return "error"
         if "stale" in checks or not diagnosis_sources_available(db, diagnosis):
             return "stale"
         return "ok"
     except (AuthorizationDenied, ScopeViolation, ScopeConflict):
         return "denied"
-    except Exception:
+    except _Stale:
         return "stale"
+    except DBAPIError:
+        raise
+    except Exception:
+        return "error"
 
 
 @dataclass(frozen=True)

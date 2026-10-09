@@ -110,4 +110,4 @@ def test_overlap_migration_preserves_history_and_guards_downgrade(migration_db):
         migrate("downgrade", "20261002_0038")
     with engine.connect() as conn:
         assert conn.scalar(text("SELECT overlap_credit_chars FROM knowledge_chunks")) == 1
-        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20261003_0039"
+        assert conn.scalar(text("SELECT version_num FROM alembic_version")) == "20261009_0040"

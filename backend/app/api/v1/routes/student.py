@@ -14,6 +14,9 @@ from app.models.diagnosis_result import DiagnosisResult
 from app.schemas.student import (
     ExperimentSessionEnd,
     ExperimentSessionStart,
+    QueryAnswerCreate,
+    QueryAnswerReceiptResponse,
+    QueryTaskResponse,
     StudentDashboardResponse,
     StudentFeedbackCreate,
     StudentFeedbackItem,
@@ -26,6 +29,14 @@ from app.services.diagnosis_workflow import (
     WorkflowScopeViolation,
 )
 from app.services.experiment_sessions import end_session, session_summary, start_session
+from app.services.query_tasks import (
+    QueryConflict,
+    QueryUnavailable,
+    read_query,
+    start_query,
+    submit_answer,
+)
+from app.services.student_authorization import StudentActorContext
 from app.services.student_dashboard import build_student_dashboard
 from app.services.student_feedback import read_feedback_recovery, submit_student_feedback
 
@@ -310,3 +321,77 @@ def experiment_session_command_receipt(
     except WorkflowScopeViolation as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {"status": "applied", "request_id": command.request_id, "result": command.result_json}
+
+
+# Query commands use the same runtime identity and authorization service as the
+# other student routes. Resolve ended sessions here so original answer receipts
+# can be confirmed; the service forbids every new operation in that scope.
+def _query_actor(request: Request, db: DatabaseSession):
+    from app.api.dependencies import get_authenticated_device
+    from app.services.auth import AuthorizationDenied, current_actor
+    from app.services.student_authorization import StudentActorContext
+
+    authorization = request.headers.get("Authorization")
+    if authorization:
+        user = get_current_user(db, authorization)
+        actor = current_actor(user)
+        device = db.scalar(
+            select(Device).where(Device.device_key == request.headers.get("X-Device-ID"))
+        )
+        if device is None:
+            raise AuthorizationDenied(403)
+        return StudentActorContext(
+            device.id, request.headers.get("X-Experiment-Session-ID"), account=actor
+        )
+    if not request.headers.get("X-Device-Token"):
+        raise AuthorizationDenied(401)
+    device = get_authenticated_device(
+        request, db, request.headers.get("X-Device-Token"), request.headers.get("X-Device-ID")
+    )
+    return StudentActorContext(
+        device.id,
+        request.headers.get("X-Experiment-Session-ID"),
+        demo_device_hash=device.token_hash,
+    )
+
+
+QueryActor = Annotated[StudentActorContext, Depends(_query_actor)]
+
+
+def _query_command(db, operation, *args, **kwargs):
+    try:
+        return operation(db, *args, **kwargs)
+    except QueryUnavailable as exc:
+        raise HTTPException(status_code=503, detail="query_temporarily_unavailable") from exc
+    except QueryConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        # Invalid scenarios/enum pairs never expose database or source payloads.
+        db.rollback()
+        raise HTTPException(status_code=422, detail="invalid_query_request") from exc
+
+
+@router.post("/diagnoses/{diagnosis_result_id}/queries", response_model=QueryTaskResponse)
+def begin_student_query(
+    diagnosis_result_id: str, identity: QueryActor, db: DatabaseSession, response: Response
+):
+    response.headers["Cache-Control"] = "no-store"
+    return _query_command(db, start_query, identity, diagnosis_result_id)
+
+
+@router.get("/queries/{task_id}", response_model=QueryTaskResponse)
+def read_student_query(task_id: str, identity: QueryActor, db: DatabaseSession, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return _query_command(db, read_query, identity, task_id)
+
+
+@router.post("/queries/{task_id}/answers", response_model=QueryAnswerReceiptResponse)
+def submit_student_query_answer(
+    task_id: str,
+    payload: QueryAnswerCreate,
+    identity: QueryActor,
+    db: DatabaseSession,
+    response: Response,
+):
+    response.headers["Cache-Control"] = "no-store"
+    return _query_command(db, submit_answer, identity, task_id, **payload.model_dump(mode="json"))

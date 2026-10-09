@@ -8,7 +8,7 @@
 ## 1. 迁移与存储基线
 
 - 标准环境使用 PostgreSQL 16；历史初始迁移要求 `vector` 扩展，当前诊断不使用向量检索。
-- Alembic 代码 Head 为 `20261003_0039`。这是仓库结构版本，不代表运行数据库已升级。
+- Alembic 代码 Head 为 `20261009_0040`。这是仓库结构版本，不代表运行数据库已升级。
 - 容器入口 `app.startup` 先执行迁移再启动 API；手工迁移、备份与回滚按 [部署说明](deployment.md) 执行。
 - LangGraph checkpoint 表由 PostgreSQL saver 的 `setup()` 管理，不在 Alembic 中重复定义。
 - 结构变更与历史数据处理遵守[数据变更要求](development-guidelines.md#data-change)。
@@ -139,7 +139,7 @@
 
 ## 上下文清单（无新迁移）
 
-复用 `ai_call_records.input_snapshot.context_manifest`，合同 `context-manifest-v1`、策略 `whole-unit-applicability-v1`、投影 `case-applicability-v1`；上下文功能本身未新增表；当前schema head因共享登录准入追加为 `20260930_0036`。MemoryUse的matched保留匹配快照，provided只记录真实尝试提交的来源子集，cited按有效引用、derived记录缓存派生；选择后不读取新版本冒充调用时来源。清单不存原始正文。旧 `(workflow_run_id, call_stage)` 唯一性与历史记录不变；旧记录不回填。
+复用 `ai_call_records.input_snapshot.context_manifest`，合同 `context-manifest-v1`、策略 `whole-unit-applicability-v1`、投影 `case-applicability-v1`；上下文功能本身未新增表；共享登录准入当时追加迁移 `20260930_0036`；当前Head见§1。MemoryUse的matched保留匹配快照，provided只记录真实尝试提交的来源子集，cited按有效引用、derived记录缓存派生；选择后不读取新版本冒充调用时来源。清单不存原始正文。旧 `(workflow_run_id, call_stage)` 唯一性与历史记录不变；旧记录不回填。
 
 资料包格式1.1的登记与案例条件复用现有包内容、solution_record JSON；P0–P3没有新迁移。当前建议读取检验策略清单，旧结果只读降级，不回填历史call、final_result、Checkpoint或幂等回执，不自动补模型调用。
 
@@ -158,3 +158,24 @@
 ## 知识工作区总量计量（2026-10-03）
 
 `knowledge_chunks.overlap_credit_chars`由服务器导入分块时创建，数据库约束为0至实际正文长度。更新不新增额度，拆分分配原额度，合并合计原额度；文档预算使用正文总长度减额度总和，文档锁内检查。0039迁移为历史块填0，不凭旧locator猜测重叠，不修改历史正文/审核/测试标记；有非零额度时拒绝有损降级。运行库升级另行验收。
+
+## DHT11 查询任务与答复回执（0040，2026-10-09）
+
+三表在业务 PostgreSQL 内，与当前学生授权复核同事务采用，不使用隔离评测表或
+LangGraph checkpoint 保存回执。新迁移不改写既有记录。
+
+| 表 | 保存内容 | 约束及查询依据 |
+| --- | --- | --- |
+| `query_tasks` | 会话、诊断、固定包版本外键，`dht11-query-v1` 合同，冻结范围/诊断修订/包来源身份，状态和终态原因，R1–R3 判定与缺口，S1–S4 manifest，查询/问题数、执行毫秒、创建/结束时间、测试标记 | 会话＋诊断唯一，同时服务重复开始与按会话定位；主键用于查看/提交。CHECK 限制查询0–4、问题0–1 |
+| `query_questions` | 任务外键、需求、问题ID/版本、固定包版本、open/closed、登记/关闭时间 | 任务＋需求＋问题ID＋版本唯一；任务＋需求唯一防止换版本重复追问；任务＋记录ID唯一支持答复的复合外键。任务前缀索引支持单题读取 |
+| `query_answer_receipts` | 任务和问题外键、请求UUID、载荷SHA-256、枚举答复、提交用户外键、时间、测试性质 | 任务＋request_id唯一支持同内容重放；问题记录唯一限制只有一个采用答复；任务＋问题复合外键禁止跨任务关联；答复值CHECK限制三个许可枚举 |
+
+所有外键采用默认 RESTRICT/NO ACTION，不级联删除历史。唯一约束自带索引，当前三个单对象
+接口无需另建列表索引。manifest 只保存身份、修订、哈希与测试标记，不复制来源正文。
+问题通过固定包外键和服务器保存的目录版本核验，开发目录仍为 `synthetic-1`，不是正式教学内容。
+
+状态为 `waiting_answer`、`completed_satisfied`、`finish_unknown`、`stale`。撤权拒绝并回滚，
+不为了记录 `revoked` 另开未授权写事务；来源失效经授权读取可把任务终止为 stale，并把公开判定
+按来源依赖清为 unknown，独立且仍有效的判定保留。答复与问题关闭、任务终态同事务提交；同ID原回执保留原值和原时间。
+0040 downgrade 按答复→问题→任务删表，**会丢弃这三表的查询历史**，既有业务表不变；
+只在本任务隔离库测试执行，生产回撤须先保留需要的历史。

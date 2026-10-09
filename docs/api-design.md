@@ -380,3 +380,35 @@ pending --formal_approver--> approved
 来源与文档创建从当前已授权账号、服务器来源及显式测试请求保守派生`is_test_data`；文件提取后执行同一校验。测试账号编辑、拆分、合并、删除或审核已有正式文档返回403；测试输入命中已有正式正文去重时409，历史记录不自动改标记。审计继承账号与资源的测试性质。
 
 分块PATCH在JSON解析前按文本请求字节预算及30秒总期限限制，Nginx采用相同预算。更新/合并在来源、文档锁后计算整文档总量；超限413且不改正文/审计。自动导入重叠由服务器记账，API不接受客户端额度。已有超限草稿允许严格缩减、禁止增长和超限等量替换；提交/批准时必须满足当前上限。合法上限、原有授权和独立审批约束继续生效。
+
+## DHT11 学生受控查询（XJ-004，2026-10-09）
+
+三个端点前缀均为 `/api/v1`。正式身份使用 `Authorization: Bearer ...`，并显式传
+`X-Device-ID`（device_key）、`X-Experiment-Session-ID`。明确合成演示范围可沿用设备凭据，
+但正式设备不能据此取得学生身份。开始/查看检查 `dashboard.read`；提交还检查
+`feedback.create`。缺身份401，范围/资格无权403，未知或外部任务与无权采用相同拒绝形状，
+不返回存在性信息；不支持的诊断场景或请求字段422，命令/版本冲突409。
+来源查询或复核的临时故障、SQL语句/锁超时、死锁/序列化竞争、数据库连接失效返回503，
+固定 `detail=query_temporarily_unavailable`，不包含异常正文或对象身份。整次事务回滚：
+开始不创建任务/问题，查看不更改已保存状态，提交不写回执或消费问题；恢复后可重试同任务、
+同问题和同 `request_id`。已保存的120秒累计执行预算耗尽仍为409 `query_execution_timeout`，
+属于确定的任务上限，重试不重置已成功操作的累计预算。
+503不是stale；manifest不一致、来源登记停用、包/范围修订变化、证据修改/删除仍为确定失效，
+维持下表的stale投影。当前撤权优先返回无存在性信息的403。
+
+| 方法与路径 | 请求 | 响应（200） |
+| --- | --- | --- |
+| POST `/student/diagnoses/{diagnosis_result_id}/queries` | 无请求体；诊断必须原属当前会话，场景仅 DHT11 `SENSOR_READ_FAILED` | 查询任务服务器投影；同会话＋诊断返回同任务，重新复核来源，不重新取证或登记问题 |
+| GET `/student/queries/{task_id}` | 任务ID，当前学生身份及会话 | 重验后的同一任务投影；来源失效返回200 `status=stale`、受影响需求的unknown判定与缺口，未失效需求保留，问题为空 |
+| POST `/student/queries/{task_id}/answers` | `request_id` UUID、`question_id`、`question_version`、`value`（`matches_table/differs/unclear`），禁止其他字段 | 原子保存的回执：`id/request_id/value/created_at/is_test_data`；同ID同载荷返回原回执，同ID异载荷409；不同ID争答仅一个采用 |
+
+任务投影只有 `id/contract_version/status/terminal_reason`、`requirements`（每需求的
+`status/judgement/gap`）、一道允许的问题ID/版本/需求/选项/`synthetic`、计数、测试性质和
+`root_cause_status=unconfirmed`、`physical_verification=not_asserted`。不外发原始载荷、
+内部 manifest、身份或其他学生数据。三接口返回 `Cache-Control: no-store`。
+
+会话结束后不开始、不交付查询结果、不接受新答复；仍有当前账号/班级/任务/设备权限的原提交人
+可以用完全相同的 `request_id` 与载荷确认已成功回执，撤权后原回执也拒绝。
+`unclear` 关闭唯一问题，保留 `observation_unknown`，不再追问。正式范围不登记合成题，
+以 `finish_unknown/question_not_approved` 保留缺口。问题没有经教师确认的文本，当前API仅提供
+合成结构目录的ID及枚举选项；前端和正式教学题目另行实施。

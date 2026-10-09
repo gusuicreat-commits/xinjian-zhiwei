@@ -48,9 +48,13 @@ from app.models.knowledge import (
 from app.models.knowledge_access import KnowledgeSourceGrant
 from app.models.login_attempt import LoginAttempt
 from app.models.memory import MemoryCleanupPlan, MemoryEvent, MemoryImpactReview, MemoryUse
+from app.models.query_task import QueryAnswerReceipt, QueryQuestion, QueryTask
 from app.models.sensor_reading import SensorReading
 
 __all__ = [
+    "QueryTask",
+    "QueryQuestion",
+    "QueryAnswerReceipt",
     "AIOperation",
     "KnowledgeSourceGrant",
     "LoginAttempt",

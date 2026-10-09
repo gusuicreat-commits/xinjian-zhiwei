@@ -161,3 +161,46 @@ class ExperimentSessionRelease(StrictStudentModel):
         if not value.strip():
             raise ValueError("release reason is required")
         return value.strip()
+
+
+class QueryAnswerCreate(StrictStudentModel):
+    request_id: UUID
+    question_id: str = Field(min_length=1, max_length=100)
+    question_version: str = Field(min_length=1, max_length=40)
+    value: Literal["matches_table", "differs", "unclear"]
+
+
+class QueryRequirementItem(StrictStudentModel):
+    status: str
+    judgement: str
+    gap: str | None
+
+
+class QueryQuestionItem(StrictStudentModel):
+    question_id: str
+    version: str
+    requirement: Literal["wiring_observation"]
+    options: list[Literal["matches_table", "differs", "unclear"]]
+    synthetic: Literal[True]
+
+
+class QueryTaskResponse(StrictStudentModel):
+    id: str
+    contract_version: str
+    status: Literal["waiting_answer", "completed_satisfied", "finish_unknown", "stale"]
+    terminal_reason: str | None
+    requirements: dict[str, QueryRequirementItem]
+    question: QueryQuestionItem | None
+    query_count: int
+    question_count: int
+    is_test_data: bool
+    root_cause_status: Literal["unconfirmed"]
+    physical_verification: Literal["not_asserted"]
+
+
+class QueryAnswerReceiptResponse(StrictStudentModel):
+    id: str
+    request_id: str
+    value: Literal["matches_table", "differs", "unclear"]
+    created_at: datetime
+    is_test_data: bool
