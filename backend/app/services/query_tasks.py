@@ -16,7 +16,7 @@ from sqlalchemy.exc import DBAPIError, OperationalError
 from app.models import DiagnosisResult, QueryAnswerReceipt, QueryQuestion, QueryTask
 from app.models.base import utc_now
 from app.services.auth import AuthorizationDenied
-from app.services.data_scope import ScopeConflict, ScopeViolation
+from app.services.data_scope import ScopeConflict, ScopeViolation, diagnosis_session
 from app.services.memory import digest
 from app.services.provenance import derive_test_flag
 from app.services.query_sources import (
@@ -411,6 +411,30 @@ def start_query(db, identity, diagnosis_id):
     except Exception:
         db.rollback()
         raise
+
+
+@_bounded_command
+def find_query(db, identity, diagnosis_id):
+    """Read an existing authorized task without persisting delivery invalidation."""
+    try:
+        session = _authorize(db, identity)
+        diagnosis = db.get(DiagnosisResult, diagnosis_id, populate_existing=True)
+        if diagnosis is None or diagnosis_session(db, diagnosis) != session:
+            raise AuthorizationDenied(403)
+        task = db.scalar(
+            select(QueryTask)
+            .where(QueryTask.session_id == session.id, QueryTask.diagnosis_id == diagnosis_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        # _deliver may mark ORM rows stale. Suppress autoflush and roll back even
+        # on success: this GET must not update tasks/questions or spend quota.
+        with db.no_autoflush:
+            result = _deliver(db, identity, session, task) if task is not None else None
+            _authorize(db, identity)
+        return result
+    finally:
+        db.rollback()
 
 
 @_bounded_command

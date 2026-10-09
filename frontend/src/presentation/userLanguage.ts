@@ -83,3 +83,51 @@ export function metricLabel(key: string): string {
     )[key] || key
   )
 }
+
+const queryCodes: Record<string, string> = {
+  waiting_answer: '等待你的观察答复',
+  completed_satisfied: '资料核对完成（不代表故障已解决）',
+  finish_unknown: '本次核对已结束，仍有资料缺口',
+  stale: '资料已变化，本次核对结果不可再用',
+  satisfied: '该项资料已取得',
+  unknown: '目前无法判断',
+  match: '程序自报 GPIO 与实验要求一致',
+  mismatch: '程序自报 GPIO 与实验要求不一致',
+  matches_table: '学生自述：与接线表一致',
+  differs: '学生自述：与接线表不同',
+  unclear: '学生自述：无法确认',
+  present: '已找到适用的审核案例（不代表本次根因）',
+  checked_empty: '已核对，未找到适用的审核案例',
+  not_reported: '本次诊断没有可比较的程序引脚上报',
+  no_approved_case: '没有适用的已审核案例',
+  no_task_evidence: '本次诊断缺少可用证据',
+  requirement_missing: '缺少可比较的实验引脚要求',
+  package_not_bound: '本次会话未绑定实验资料包',
+  observation_unknown: '实际接线观察仍无法确认',
+  question_not_approved: '正式题目待教师确认，本次不提供作答',
+  source_stale: '所用资料已变化或停用',
+  source_error: '资料暂时无法读取，请稍后重试',
+  access_denied: '当前无权查看资料',
+  reported_conflict: '程序上报的引脚信息存在冲突，无法比较',
+  material_omitted: '资料超过可用范围，未用于本次判断',
+  question_version_stale: '题目版本已变化，本题不可再用',
+  requirements_unknown: '仍有资料无法确认',
+  firmware_gpio_vs_requirement: '程序引脚与实验要求',
+  wiring_observation: '实际接线观察（学生自述）',
+  approved_reference: '适用的审核案例',
+  unconfirmed: '未确认故障原因',
+  not_asserted: '实际接线与硬件效果尚未核验',
+}
+export function queryCodeLabel(code: string): string {
+  return queryCodes[code] || '暂缺解释'
+}
+export function queryQuestionText(id: string): string | null {
+  return id === 'synthetic.dht11.wiring_observation'
+    ? 'DHT11 的 DATA 线是否按实验接线表接到开发板？'
+    : null
+}
+export const queryOptionLabels: Record<string, string> = {
+  matches_table: '按接线表连接',
+  differs: '与接线表不同',
+  unclear: '无法确认',
+}

@@ -631,3 +631,77 @@ def test_answer_uses_remaining_task_execution_budget_and_does_not_consume_questi
     # Viewing an already recorded task does not spend execution quota or ask again.
     viewed = query_tasks.read_query(task["db"], task["identity"], result["id"])
     assert viewed["query_count"] == 4 and viewed["question_count"] == 1
+
+
+def test_find_query_null_is_authorized_and_has_no_writes_or_queries(task, monkeypatch):
+    from sqlalchemy import event
+
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement.strip().split()[0].upper())
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("GET must not acquire sources or register a question")
+
+    monkeypatch.setattr(query_tasks, "_acquire_sources", unexpected)
+    event.listen(task["db"].bind, "before_cursor_execute", capture)
+    try:
+        assert query_tasks.find_query(task["db"], task["identity"], task["diagnosis"].id) is None
+    finally:
+        event.remove(task["db"].bind, "before_cursor_execute", capture)
+    assert not set(statements) & {"INSERT", "UPDATE", "DELETE"}
+    with task["factory"]() as db:
+        for model in (QueryTask, QueryQuestion, QueryAnswerReceipt):
+            assert db.scalar(select(func.count()).select_from(model)) == 0
+
+
+def test_find_query_revalidates_stale_projection_without_persisting(task, monkeypatch):
+    from sqlalchemy import event
+
+    evidence(task)
+    result = begin(task)
+    register_stop(task["db"], package_source(task["version"]), task["student"], "synthetic stop")
+    task["db"].commit()
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement.strip().split()[0].upper())
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("GET must not acquire sources")
+
+    monkeypatch.setattr(query_tasks, "_acquire_sources", unexpected)
+    event.listen(task["db"].bind, "before_cursor_execute", capture)
+    try:
+        current = query_tasks.find_query(task["db"], task["identity"], task["diagnosis"].id)
+    finally:
+        event.remove(task["db"].bind, "before_cursor_execute", capture)
+    assert current["id"] == result["id"] and current["status"] == "stale"
+    assert current["question"] is None
+    assert not set(statements) & {"INSERT", "UPDATE", "DELETE"}
+    with task["factory"]() as db:
+        record = db.get(QueryTask, result["id"])
+        assert record.status == result["status"]
+        assert record.requirements == result["requirements"]
+        assert record.query_count == 4 and record.question_count == 1
+        assert db.scalar(select(QueryQuestion.status)) == "open"
+
+
+def test_http_find_query_null_restore_and_revocation_non_disclosure(api_context, task):
+    headers = account_headers(api_context, task)
+    client = api_context["client"]
+    path = f"/api/v1/student/diagnoses/{task['diagnosis'].id}/queries"
+    assert client.get(path).status_code == 401
+    empty = client.get(path, headers=headers)
+    assert empty.status_code == 200 and empty.json() is None
+    assert empty.headers["cache-control"] == "no-store"
+    result = client.post(path, headers=headers).json()
+    assert client.get(path, headers=headers).json() == result
+    with task["factory"]() as db:
+        db.query(Enrollment).update({"status": "withdrawn"})
+        db.commit()
+    responses = [client.get(path, headers=headers), client.get(
+        f"/api/v1/student/diagnoses/{uuid4()}/queries", headers=headers)]
+    assert all(response.status_code == 403 for response in responses)
+    assert responses[0].json() == responses[1].json()

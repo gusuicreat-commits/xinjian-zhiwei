@@ -32,6 +32,7 @@ from app.services.experiment_sessions import end_session, session_summary, start
 from app.services.query_tasks import (
     QueryConflict,
     QueryUnavailable,
+    find_query,
     read_query,
     start_query,
     submit_answer,
@@ -383,6 +384,14 @@ def begin_student_query(
 def read_student_query(task_id: str, identity: QueryActor, db: DatabaseSession, response: Response):
     response.headers["Cache-Control"] = "no-store"
     return _query_command(db, read_query, identity, task_id)
+
+
+@router.get("/diagnoses/{diagnosis_result_id}/queries", response_model=QueryTaskResponse | None)
+def find_student_query(
+    diagnosis_result_id: str, identity: QueryActor, db: DatabaseSession, response: Response
+):
+    response.headers["Cache-Control"] = "no-store"
+    return _query_command(db, find_query, identity, diagnosis_result_id)
 
 
 @router.post("/queries/{task_id}/answers", response_model=QueryAnswerReceiptResponse)

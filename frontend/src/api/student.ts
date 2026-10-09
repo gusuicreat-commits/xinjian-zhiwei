@@ -152,3 +152,67 @@ export async function requestAIExplanation(
   )
   return response.data
 }
+
+export type QueryAnswerValue = 'matches_table' | 'differs' | 'unclear'
+export interface QueryAnswerPayload {
+  request_id: string
+  question_id: string
+  question_version: string
+  value: QueryAnswerValue
+}
+export interface QueryTask {
+  id: string
+  contract_version: string
+  status: 'waiting_answer' | 'completed_satisfied' | 'finish_unknown' | 'stale'
+  terminal_reason: string | null
+  requirements: Record<string, { status: string; judgement: string; gap: string | null }>
+  question: {
+    question_id: string
+    version: string
+    requirement: string
+    options: QueryAnswerValue[]
+    synthetic: boolean
+  } | null
+  query_count: number
+  question_count: number
+  is_test_data: boolean
+  root_cause_status: 'unconfirmed'
+  physical_verification: 'not_asserted'
+}
+export async function findStudentQuery(credentials: DeviceCredentials, diagnosisId: string) {
+  return (
+    await apiClient.get<QueryTask | null>(
+      `/api/v1/student/diagnoses/${encodeURIComponent(diagnosisId)}/queries`,
+      { headers: authHeaders(credentials) },
+    )
+  ).data
+}
+export async function startStudentQuery(credentials: DeviceCredentials, diagnosisId: string) {
+  return (
+    await apiClient.post<QueryTask>(
+      `/api/v1/student/diagnoses/${encodeURIComponent(diagnosisId)}/queries`,
+      null,
+      { headers: authHeaders(credentials) },
+    )
+  ).data
+}
+export async function readStudentQuery(credentials: DeviceCredentials, taskId: string) {
+  return (
+    await apiClient.get<QueryTask>(`/api/v1/student/queries/${encodeURIComponent(taskId)}`, {
+      headers: authHeaders(credentials),
+    })
+  ).data
+}
+export async function answerStudentQuery(
+  credentials: DeviceCredentials,
+  taskId: string,
+  payload: QueryAnswerPayload,
+) {
+  return (
+    await apiClient.post<{ id: string; request_id: string; value: QueryAnswerValue }>(
+      `/api/v1/student/queries/${encodeURIComponent(taskId)}/answers`,
+      payload,
+      { headers: authHeaders(credentials) },
+    )
+  ).data
+}

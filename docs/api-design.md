@@ -383,7 +383,7 @@ pending --formal_approver--> approved
 
 ## DHT11 学生受控查询（XJ-004，2026-10-09）
 
-三个端点前缀均为 `/api/v1`。正式身份使用 `Authorization: Bearer ...`，并显式传
+四个端点前缀均为 `/api/v1`。正式身份使用 `Authorization: Bearer ...`，并显式传
 `X-Device-ID`（device_key）、`X-Experiment-Session-ID`。明确合成演示范围可沿用设备凭据，
 但正式设备不能据此取得学生身份。开始/查看检查 `dashboard.read`；提交还检查
 `feedback.create`。缺身份401，范围/资格无权403，未知或外部任务与无权采用相同拒绝形状，
@@ -399,16 +399,22 @@ pending --formal_approver--> approved
 | 方法与路径 | 请求 | 响应（200） |
 | --- | --- | --- |
 | POST `/student/diagnoses/{diagnosis_result_id}/queries` | 无请求体；诊断必须原属当前会话，场景仅 DHT11 `SENSOR_READ_FAILED` | 查询任务服务器投影；同会话＋诊断返回同任务，重新复核来源，不重新取证或登记问题 |
+| GET `/student/diagnoses/{diagnosis_result_id}/queries` | 诊断ID，当前学生身份及会话 | 只读恢复：有任务则返回同一重验投影，没有则200 `null`；先验证诊断原属当前授权会话，无权/未知诊断同形403；不创建、不重新取证、不登记问题、不持久化重验产生的失效状态 |
 | GET `/student/queries/{task_id}` | 任务ID，当前学生身份及会话 | 重验后的同一任务投影；来源失效返回200 `status=stale`、受影响需求的unknown判定与缺口，未失效需求保留，问题为空 |
 | POST `/student/queries/{task_id}/answers` | `request_id` UUID、`question_id`、`question_version`、`value`（`matches_table/differs/unclear`），禁止其他字段 | 原子保存的回执：`id/request_id/value/created_at/is_test_data`；同ID同载荷返回原回执，同ID异载荷409；不同ID争答仅一个采用 |
 
 任务投影只有 `id/contract_version/status/terminal_reason`、`requirements`（每需求的
 `status/judgement/gap`）、一道允许的问题ID/版本/需求/选项/`synthetic`、计数、测试性质和
 `root_cause_status=unconfirmed`、`physical_verification=not_asserted`。不外发原始载荷、
-内部 manifest、身份或其他学生数据。三接口返回 `Cache-Control: no-store`。
+内部 manifest、身份或其他学生数据。四接口返回 `Cache-Control: no-store`。
 
 会话结束后不开始、不交付查询结果、不接受新答复；仍有当前账号/班级/任务/设备权限的原提交人
 可以用完全相同的 `request_id` 与载荷确认已成功回执，撤权后原回执也拒绝。
 `unclear` 关闭唯一问题，保留 `observation_unknown`，不再追问。正式范围不登记合成题，
 以 `finish_unknown/question_not_approved` 保留缺口。问题没有经教师确认的文本，当前API仅提供
-合成结构目录的ID及枚举选项；前端和正式教学题目另行实施。
+合成结构目录的ID及枚举选项；XJ-005学生页按已知ID提供中文测试题目，正式教学题目仍待教师确认。
+
+学生页加载/刷新/切页只读已有任务，显式点击“核对资料”才POST开始。答复网络结果未知或503时
+保留同一UUID及载荷（按设备、实验会话、诊断隔离的sessionStorage，切换身份隔离响应，撤权清除执行内容），
+显式重试才重发；409重新GET任务状态，401重新登录，403清空区域。程序GPIO比较、测试/失效标记
+和根因未确认直接显示；未知代码保留可展开原文，不解释为原因或动作。

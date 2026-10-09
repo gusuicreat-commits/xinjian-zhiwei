@@ -16,6 +16,7 @@ import { CheckRequestError } from '@/api/diagnosisChecks'
 import { FeedbackRequestError } from '@/api/feedbackRetry'
 import DeviceOverview from '@/components/DeviceOverview.vue'
 import DiagnosisPanel from '@/components/DiagnosisPanel.vue'
+import QueryCheckPanel from '@/components/QueryCheckPanel.vue'
 import FeedbackRecoveryPanel from '@/components/FeedbackRecoveryPanel.vue'
 import RealtimeLogList from '@/components/RealtimeLogList.vue'
 import SensorTrendChart from '@/components/SensorTrendChart.vue'
@@ -497,6 +498,19 @@ onBeforeUnmount(() => {
             @feedback="submitFeedback"
             @request-ai="generateAIExplanation"
             @request-workflow="runDiagnosisWorkflow"
+          />
+          <QueryCheckPanel
+            v-if="
+              dashboardStore.dashboard.diagnosis?.matches.some(
+                (match) => match.error_type === 'SENSOR_READ_FAILED',
+              )
+            "
+            v-show="activeView === 'work'"
+            :diagnosis-id="dashboardStore.dashboard.diagnosis.id"
+            :credentials="sessionStore.credentials"
+            :read-only="readOnly"
+            :refresh-key="dashboardStore.dashboard.generated_at"
+            @login="logout"
           />
         </section>
       </div>

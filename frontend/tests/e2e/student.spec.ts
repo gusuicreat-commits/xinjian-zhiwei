@@ -92,6 +92,10 @@ async function mockStudentApi(page: Page, payload: ReturnType<typeof dashboard>)
       await route.fulfill({ json: { pending: [], latest_applied: null, has_more_pending: false } })
       return
     }
+    if (/\/diagnoses\/[^/]+\/queries$/.test(url) && route.request().method() === 'GET') {
+      await route.fulfill({ json: null })
+      return
+    }
     if (url.endsWith('/dashboard')) {
       await route.fulfill({ json: payload })
       return
@@ -797,3 +801,145 @@ test('a nine-second check preserves the eventual server response without an earl
   await expect(recovery).toHaveCount(0)
   expect(submitted).toBe(1)
 })
+
+for (const unavailable of [false, true]) {
+  test(`资料核对：${unavailable ? '503 后显式重试原答复' : '核对、答复及只读刷新恢复'}`, async ({
+    page,
+  }) => {
+    const errors = collectErrors(page)
+    await mockStudentApi(
+      page,
+      dashboard({
+        diagnosis: {
+          id: 'query-diagnosis',
+          evaluated_at: '2026-07-20T09:00:00Z',
+          is_test_data: true,
+          evidence: [],
+          matches: [
+            {
+              rule_id: 'dht11-read',
+              evidence: [],
+              error_type: 'SENSOR_READ_FAILED',
+              priority: 10,
+              summary: 'DHT11 读取失败',
+            },
+          ],
+        },
+      }),
+    )
+    let started = false
+    let answered = false
+    let starts = 0
+    const answers: Record<string, unknown>[] = []
+    function projection() {
+      return {
+        id: 'query-task',
+        contract_version: 'dht11-query-v1',
+        status: answered ? 'completed_satisfied' : 'waiting_answer',
+        terminal_reason: null,
+        requirements: {
+          firmware_gpio_vs_requirement: { status: 'satisfied', judgement: 'match', gap: null },
+          wiring_observation: {
+            status: answered ? 'satisfied' : 'waiting_answer',
+            judgement: answered ? 'matches_table' : 'unknown',
+            gap: answered ? null : 'observation_unknown',
+          },
+          approved_reference: { status: 'satisfied', judgement: 'present', gap: null },
+        },
+        question: answered
+          ? null
+          : {
+              question_id: 'synthetic.dht11.wiring_observation',
+              version: 'v1',
+              requirement: 'wiring_observation',
+              options: ['matches_table', 'differs', 'unclear'],
+              synthetic: true,
+            },
+        query_count: 4,
+        question_count: 1,
+        is_test_data: true,
+        root_cause_status: 'unconfirmed',
+        physical_verification: 'not_asserted',
+      }
+    }
+    await page.route('**/api/v1/student/diagnoses/query-diagnosis/queries', async (route) => {
+      expect(route.request().headers()['x-experiment-session-id']).toBe(
+        'browser-experiment-session',
+      )
+      if (route.request().method() === 'POST') {
+        started = true
+        starts++
+      }
+      await route.fulfill({ json: started ? projection() : null })
+    })
+    await page.route('**/api/v1/student/queries/query-task', (route) =>
+      route.fulfill({ json: projection() }),
+    )
+    await page.route('**/api/v1/student/queries/query-task/answers', async (route) => {
+      answers.push(route.request().postDataJSON())
+      if (unavailable && answers.length === 1) {
+        await route.fulfill({ status: 503, json: { detail: 'query_temporarily_unavailable' } })
+        return
+      }
+      answered = true
+      await route.fulfill({
+        json: {
+          id: 'query-receipt',
+          request_id: answers.at(-1)!.request_id,
+          value: 'matches_table',
+        },
+      })
+    })
+    await login(page)
+    const panel = page.getByRole('region', { name: '资料核对', exact: true })
+    await expect(panel.getByRole('button', { name: '核对资料', exact: true })).toBeVisible()
+    expect(starts).toBe(0)
+    await page.getByRole('button', { name: '刷新数据' }).click()
+    await page.getByRole('tab', { name: '数据记录', exact: true }).click()
+    await page.getByRole('tab', { name: '当前实验', exact: true }).click()
+    expect(starts).toBe(0)
+    await panel.getByRole('button', { name: '核对资料', exact: true }).click()
+    await expect(panel.getByText('测试用题目，正式题目待教师确认', { exact: true })).toBeVisible()
+    await expect(
+      panel.getByText('程序自报 GPIO 与实验要求一致', { exact: false }).first(),
+    ).toBeVisible()
+    await expect(
+      panel.getByText('这是程序里设置的引脚，不代表实际接线已核对', { exact: true }),
+    ).toBeVisible()
+    await expect(page.locator('.workspace-refresh-flash')).toHaveCount(0)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    for (const width of [1195, 768, 390]) {
+      await page.setViewportSize({ width, height: 850 })
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(width)
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+      if (process.env.UI_LAYOUT_AUDIT === '1')
+        await page.screenshot({
+          path: `${process.env.UI_LAYOUT_OUTPUT_DIR ?? '../output/audits/xj005-layout'}/query-waiting-${unavailable}-${width}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        })
+    }
+    await panel.getByRole('radio', { name: '按接线表连接', exact: true }).check()
+    await panel.getByRole('button', { name: '提交答复', exact: true }).click()
+    if (unavailable) {
+      await expect(
+        panel.getByText('答复结果尚未确认，请点击重试原答复。', { exact: true }),
+      ).toBeVisible()
+      expect(answers).toHaveLength(1)
+      await page.reload()
+      await expect(panel.getByRole('button', { name: '重试原答复', exact: true })).toBeVisible()
+      expect(answers).toHaveLength(1)
+      await panel.getByRole('button', { name: '重试原答复', exact: true }).click()
+      await expect.poll(() => answers.length).toBe(2)
+      expect(answers[1]).toEqual(answers[0])
+    }
+    await expect(panel.getByText('资料核对完成（不代表故障已解决）', { exact: true })).toBeVisible()
+    expect(answers[0]!.request_id).toMatch(/^[0-9a-f-]{36}$/)
+    await page.reload()
+    await expect(panel.getByText('资料核对完成（不代表故障已解决）', { exact: true })).toBeVisible()
+    expect(starts).toBe(1)
+    expect(errors.filter((error) => !unavailable || !error.includes('503'))).toEqual([])
+  })
+}

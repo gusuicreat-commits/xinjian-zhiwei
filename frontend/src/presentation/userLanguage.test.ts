@@ -39,3 +39,25 @@ describe('user-facing language preserves diagnostic boundaries', () => {
     )
   })
 })
+
+describe('query display vocabulary', () => {
+  it('maps complete known codes only and leaves new codes unexplained', async () => {
+    const { queryCodeLabel, queryQuestionText } = await import('./userLanguage')
+    for (const code of [
+      'not_reported',
+      'no_approved_case',
+      'observation_unknown',
+      'question_not_approved',
+      'source_stale',
+      'reported_conflict',
+      'requirement_missing',
+      'material_omitted',
+    ]) {
+      expect(queryCodeLabel(code)).not.toBe('暂缺解释')
+    }
+    expect(queryCodeLabel('prefix_not_reported')).toBe('暂缺解释')
+    expect(queryCodeLabel('new_reason')).toBe('暂缺解释')
+    expect(queryQuestionText('unknown')).toBeNull()
+    expect(queryQuestionText('synthetic.dht11.wiring_observation')).toContain('DHT11 的 DATA 线')
+  })
+})
