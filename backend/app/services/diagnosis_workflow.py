@@ -570,6 +570,22 @@ def review_workflow(
     from app.services.data_scope import authorize_workflow_review
 
     actor_context = current_actor(reviewer)
+    workflow_id = workflow.id
+
+    def reauthorize_write():
+        # Each graph commit/rollback releases prior locks. Acquire the domain
+        # lock again before current actor and recorded-class authorization.
+        current = db.scalar(
+            select(DiagnosisWorkflowRun)
+            .where(DiagnosisWorkflowRun.id == workflow_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if current is None:
+            raise WorkflowConflict("workflow no longer exists")
+        authorize_workflow_review(db, actor_context, current)
+        return current
+
     authorize_workflow_review(db, actor_context, workflow)
     assert_workflow_ownership(db, workflow)
     if workflow.status != "waiting_teacher":
@@ -634,7 +650,7 @@ def review_workflow(
         # checkpoint remains the source of truth for the still-pending interrupt,
         # so the exact same decision can be retried after the saver/node recovers.
         db.rollback()
-        refreshed = db.get(DiagnosisWorkflowRun, workflow.id)
+        refreshed = reauthorize_write()
         if refreshed is not None:
             if refreshed.status in _TERMINAL_STATUSES:
                 result = _reconcile_terminal_checkpoint(
@@ -657,7 +673,7 @@ def review_workflow(
                 )
                 return _sync_business_record(
                     db,
-                    refreshed,
+                    reauthorize_write(),
                     result,
                     review_request=_interrupt_payload(result),
                 )
@@ -668,7 +684,7 @@ def review_workflow(
         raise
     return _sync_business_record(
         db,
-        workflow,
+        reauthorize_write(),
         result,
         review_request=_interrupt_payload(result),
     )

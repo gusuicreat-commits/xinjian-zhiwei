@@ -279,7 +279,19 @@ def save_diagnosis_result(
     outcome: DiagnosisOutcome,
     *,
     commit: bool = True,
+    student_actor=None,
 ) -> DiagnosisResult:
+    if student_actor is not None:
+        from app.services.student_authorization import authorize_student_actor
+
+        # Match session commands/guidance: actor -> device -> recorded scope,
+        # before the source-device lock. Supporting rows remain locked to commit.
+        authorize_student_actor(
+            db,
+            student_actor,
+            device.id,
+            (context.feedback_scope or {}).get("experiment_session_id"),
+        )
     from app.services.source_lifecycle import protect_context_sources
 
     protect_context_sources(db, device.id, context)

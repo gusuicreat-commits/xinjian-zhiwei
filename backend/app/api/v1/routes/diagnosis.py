@@ -138,7 +138,7 @@ def run_device_diagnosis(
         ) from exc
     authorize_student_actor(db, identity, device.id, session.id)
     outcome = diagnose(context)
-    record = save_diagnosis_result(db, device, context, outcome)
+    record = save_diagnosis_result(db, device, context, outcome, student_actor=identity)
     guidance = generate_guidance(db, device, record, student_actor=identity)
     core = build_diagnosis_core(record, guidance)
     explanation = render_deterministic_explanation(core)

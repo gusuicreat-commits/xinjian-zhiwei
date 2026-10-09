@@ -34,7 +34,18 @@ def ensure_intervention_case(
     actor_user_id: str,
     source: str,
     episode_id: str | None = None,
+    actor=None,
 ) -> InterventionCase:
+    if source == "authenticated_user_request" or actor is not None:
+        # Shared diagnosis lock permits competing creates (the unique constraint
+        # still selects the winner), while refreshing the recorded owner first.
+        diagnosis = db.scalar(
+            select(DiagnosisResult)
+            .where(DiagnosisResult.id == diagnosis.id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+        _authorize_intervention_request(db, actor, diagnosis, class_id, actor_user_id)
     links = issue_links(db, diagnosis)
     if links:
         if episode_id is None and len(links) == 1:
@@ -93,6 +104,57 @@ def ensure_intervention_case(
         )
     )
     return case
+
+
+def _authorize_intervention_request(db, identity, diagnosis, class_id, actor_user_id):
+    from app.models.classroom import ExperimentAssignment, ExperimentSession
+    from app.services.auth import AuthorizationDenied, authorize_actor, user_access
+    from app.services.data_scope import (
+        ScopeConflict,
+        ScopeViolation,
+        assert_student_session_access,
+        authorize_teacher_class,
+        diagnosis_session,
+        protect_student_scope,
+        teacher_has_class_access,
+    )
+
+    if identity is None or identity.user_id != actor_user_id or diagnosis is None:
+        raise AuthorizationDenied(401)
+    owner = diagnosis_session(db, diagnosis)
+    if owner is None:
+        raise AuthorizationDenied()
+    # This entry historically allows an admin without a capability check.
+    # Lock/revalidate all identity and grant rows before choosing the same branch.
+    candidate = authorize_actor(db, identity, None)
+    roles, _ = user_access(db, candidate.id)
+    teacher_access = teacher_has_class_access(db, candidate, class_id)
+    if teacher_access and "admin" not in roles:
+        authorize_teacher_class(db, identity, class_id)
+    elif not teacher_access:
+        user = authorize_actor(db, identity, "assignment.read")
+    owner = db.scalar(
+        select(ExperimentSession)
+        .where(ExperimentSession.id == owner.id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if owner is None:
+        raise AuthorizationDenied()
+    if not teacher_access:
+        try:
+            protect_student_scope(db, user, owner)
+            assert_student_session_access(db, user, owner)
+        except (ScopeConflict, ScopeViolation) as exc:
+            raise AuthorizationDenied() from exc
+    assignment = db.scalar(
+        select(ExperimentAssignment)
+        .where(ExperimentAssignment.id == owner.experiment_assignment_id)
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
+    )
+    if assignment is None or assignment.class_id != class_id:
+        raise AuthorizationDenied()
 
 
 def apply_action(db, case, actor, *, request_id=None, recheck_access=None, **kwargs):

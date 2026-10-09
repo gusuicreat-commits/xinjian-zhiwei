@@ -167,6 +167,7 @@ def open_intervention(
             actor_user_id=actor.id,
             source="authenticated_user_request",
             episode_id=episode_id,
+            actor=current_actor(actor),
         )
         _assert_case_access(db, actor, case, allow_student=True)
         db.commit()
@@ -183,6 +184,7 @@ def open_intervention(
             actor_user_id=actor.id,
             source="authenticated_user_request",
             episode_id=episode_id,
+            actor=current_actor(actor),
         )
     if case is None:
         raise HTTPException(status_code=409, detail="intervention creation conflict")
@@ -416,6 +418,7 @@ def export_class_report(
                 str(case.is_test_data).lower(),
             ]
         )
+    actor = authorize_teacher_class(db, current_actor(actor), class_id)
     db.add(
         AuditEvent(
             actor_user_id=actor.id,

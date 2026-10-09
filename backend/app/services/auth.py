@@ -131,13 +131,15 @@ def current_actor(user: User) -> ActorContext:
     return actor
 
 
-def authorize_actor(db: Session, actor: ActorContext, permission: str) -> User:
+def authorize_actor(db: Session, actor: ActorContext, permission: str | None) -> User:
     """Protect supporting authorization rows until the caller's short commit.
 
     Order within this boundary: user, auth session, user-role edges, roles,
     role-permission edges, permissions. FOR SHARE allows independent commands
     while conflicting with revocation UPDATE/DELETE, including direct SQL.
     Call only after domain locks; never retain across external I/O.
+    None validates identity/grants only; the caller must enforce its role/scope
+    contract (used for the existing admin capability bypass on intervention open).
     """
     if not isinstance(actor, ActorContext):
         raise AuthorizationDenied(401)
@@ -199,7 +201,7 @@ def authorize_actor(db: Session, actor: ActorContext, permission: str) -> User:
             .with_for_update(read=True)
         )
     )
-    if permission not in permissions or (
+    if (permission is not None and permission not in permissions) or (
         actor.mode == "local_admin" and not any(role.code == "admin" for role in roles)
     ):
         raise AuthorizationDenied()

@@ -223,6 +223,26 @@ expected_state是预期，不是实测。读取不生成新指导、反馈或模
 
 ## 教师处置
 
+### 最终写入授权（XJ-012）
+
+`POST /teacher-workflow/diagnoses/{diagnosis_id}/intervention` 在诊断共享行锁后，
+由创建服务重验当前登录、账号、权限及诊断原会话/班级；学生仍需当前会话资格，
+教师仍限授课范围，管理员保留原能力检查豁免。工单、求助事件与授权支持行的锁
+保留到同一事务提交；竞争创建及冲突重读也使用相同重验。
+
+`GET /teacher-workflow/classes/{class_id}/report.csv` 在成功导出审计前，
+使用当前操作者重验权限及授课范围，支持授权的行锁保留至审计提交。撤权先提交则
+返回401/403，不写成功导出审计、不返回CSV；导出先提交则保留合法审计。
+
+`POST /diagnosis/devices/{device_id}/run` 将运行时学生身份传入诊断保存服务；
+服务按actor→device→原会话范围顺序重验，再保护输入来源并保存诊断及证据。
+撤权拒绝不会留下该次诊断或证据，错误仍为401/403。
+
+`POST /diagnosis-workflows/{workflow_id}/review` 在图提交或异常回滚后重新获取
+工作流行锁并重验操作者和原班级范围，再恢复终态、同步业务状态或写失败轨迹。
+撤权后不追加本次审核触发的错误轨迹，不返回无权内容，也不将拒绝包装为503；
+已合法提交的审核结果保留。未撤权的基础设施异常仍记录有界失败信息并返回503。
+
 ### GET `/teacher/dashboard`
 
 要求 `/auth/session` 签发的 Bearer 会话，且账号必须具有 `teacher` 或 `admin` 角色。

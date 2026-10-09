@@ -222,14 +222,16 @@ ACCESS_POLICIES: dict[tuple[str, str], AccessPolicy] = {
         Auth.USER_TOKEN,
         "intervention.manage | assignment.read",
         True,
-        revalidates_in_transaction=False,
+        revalidates_in_transaction=True,
         permission_checked_in_service=True,
         access_notes=(
             "_accessible_class_for_diagnosis: admin class scope bypasses capability; "
             "teacher needs intervention.manage, original student needs assignment.read."
         ),
         transaction_evidence=(
-            "ensure_intervention_case has no current-actor reauthorization before flush/commit."
+            "app.services.interventions.ensure_intervention_case: shared diagnosis lock then "
+            "_authorize_intervention_request (current actor and recorded session/class) "
+            "before flush; authorization locks held through route commit."
         ),
     ),
     ("GET", "/api/v1/teacher-workflow/interventions"): AccessPolicy(
@@ -291,10 +293,10 @@ ACCESS_POLICIES: dict[tuple[str, str], AccessPolicy] = {
         Auth.USER_TOKEN,
         "intervention.manage",
         True,
-        revalidates_in_transaction=False,
+        revalidates_in_transaction=True,
         transaction_evidence=(
-            "CSV export commits an audit after an earlier scope check; no final actor"
-            " reauthorization."
+            "app.api.v1.routes.interventions.export_class_report: authorize_teacher_class "
+            "before export audit; grants locked through audit commit; no CSV on denial."
         ),
     ),
     ("GET", "/api/v1/readiness/status"): AccessPolicy(
@@ -380,7 +382,7 @@ ACCESS_POLICIES: dict[tuple[str, str], AccessPolicy] = {
         Auth.STUDENT_ACTOR,
         "dashboard.read & assignment.read",
         True,
-        revalidates_in_transaction=False,
+        revalidates_in_transaction=True,
         permission_checked_in_service=True,
         access_notes=(
             "Account capability and recorded student/session/device scope; device "
@@ -388,8 +390,8 @@ ACCESS_POLICIES: dict[tuple[str, str], AccessPolicy] = {
             "assignment.read and student role; demo scope follows is_demo_session."
         ),
         transaction_evidence=(
-            "Route reauthorizes, but save_diagnosis_result itself has no actor "
-            "argument or service-level recheck."
+            "app.services.diagnosis.save_diagnosis_result: student_actor passed by route; "
+            "authorize_student_actor before source lock/flush, held through result commit."
         ),
         missing_credentials_status=422,
         missing_credentials_code="DEVICE_CREDENTIALS_REQUIRED",
@@ -542,10 +544,11 @@ ACCESS_POLICIES: dict[tuple[str, str], AccessPolicy] = {
         Auth.USER_TOKEN,
         "intervention.manage",
         True,
-        revalidates_in_transaction=False,
+        revalidates_in_transaction=True,
         transaction_evidence=(
-            "Success uses terminal-node authorization; review_workflow error path may"
-            " commit error trace after rollback without reauthorization."
+            "app.services.diagnosis_workflow.review_workflow: reauthorize_write reacquires "
+            "workflow lock and authorize_workflow_review after rollback/graph commits, "
+            "before failure trace, terminal reconciliation and final synchronization."
         ),
     ),
     ("POST", "/api/v1/experiments/packages/validate"): AccessPolicy(
