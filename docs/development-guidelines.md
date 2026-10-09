@@ -234,6 +234,7 @@
 
 ### 独立预期与检查材料
 
+- 流水线派生测试数据使用[真实链路构造器](../backend/tests/pipeline.py)，[棘轮门禁](../backend/tests/test_fixture_provenance.py)逐文件核对五类模型的直接构造次数；[既有白名单](../backend/tests/handbuilt_rows_allowlist.json)只能下调，刻意异常形态须说明理由，独立断言仍由测试维护。
 - 为明确/条件要求、既有业务边界及历史反例建立稳定编号，关联适用条件、独立预期、材料、检查入口与结果；未采用说明原因。条件只来自实际任务/课程/业务场景，不猜用户心理；夹具隐藏条件标明合成来源。
 - 可确定事项用代码：类型、字段、ID、枚举、精确实体、格式、统计、调用及文件结构；每个关键中间值、最终值和表格数字格分别核对。数值说明来源、单位、公式、理论值及适用容差；计数/ID精确比较，不照搬外部±15%/±5%示例。
 - 因果、语义、遗漏、限制和语言是否恰当用独立材料审阅，关键词不代语义；同一测试方法不混精确断言与模型裁判。当前人工审阅，未来引入模型裁判需单独评审、对照人工校准，不因外文模板而自动接入。
@@ -304,6 +305,7 @@ CoT/thinking试验仍只审查输入、有限候选、简短理由、未知项�
 
 | 规则 | 唯一执行位置 | 入口与必须保留的反例 |
 | --- | --- | --- |
+| TEST/XJ-009：流水线测试数据来源 | [真实链路构造器](../backend/tests/pipeline.py)；[AST 棘轮门禁](../backend/tests/test_fixture_provenance.py) | HTTP 摄入→包导入/发布→上下文→诊断保存；扫描 `tests/**/*.py`（仅豁免根构造器），新增直接构造失败、减少须同步下调[白名单](../backend/tests/handbuilt_rows_allowlist.json)，保留注明理由的异常形态反例。 |
 | AUTH/R1：短事务最终授权 | `services/auth.py`的`ActorContext/authorize_actor`、`data_scope`、`student_authorization`、`knowledge_authorization` | HTTP/服务/图终结/CLI使用运行时身份引用，不把授权结果或令牌写Checkpoint；权限支持行受事务保护，等待后重验，拒绝无成功副作用；`test_shared_authorization*`、`test_template_authorization.py`、`test_knowledge_final_authorization.py`。Review-Token仅沿现有契约用于`GET /diagnosis/interventions`和`GET /ops/status`旧运维查询，不获得个人教师权限。 |
 | AUTH/XJ-008：全部 HTTP 操作登记 | `api/access_policy.py::ACCESS_POLICIES`；`test_access_policy.py` 执行门禁 | 按方法＋有效路径模板双向核对，包括根路径别名、OpenAPI JSON/HEAD 和隐藏文档路由；展开 FastAPI 惰性路由，与新生成 OpenAPI 可见操作一致，递归检查鉴权依赖及依赖权限/角色。新增、删除、鉴权变化必须同步登记；无凭据请求不能成功，公开操作须说明理由。设备缺凭据422须逐项登记状态、detail.code和来源并精确断言（见[设备协议](device-protocol.md#稳定错误)），其余非公开操作须401/403。处理函数内鉴权须显式登记可定位函数；服务内权限及写事务复查按源码如实声明，False 保留待办，不以登记或冒烟代替事务撤权测试。 |
 | ADVICE/R2、IDENTITY/R3：当前建议与实验身份 | `services/current_advice.py::assess_current_advice`、`knowledge/applicability.py::context_from_diagnosis` | 工作流/学生状态说明/解释记录共用来源、结构、策略校验；绑定冻结调用，保留教师编辑；未知/冲突实验不匹配，sensor_type不扩大范围；`test_shared_advice_regression.py`。 |

@@ -1,0 +1,75 @@
+{
+  "policy": "冻结的初始手工构造位置；只能下调或删除，禁止新增文件、模型或上调次数；新数据使用 tests/pipeline.py。",
+  "files": {
+    "test_ai_operation_postgres.py": {
+      "DiagnosisResult": 2
+    },
+    "test_ai_operation_process.py": {
+      "DiagnosisResult": 1
+    },
+    "test_ai_provider_boundary.py": {
+      "DiagnosisResult": 1
+    },
+    "test_ai_quota_concurrency.py": {
+      "DiagnosisResult": 2
+    },
+    "test_business_issues.py": {
+      "DiagnosisResult": 2
+    },
+    "test_business_knowledge.py": {
+      "DiagnosisResult": 1
+    },
+    "test_device_state_explanation.py": {
+      "DeviceLog": 1,
+      "DiagnosisResult": 1,
+      "SensorReading": 1
+    },
+    "test_diagnosis_graph_equivalence.py": {
+      "DeviceLog": 1,
+      "SensorReading": 1
+    },
+    "test_feedback_recovery.py": {
+      "DiagnosisResult": 1
+    },
+    "test_interventions.py": {
+      "DiagnosisResult": 2
+    },
+    "test_knowledge_case_drafting.py": {
+      "DiagnosisResult": 1
+    },
+    "test_knowledge_case_scope.py": {
+      "DiagnosisResult": 1
+    },
+    "test_memory_postgres.py": {
+      "DiagnosisResult": 1
+    },
+    "test_phase95_runtime_governance.py": {
+      "DiagnosisResult": 1
+    },
+    "test_query_sources.py": {
+      "DeviceHeartbeat": 1,
+      "DiagnosisEvidence": 1,
+      "DiagnosisResult": 1
+    },
+    "test_r2_provider_data_boundary.py": {
+      "DiagnosisResult": 1
+    },
+    "test_shared_recovery_boundary.py": {
+      "DiagnosisResult": 2
+    },
+    "test_structured_knowledge.py": {
+      "DiagnosisResult": 1
+    },
+    "test_student_scope_r2.py": {
+      "DeviceLog": 2
+    }
+  },
+  "reasons": {
+    "test_query_sources.py": {
+      "DiagnosisEvidence": "仅保留刻意异常或薄快照反例：非映射类型、错误事件/来源、非法或缺 GPIO、缺原始日志元数据、单行 UTF-8/投影预算、注入及 ORM 可变载荷隔离、冻结 scope 后新增证据及正式范围中的测试污染；正常场景走 real_task。",
+      "DeviceHeartbeat": "刻意制造同一 ingestion_request_id 的冲突固件元数据，验证不得选择任一版本。",
+      "DiagnosisResult": "查询服务薄快照/异常范围夹具，既有未迁移基线。"
+    },
+    "other_files": "既有单元、异常形态、历史兼容及授权夹具；本任务不迁移其 DiagnosisResult 或改变断言。"
+  }
+}

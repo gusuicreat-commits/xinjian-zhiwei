@@ -1,53 +1,39 @@
 """Referenced synthetic raw records must survive whole-run cleanup attempts."""
 
-from datetime import datetime, timezone
+from datetime import timedelta
 from uuid import uuid4
 
+from pipeline import dht11_reading, diagnose_session, heartbeat, ingest_batch, publish_package
 from sqlalchemy import select
-from test_device_protocol_v1 import _batch
 
-from app.models import (
-    Device,
-    DiagnosisEvidence,
-    DiagnosisResult,
-    SensorReading,
-)
+from app.models import DiagnosisEvidence, ExperimentSession, SensorReading
+from app.models.base import utc_now
 
 
 def test_synthetic_cleanup_leaves_evidence_pointing_to_deleted_reading(api_context):
     run_id = str(uuid4())
-    payload = _batch()
-    payload["testRunId"] = run_id
+    now = utc_now()
     client = api_context["client"]
-    created = client.post("/api/v1/device/ingest", headers=api_context["headers"], json=payload)
-    assert created.status_code == 201
+    ingest_batch(
+        client,
+        api_context["headers"],
+        [dht11_reading("temperature", 24, occurred_at=now), heartbeat(occurred_at=now)],
+        sent_at=now,
+        test_run_id=run_id,
+    )
     with api_context["session_factory"]() as db:
-        device = db.scalar(select(Device))
-        reading = db.scalar(select(SensorReading))
-        diagnosis = DiagnosisResult(
-            device_id=device.id,
-            evaluated_at=datetime.now(timezone.utc),
-            ruleset_version="synthetic",
-            ruleset_hash="x" * 64,
-            input_fingerprint="y" * 64,
-            matched_rules=[],
-            evidence=[],
-            context_snapshot={},
-            is_test_data=True,
-        )
-        db.add(diagnosis)
-        db.flush()
-        evidence = DiagnosisEvidence(
-            diagnosis_id=diagnosis.id,
-            evidence_type="reading",
-            source_type="sensor_reading",
-            source_ref=reading.id,
-            normalized_value={"value": reading.value},
-            raw_payload=reading.raw_payload,
-            occurred_at=reading.observed_at,
-        )
-        db.add(evidence)
+        session = db.get(ExperimentSession, api_context["experiment_session_id"])
+        session.experiment_version_id = publish_package(db).id
         db.commit()
+        diagnosis = diagnose_session(db, session, evaluated_at=now + timedelta(seconds=1))
+        reading = db.scalar(select(SensorReading))
+        evidence = db.scalar(
+            select(DiagnosisEvidence).where(
+                DiagnosisEvidence.diagnosis_id == diagnosis.id,
+                DiagnosisEvidence.source_type == "sensor_reading",
+                DiagnosisEvidence.source_ref == reading.id,
+            )
+        )
         reading_id, evidence_id = reading.id, evidence.id
     deleted = client.delete(f"/api/v1/device/test-runs/{run_id}", headers=api_context["headers"])
     assert deleted.status_code == 409

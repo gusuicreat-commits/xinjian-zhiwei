@@ -4,12 +4,10 @@ import hashlib
 import json
 from copy import deepcopy
 from dataclasses import replace
-from datetime import timedelta
-from uuid import uuid4
 
 import pytest
+from pipeline import dht11_failure_log, ingest_batch, query_task_factory
 from shared_authorization import session_actor_fixture
-from shared_write_authorization import authorize_write_fixture
 from sqlalchemy import select
 from test_experiment_packages import PACKAGE_ROOT
 
@@ -36,11 +34,6 @@ from app.models import (
 from app.models.base import utc_now
 from app.models.classroom import AuthSession, user_roles
 from app.services.auth import AuthorizationDenied
-from app.services.diagnosis import build_diagnosis_context, diagnose, save_diagnosis_result
-from app.services.experiment_packages import (
-    import_experiment_package,
-    transition_experiment_package,
-)
 from app.services.memory import package_source, register_stop
 from app.services.query_sources import (
     QUESTIONS,
@@ -151,6 +144,10 @@ def evidence(
     source="device_log",
     evidence_type="sensor.read_failed",
 ):
+    # Frozen allowlist exception: deliberately malformed/legacy evidence and
+    # one-row projection/UTF-8/injection/isolation boundaries, missing raw-source metadata,
+    # post-scope insertion and synthetic-to-formal provenance adversarial cases.
+    # Ordinary source and task checks use real_task instead.
     row = DiagnosisEvidence(
         diagnosis_id=task["diagnosis"].id,
         experiment_record_id=task["version"].experiment_id,
@@ -177,114 +174,21 @@ def evidence(
 
 @pytest.fixture
 def real_task(api_context):
-    """HTTP ingest -> real package publication -> normalization -> saved diagnosis."""
-    with api_context["session_factory"]() as db:
-        session = db.get(ExperimentSession, api_context["experiment_session_id"])
-        student = db.get(User, session.student_user_id)
-        assign_role(db, student, ensure_rbac_catalog(db)["student"])
-        assignment = db.get(ExperimentAssignment, session.experiment_assignment_id)
-        db.add(Enrollment(class_id=assignment.class_id, user_id=student.id, status="active"))
-        session_actor_fixture(db, student)
-        identity = StudentActorContext(
-            session.device_id, session.id, account=student._actor_context
-        )
-        db.commit()
+    """The shared builder produces rows; expectations stay in this test module."""
+    for build in query_task_factory(api_context):
 
-        def build(batches):
-            now = utc_now()
-            for index, (snapshot, firmware, boot) in enumerate(batches):
-                records = [
-                    {
-                        "type": "log",
-                        "occurredAt": now.isoformat(),
-                        "payload": {
-                            "level": "error",
-                            "message": "synthetic read failure",
-                            "event_code": "DHT11_READ_FAILED",
-                            "sensor_snapshot": {"component_id": "dht11", **snapshot},
-                        },
-                    }
-                    for _ in range(5)
-                ]
-                if firmware is not None:
-                    records.append(
-                        {
-                            "type": "heartbeat",
-                            "occurredAt": now.isoformat(),
-                            "payload": {"firmware_version": firmware, "metadata": {}},
-                        }
-                    )
-                response = api_context["client"].post(
-                    "/api/v1/device/ingest",
-                    headers=api_context["headers"],
-                    json={
-                        "protocolVersion": "1.0",
-                        "schemaVersion": "1",
-                        "requestId": str(uuid4()),
-                        "bootId": boot,
-                        "sequenceNo": index + 1,
-                        "sentAt": now.isoformat(),
-                        "isTestData": True,
-                        "records": records,
-                    },
-                )
-                assert response.status_code == 201, response.text
-            publisher = User(
-                username="query-publisher",
-                display_name="synthetic publisher",
-                password_hash="test-only",
-                is_test_data=True,
-            )
-            db.add(publisher)
-            authorize_write_fixture(db, publisher)
-            bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
-            _, version = import_experiment_package(db, publisher, package_documents(bundle))
-            for status in ("pending", "approved", "published"):
-                transition_experiment_package(db, publisher, version, status)
-            session.experiment_version_id = version.id
-            db.commit()
-            device = db.get(Device, session.device_id)
-            context = build_diagnosis_context(
-                db,
-                device,
-                experiment_session_id=session.id,
-                evaluated_at=now + timedelta(seconds=1),
-            )
-            # The product workflow supplies this server-owned scope before saving.
-            context.feedback_scope = {
-                "experiment_session_id": session.id,
-                "student_user_id": student.id,
-                "device_id": device.id,
-            }
-            diagnosis = save_diagnosis_result(db, device, context, diagnose(context))
-            rows = list(
-                db.scalars(
-                    select(DiagnosisEvidence).where(
-                        DiagnosisEvidence.diagnosis_id == diagnosis.id,
-                        DiagnosisEvidence.source_type == "device_log",
-                    )
-                )
-            )
+        def checked_build(batches, build=build):
+            current = build(batches)
+            rows = current["rows"]
             assert len(rows) == 5 * len(batches)
             assert {r.evidence_type for r in rows} == {"sensor.read_failed"}
             assert all(
                 "boot_id" not in r.raw_payload and "firmware_version" not in r.raw_payload
                 for r in rows
             )
-            return dict(
-                db=db,
-                session=session,
-                student=student,
-                assignment=assignment,
-                classroom=db.get(Classroom, assignment.class_id),
-                device=device,
-                version=version,
-                diagnosis=diagnosis,
-                identity=identity,
-                rows=rows,
-            )
+            return current
 
-        yield build
+        yield checked_build
 
 
 def query(task, kind, current_scope=None):
@@ -361,26 +265,18 @@ def test_unmapped_evidence_type_cannot_supply_configuration(task):
     assert query(task, "firmware_reported_config").reason_code == "not_reported"
 
 
-def test_same_batch_metadata_never_replaces_frozen_gpio(real_task):
+def test_same_batch_metadata_never_replaces_frozen_gpio(real_task, api_context):
     task = real_task([({"gpio": 4}, "0.2.5", "boot-a"), ({"gpio": 4}, None, "boot-b")])
     db = task["db"]
     task["device"].firmware_version = "unrelated-current-version"
     for log in db.scalars(select(DeviceLog)):
         log.sensor_snapshot = {"gpio": 99}
         log.raw_payload = {"event_code": "OTHER", "sensor_snapshot": {"gpio": 99}}
-    db.add(
-        DeviceLog(
-            device_id=task["device"].id,
-            experiment_session_id=task["session"].id,
-            level="error",
-            message="arrived after diagnosis",
-            event_code="DHT11_READ_FAILED",
-            occurred_at=utc_now(),
-            sensor_snapshot={"gpio": 5},
-            raw_payload={"event_code": "DHT11_READ_FAILED", "sensor_snapshot": {"gpio": 5}},
-            boot_id="later-boot",
-            is_test_data=True,
-        )
+    ingest_batch(
+        api_context["client"],
+        api_context["headers"],
+        [dht11_failure_log(snapshot={"gpio": 5}, occurred_at=utc_now())],
+        boot_id="later-boot",
     )
     db.commit()
     result = query(task, "firmware_reported_config")
@@ -445,6 +341,7 @@ def test_disagreeing_same_batch_firmware_versions_remain_null(real_task):
     task = real_task([({"gpio": 4}, "0.2.5", "boot-a")])
     heartbeat = task["db"].scalar(select(DeviceHeartbeat))
     task["db"].add(
+        # Deliberately conflicting firmware rows for the same ingestion request.
         DeviceHeartbeat(
             device_id=heartbeat.device_id,
             experiment_session_id=heartbeat.experiment_session_id,
@@ -609,12 +506,12 @@ def test_formal_scope_cannot_generate_synthetic_question(task):
     assert eligible_question(current_scope, r1, frozenset()) is None
 
 
-def test_unclear_closes_question_without_satisfying_observation(task):
+def test_unclear_closes_question_without_satisfying_observation(real_task):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     q = QUESTIONS[0]
     answer = validate_answer(q.id, q.version, "unclear")
     assert answer.closed and not answer.satisfied
     assert answer.gap == "observation_unknown"
-    evidence(task)
     r1 = compare_gpio(query(task, "firmware_reported_config"), query(task, "package_requirement"))
     assert eligible_question(scope(task), r1, frozenset({answer.requirement})) is None
 
@@ -645,8 +542,8 @@ def test_test_device_cannot_be_laundered_into_formal_scope(task):
 
 
 @pytest.mark.parametrize("kind", list(SOURCES))
-def test_revocation_after_query_denies_without_existence_leak(task, kind):
-    evidence(task)
+def test_revocation_after_query_denies_without_existence_leak(real_task, kind):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     current_scope = scope(task)
     source = SOURCES[kind]
     result = source.query(task["db"], current_scope)
@@ -659,8 +556,8 @@ def test_revocation_after_query_denies_without_existence_leak(task, kind):
     assert denied.units == () and denied.manifest == () and denied.omitted_count == 0
 
 
-def test_package_stop_invalidates_r1_without_changing_candidates(task):
-    evidence(task)
+def test_package_stop_invalidates_r1_without_changing_candidates(real_task):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     current_scope = scope(task)
     s2, s3 = query(task, "firmware_reported_config"), query(task, "package_requirement")
     assert revalidate_r1(task["db"], current_scope, s2.manifest, s3.manifest) == "ok"
@@ -686,8 +583,9 @@ def test_whole_unit_over_utf8_budget_is_omitted(task):
     )
 
 
-def test_manifest_hash_and_mutated_or_deleted_evidence_are_stale(task):
-    row = evidence(task)
+def test_manifest_hash_and_mutated_or_deleted_evidence_are_stale(real_task):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
+    row = task["rows"][0]
     current_scope = scope(task)
     source = SOURCES["task_evidence"]
     result = source.query(task["db"], current_scope)
@@ -733,10 +631,10 @@ def test_actual_first_batch_package_has_no_approved_reference(task):
 
 
 @pytest.mark.parametrize("revocation", ["account", "enrollment", "role", "ended_session"])
-def test_revocation_in_another_transaction_rechecks_current_authority(task, revocation):
+def test_revocation_in_another_transaction_rechecks_current_authority(real_task, revocation):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     from sqlalchemy import delete
 
-    evidence(task)
     current_scope = scope(task)
     result = query(task, "task_evidence", current_scope)
     task["db"].commit()
@@ -798,8 +696,8 @@ def test_unprojectable_approved_case_is_not_false_empty(task):
         approved_reference(result)
 
 
-def test_superseded_pinned_package_is_still_usable(task):
-    evidence(task)
+def test_superseded_pinned_package_is_still_usable(real_task):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     current_scope = scope(task)
     result = query(task, "package_requirement", current_scope)
     task["version"].status = "superseded"
@@ -865,8 +763,8 @@ def test_delivery_reuses_diagnosis_memory_guard(task):
 
 
 @pytest.mark.parametrize("kind", list(SOURCES))
-def test_foreign_manifest_and_bad_scope_do_not_authorize_sources(task, kind):
-    evidence(task)
+def test_foreign_manifest_and_bad_scope_do_not_authorize_sources(real_task, kind):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     current_scope = scope(task)
     result = query(task, kind, current_scope)
     if result.manifest:
@@ -934,8 +832,8 @@ def test_missing_package_producer_is_not_error_or_comparison(task):
     assert comparison.status == "unknown"
 
 
-def test_source_failure_cannot_enable_followup_question(task, monkeypatch):
-    evidence(task)
+def test_source_failure_cannot_enable_followup_question(real_task, monkeypatch):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
 
     def broken(*args, **kwargs):
         raise RuntimeError("synthetic source failure")

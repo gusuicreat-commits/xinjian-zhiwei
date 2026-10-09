@@ -13,11 +13,12 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from pipeline import query_task_factory
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
-from test_query_sources import add_case, evidence, make_formal
-from test_query_sources import real_task as source_real_task_fixture
+from test_query_sources import add_case, make_formal
+from test_query_sources import evidence as evidence  # Existing failure-test fixture API.
 from test_query_sources import task as source_task_fixture
 
 from app.core.security import hash_device_token, hash_password
@@ -42,7 +43,12 @@ from app.services.auth import AuthorizationDenied
 from app.services.memory import package_source, register_stop
 
 task = source_task_fixture
-real_task = source_real_task_fixture
+
+
+@pytest.fixture
+def real_task(api_context):
+    yield from query_task_factory(api_context)
+
 
 TEST_DEVICE_ID = "phase2-test-device"
 TEST_DEVICE_TOKEN = "phase2-test-token-not-for-production"
@@ -301,8 +307,8 @@ def test_formal_scope_finishes_unknown_without_question(task):
     assert result["requirements"]["wiring_observation"]["gap"] == "question_not_approved"
 
 
-def test_package_stop_returns_stale_without_saved_conclusion(task):
-    evidence(task)
+def test_package_stop_returns_stale_without_saved_conclusion(real_task):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     result = begin(task)
     assert result["requirements"]["firmware_gpio_vs_requirement"]["judgement"] == "match"
     register_stop(task["db"], package_source(task["version"]), task["student"], "synthetic stop")
@@ -594,8 +600,8 @@ def test_saved_scope_revision_change_returns_stale_on_read_and_repeat_start(task
     assert read == current
 
 
-def test_completed_known_requirements_and_case_withdrawal_preserves_r1_r2(task):
-    evidence(task)
+def test_completed_known_requirements_and_case_withdrawal_preserves_r1_r2(real_task):
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     case = add_case(task)
     before = task["diagnosis"].matched_rules.copy()
     result = begin(task)
@@ -656,10 +662,10 @@ def test_find_query_null_is_authorized_and_has_no_writes_or_queries(task, monkey
             assert db.scalar(select(func.count()).select_from(model)) == 0
 
 
-def test_find_query_revalidates_stale_projection_without_persisting(task, monkeypatch):
+def test_find_query_revalidates_stale_projection_without_persisting(real_task, monkeypatch):
     from sqlalchemy import event
 
-    evidence(task)
+    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
     result = begin(task)
     register_stop(task["db"], package_source(task["version"]), task["student"], "synthetic stop")
     task["db"].commit()
