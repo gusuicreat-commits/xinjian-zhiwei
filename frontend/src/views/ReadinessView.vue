@@ -44,7 +44,8 @@ const readinessDimensions = [
 
 <template>
   <main class="readiness-page">
-    <h1>芯鉴知微 · 就绪门禁</h1>
+    <!-- Two unbreakable halves: narrow screens wrap between them, never mid-word. -->
+    <h1><span>芯鉴知微 ·</span> <span>就绪门禁</span></h1>
     <p>此页面只展示后端实际证据；缺少外部输入时保持“受阻”，不会自动伪造就绪。</p>
     <el-alert v-if="error" type="error" :title="error" :closable="false" />
     <el-skeleton v-else-if="!data" :rows="8" animated />

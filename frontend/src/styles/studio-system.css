@@ -411,8 +411,25 @@ body,
 
 .login-form .el-input__wrapper,
 .teacher-login-access .el-input__wrapper {
-  min-height: 62px;
+  min-height: 48px;
   padding: 0 4px;
+}
+
+/* The mode switch and the first field label must not touch. */
+.el-radio-group + .login-form {
+  margin-top: 28px;
+}
+
+/* Persistent labels above the underline fields, so a filled field still says what it is. */
+.login-form .el-form-item__label {
+  height: auto;
+  margin: 0 0 2px;
+  padding: 0;
+  color: var(--studio-copy);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
 }
 
 .login-form .el-input__prefix,
@@ -1447,6 +1464,10 @@ body,
 }
 
 /* Readiness uses the same linear evidence language. */
+.readiness-page > h1 span {
+  display: inline-block;
+}
+
 .readiness-page {
   width: 100%;
   max-width: calc(var(--studio-width) + (var(--studio-gutter) * 2));

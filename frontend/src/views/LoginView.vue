@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { REVIEW_MODE } from '@/review/fixtures'
-import { Connection, Lock, Monitor, User } from '@element-plus/icons-vue'
+import { Connection, Lock } from '@element-plus/icons-vue'
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
+import BrandMark from '@/components/BrandMark.vue'
 import { useStudentSessionStore } from '@/stores/studentSession'
 
 const router = useRouter()
@@ -68,7 +69,7 @@ async function submit(): Promise<void> {
     <header class="auth-topbar">
       <div class="auth-topbar-inner">
         <div class="auth-brand">
-          <Monitor aria-hidden="true" />
+          <BrandMark />
           <div class="auth-brand-copy">
             <strong>芯鉴知微</strong>
             <small>嵌入式实验智能分析平台</small>
@@ -98,14 +99,19 @@ async function submit(): Promise<void> {
         <el-button v-if="REVIEW_MODE" type="primary" @click="authenticate"
           >以演示学生身份进入</el-button
         >
-        <el-form v-else-if="mode === 'account'" class="login-form" @submit.prevent="authenticate">
-          <el-form-item required>
-            <el-input v-model="account.username" placeholder="学生账号" autocomplete="username" />
+        <el-form
+          v-else-if="mode === 'account'"
+          class="login-form"
+          label-position="top"
+          hide-required-asterisk
+          @submit.prevent="authenticate"
+        >
+          <el-form-item label="学生账号" required>
+            <el-input v-model="account.username" autocomplete="username" />
           </el-form-item>
-          <el-form-item required>
+          <el-form-item label="学生密码" required>
             <el-input
               v-model="account.password"
-              placeholder="学生密码"
               type="password"
               autocomplete="current-password"
               show-password
@@ -176,28 +182,23 @@ async function submit(): Promise<void> {
           />
         </el-form>
 
-        <el-form v-else class="login-form" @submit.prevent="submit">
-          <el-form-item required>
-            <el-input
-              v-model="form.deviceId"
-              size="large"
-              autocomplete="username"
-              placeholder="设备 ID"
-            >
-              <template #prefix><User /></template>
-            </el-input>
+        <el-form
+          v-else
+          class="login-form"
+          label-position="top"
+          hide-required-asterisk
+          @submit.prevent="submit"
+        >
+          <el-form-item label="设备 ID" required>
+            <el-input v-model="form.deviceId" autocomplete="username" />
           </el-form-item>
-          <el-form-item required>
+          <el-form-item label="设备令牌" required>
             <el-input
               v-model="form.deviceToken"
-              size="large"
               type="password"
               show-password
               autocomplete="current-password"
-              placeholder="设备令牌"
-            >
-              <template #prefix><Lock /></template>
-            </el-input>
+            />
           </el-form-item>
           <el-alert
             v-if="sessionStore.errorMessage"

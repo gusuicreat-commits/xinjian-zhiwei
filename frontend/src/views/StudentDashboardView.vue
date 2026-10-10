@@ -2,7 +2,6 @@
 import {
   HomeFilled,
   List,
-  Monitor,
   Refresh,
   SwitchButton,
   TrendCharts,
@@ -14,6 +13,7 @@ import { useRouter } from 'vue-router'
 
 import { CheckRequestError } from '@/api/diagnosisChecks'
 import { FeedbackRequestError } from '@/api/feedbackRetry'
+import BrandMark from '@/components/BrandMark.vue'
 import DeviceOverview from '@/components/DeviceOverview.vue'
 import DiagnosisPanel from '@/components/DiagnosisPanel.vue'
 import QueryCheckPanel from '@/components/QueryCheckPanel.vue'
@@ -283,7 +283,7 @@ onBeforeUnmount(() => {
     <a class="skip-link" href="#main-student-content">跳到主要内容</a>
     <header class="app-topbar">
       <div class="brand-lockup">
-        <Monitor aria-hidden="true" />
+        <BrandMark />
         <strong>芯鉴知微</strong>
         <span>学生端</span>
       </div>

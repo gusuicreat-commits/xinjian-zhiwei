@@ -20,6 +20,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { pendingInterventionCommand, reportTeacherProblemResolved } from '@/api/teacher'
+import BrandMark from '@/components/BrandMark.vue'
 import MemoryGovernancePanel from '@/components/MemoryGovernancePanel.vue'
 import ManagedExperimentSessions from '@/components/ManagedExperimentSessions.vue'
 import TeacherDeviceChart from '@/components/TeacherDeviceChart.vue'
@@ -414,7 +415,7 @@ onBeforeUnmount(() => {
     </Transition>
     <header class="teacher-topbar">
       <div class="teacher-brand">
-        <Cpu />
+        <BrandMark />
         <div><strong>芯鉴知微</strong><small>嵌入式实验智能分析平台</small></div>
         <b>教师端</b>
       </div>

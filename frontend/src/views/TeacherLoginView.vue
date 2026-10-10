@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Key, Lock, Monitor, User } from '@element-plus/icons-vue'
+import { Key } from '@element-plus/icons-vue'
 import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
 
+import BrandMark from '@/components/BrandMark.vue'
 import { useTeacherSessionStore } from '@/stores/teacherSession'
 
 const router = useRouter()
@@ -25,7 +26,7 @@ async function submit(): Promise<void> {
     <header class="auth-topbar">
       <div class="auth-topbar-inner">
         <div class="auth-brand">
-          <Monitor aria-hidden="true" />
+          <BrandMark />
           <div class="auth-brand-copy">
             <strong>芯鉴知微</strong>
             <small>嵌入式实验智能分析平台</small>
@@ -44,22 +45,18 @@ async function submit(): Promise<void> {
           使用已分配教师或管理员角色的正式账号登录，数据范围按班级权限隔离。
         </p>
         <el-alert v-if="store.errorMessage" :title="store.errorMessage" type="error" show-icon />
-        <el-form class="login-form" @submit.prevent="submit">
-          <el-form-item>
-            <el-input v-model="form.username" autocomplete="username" placeholder="教师用户名"
-              ><template #prefix><User /></template
-            ></el-input>
+        <el-form class="login-form" label-position="top" @submit.prevent="submit">
+          <el-form-item label="教师用户名">
+            <el-input v-model="form.username" autocomplete="username" />
           </el-form-item>
-          <el-form-item>
+          <el-form-item label="密码">
             <el-input
               v-model="form.password"
               type="password"
               show-password
               autocomplete="current-password"
-              placeholder="密码"
               @keyup.enter="submit"
-              ><template #prefix><Lock /></template
-            ></el-input>
+            />
           </el-form-item>
           <el-button
             type="primary"

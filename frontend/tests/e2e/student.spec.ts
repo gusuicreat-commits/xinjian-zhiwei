@@ -136,8 +136,8 @@ async function mockStudentWorkflow(page: Page, workflow: Record<string, unknown>
 async function login(page: Page): Promise<void> {
   await page.goto('/login')
   await page.getByText('测试设备演示', { exact: true }).click()
-  await page.getByPlaceholder('设备 ID').fill(device.device_id)
-  await page.getByPlaceholder('设备令牌').fill('browser-test-token-not-a-secret')
+  await page.getByLabel('设备 ID', { exact: true }).fill(device.device_id)
+  await page.getByLabel('设备令牌', { exact: true }).fill('browser-test-token-not-a-secret')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page).toHaveURL(/\/student$/)
 }

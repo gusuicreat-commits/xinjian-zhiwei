@@ -174,8 +174,8 @@ const test = base.extend<{ backend: Backend }>({
 async function login(page: Page, backend: Backend) {
   await page.goto('/login')
   await page.getByText('测试设备演示', { exact: true }).click()
-  await page.getByPlaceholder('设备 ID').fill(backend.manifest.device_key)
-  await page.getByPlaceholder('设备令牌').fill(backend.manifest.device_token)
+  await page.getByLabel('设备 ID', { exact: true }).fill(backend.manifest.device_key)
+  await page.getByLabel('设备令牌', { exact: true }).fill(backend.manifest.device_token)
   const sessionResponse = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/v1/student/session') && response.request().method() === 'POST',
@@ -332,8 +332,10 @@ test('account login uses no device secret and explicitly ends its own experiment
     if (request.url().includes('/api/v1/student/')) requests.push(request.headers())
   })
   await page.goto('/login')
-  await page.getByPlaceholder('学生账号', { exact: true }).fill(backend.manifest.student_username)
-  await page.getByPlaceholder('学生密码', { exact: true }).fill(backend.manifest.student_password)
+  await page
+    .getByRole('textbox', { name: '学生账号', exact: true })
+    .fill(backend.manifest.student_username)
+  await page.getByLabel('学生密码', { exact: true }).fill(backend.manifest.student_password)
   const authenticated = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/v1/auth/session') && response.request().method() === 'POST',
@@ -395,8 +397,8 @@ e.dispose()
     },
   )
   await page.goto('/teacher/login')
-  await page.getByPlaceholder('教师用户名', { exact: true }).fill('synthetic-teacher')
-  await page.getByPlaceholder('密码', { exact: true }).fill('synthetic-evaluation-login')
+  await page.getByLabel('教师用户名', { exact: true }).fill('synthetic-teacher')
+  await page.getByLabel('密码', { exact: true }).fill('synthetic-evaluation-login')
   await page.getByRole('button', { name: '进入教师端', exact: true }).click()
   await expect(page).toHaveURL(/\/teacher$/)
   await page.getByText('管理实验会话与设备交接', { exact: true }).click()
@@ -443,8 +445,8 @@ e.dispose()
 
   const nextPage = await context.newPage()
   await nextPage.goto('/login')
-  await nextPage.getByPlaceholder('学生账号', { exact: true }).fill('handover-student')
-  await nextPage.getByPlaceholder('学生密码', { exact: true }).fill('handover-only')
+  await nextPage.getByRole('textbox', { name: '学生账号', exact: true }).fill('handover-student')
+  await nextPage.getByLabel('学生密码', { exact: true }).fill('handover-only')
   await nextPage.getByRole('button', { name: '验证学生账号', exact: true }).click()
   await nextPage.getByText('选择实验任务', { exact: true }).click()
   await nextPage.getByRole('option', { name: '合成作业（测试）', exact: true }).click()
@@ -710,8 +712,8 @@ e.dispose()
     memory_context: { available: false, facts: [], experiences: [] },
   })
   await page.goto('/teacher/login')
-  await page.getByPlaceholder('教师用户名', { exact: true }).fill('synthetic-teacher')
-  await page.getByPlaceholder('密码', { exact: true }).fill('synthetic-evaluation-login')
+  await page.getByLabel('教师用户名', { exact: true }).fill('synthetic-teacher')
+  await page.getByLabel('密码', { exact: true }).fill('synthetic-evaluation-login')
   await page.getByRole('button', { name: '进入教师端', exact: true }).click()
   await expect(page).toHaveURL(/\/teacher$/)
   await page.getByRole('tab', { name: /资料与审核/ }).click()
@@ -808,8 +810,8 @@ print(json.dumps({'device_key': result['objects']['device_key'],
     version_id: string
   }
   await page.goto('/login')
-  await page.getByPlaceholder('学生账号', { exact: true }).fill(identity.student_username)
-  await page.getByPlaceholder('学生密码', { exact: true }).fill(identity.student_password)
+  await page.getByRole('textbox', { name: '学生账号', exact: true }).fill(identity.student_username)
+  await page.getByLabel('学生密码', { exact: true }).fill(identity.student_password)
   await page.getByRole('button', { name: '验证学生账号', exact: true }).click()
   await page.getByText('选择实验任务', { exact: true }).click()
   await page.getByRole('option', { name: /内部测试/ }).click()
@@ -854,8 +856,10 @@ test('a minimal end-command bookmark is resolved by a real authorized receipt wi
   backend,
 }) => {
   await page.goto('/login')
-  await page.getByPlaceholder('学生账号', { exact: true }).fill(backend.manifest.student_username)
-  await page.getByPlaceholder('学生密码', { exact: true }).fill(backend.manifest.student_password)
+  await page
+    .getByRole('textbox', { name: '学生账号', exact: true })
+    .fill(backend.manifest.student_username)
+  await page.getByLabel('学生密码', { exact: true }).fill(backend.manifest.student_password)
   await page.getByRole('button', { name: '验证学生账号', exact: true }).click()
   await expect(page.getByRole('button', { name: '进入所选实验', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: '进入所选实验', exact: true }).click()
@@ -916,8 +920,10 @@ test('explicit logout revokes only the current account token on the real backend
   backend,
 }) => {
   await page.goto('/login')
-  await page.getByPlaceholder('学生账号', { exact: true }).fill(backend.manifest.student_username)
-  await page.getByPlaceholder('学生密码', { exact: true }).fill(backend.manifest.student_password)
+  await page
+    .getByRole('textbox', { name: '学生账号', exact: true })
+    .fill(backend.manifest.student_username)
+  await page.getByLabel('学生密码', { exact: true }).fill(backend.manifest.student_password)
   const authenticated = page.waitForResponse(
     (response) =>
       response.url().endsWith('/api/v1/auth/session') && response.request().method() === 'POST',

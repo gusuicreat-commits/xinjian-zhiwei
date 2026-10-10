@@ -192,8 +192,8 @@ test('organizes teacher tasks without losing evidence or writing on navigation',
 
   await page.setViewportSize({ width: 1195, height: 850 })
   await page.goto('/teacher/login')
-  await page.getByPlaceholder('教师用户名').fill('browser-teacher')
-  await page.getByPlaceholder('密码').fill('browser-test-password')
+  await page.getByLabel('教师用户名', { exact: true }).fill('browser-teacher')
+  await page.getByLabel('密码', { exact: true }).fill('browser-test-password')
   await page.getByRole('button', { name: '进入教师端' }).click()
   await expect(page).toHaveURL(/\/teacher$/)
   const writes: string[] = []
@@ -299,8 +299,8 @@ test('keeps authorized pending handoffs visible across tasks and reload without 
     route.fulfill({ json: session }),
   )
   await page.goto('/teacher/login')
-  await page.getByPlaceholder('教师用户名').fill('browser-teacher')
-  await page.getByPlaceholder('密码').fill('browser-test-password')
+  await page.getByLabel('教师用户名', { exact: true }).fill('browser-teacher')
+  await page.getByLabel('密码', { exact: true }).fill('browser-test-password')
   await page.getByRole('button', { name: '进入教师端' }).click()
   await expect(page).toHaveURL(/\/teacher$/)
   await page.evaluate((record) => {
@@ -360,8 +360,8 @@ test('a rejected teacher action removes stale protected data from the page', asy
     return route.fulfill({ status: 403, json: { detail: 'permission changed' } })
   })
   await page.goto('/teacher/login')
-  await page.getByPlaceholder('教师用户名').fill('browser-teacher')
-  await page.getByPlaceholder('密码').fill('browser-test-password')
+  await page.getByLabel('教师用户名', { exact: true }).fill('browser-teacher')
+  await page.getByLabel('密码', { exact: true }).fill('browser-test-password')
   await page.getByRole('button', { name: '进入教师端' }).click()
   await page.getByRole('button', { name: 'Phase 9 浏览器测试设备', exact: true }).click()
   await page.getByRole('button', { name: /phase9-browser-device.*查看详情/ }).click()
