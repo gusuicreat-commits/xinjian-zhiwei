@@ -1,6 +1,6 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -55,6 +55,16 @@ type Backend = {
   manifest: Manifest
   controlDir: string
   snapshot: () => Promise<Snapshot>
+}
+
+// Revision ids match the `YYYYMMDD_NNNN_` file prefix, so the newest file names the head.
+async function migrationHead() {
+  const names = await readdir(join(backendDir, 'migrations/versions'))
+  const revisions = names
+    .map((name) => /^(\d{8}_\d{4})_.*\.py$/.exec(name)?.[1])
+    .filter((revision): revision is string => Boolean(revision))
+    .sort()
+  return revisions[revisions.length - 1]
 }
 
 async function currentDht11PackageVersion() {
@@ -224,7 +234,7 @@ async function ingestAndDiagnose(page: Page, backend: Backend) {
   ).toBe(true)
   await expect(page.getByRole('button', { name: '仍未解决', exact: true })).toBeVisible()
   const persisted = await backend.snapshot()
-  expect(persisted.migration).toBe('20261003_0039')
+  expect(persisted.migration).toBe(await migrationHead())
   expect(persisted.evidence_ids.length).toBeGreaterThan(0)
   expect(persisted.workflows[0]).toMatchObject({
     id: workflow.id,
