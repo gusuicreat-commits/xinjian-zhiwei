@@ -134,9 +134,13 @@ watch(
 
 <template>
   <section class="session-management" aria-label="实验设备占用管理">
-    <h2>实验设备占用</h2>
-    <p>按原班级管理尚未结束的实验；学生停用或撤销资格后仍可处理交接。</p>
-    <el-button :loading="loading" :disabled="acting" @click="refresh">刷新占用列表</el-button>
+    <header>
+      <div>
+        <h2>实验设备占用</h2>
+        <p>按原班级管理尚未结束的实验；学生停用或撤销资格后仍可处理交接。</p>
+      </div>
+      <el-button :loading="loading" :disabled="acting" @click="refresh">刷新占用列表</el-button>
+    </header>
     <el-alert v-if="error" :title="error" type="warning" :closable="false" />
     <el-table v-if="authorized" :data="rows" row-key="id" empty-text="当前没有实验占用">
       <el-table-column prop="class_name" label="班级" />
@@ -161,15 +165,27 @@ watch(
 </template>
 
 <style scoped>
+/* Flat inside the parent <details>; the details border already frames it. */
 .session-management {
-  padding: 24px;
-  margin: 24px 0;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  margin: 16px 0 0;
+}
+.session-management header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 16px;
+}
+.session-management h2 {
+  margin: 0;
+  color: var(--studio-ink);
+  font-size: 15px;
+  font-weight: 700;
 }
 .session-management p {
-  color: #64748b;
-  margin: 12px 0;
+  margin: 6px 0 0;
+  color: var(--studio-copy);
+  font-size: 13px;
 }
 </style>

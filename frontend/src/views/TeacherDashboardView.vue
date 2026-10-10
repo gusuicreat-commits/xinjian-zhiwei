@@ -188,6 +188,14 @@ function toggleWorkflow(workflowId: string): void {
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`
 }
+// Sub-cent costs keep four decimals so a real charge never reads as zero.
+function formatCost(value: number): string {
+  if (value === 0) return '0'
+  return value < 0.01 ? value.toFixed(4) : value.toFixed(2)
+}
+function formatDuration(value: number | null | undefined): string {
+  return typeof value === 'number' ? `${value.toFixed(1)}ms` : '—'
+}
 function reviewActionLabel(action: 'approve' | 'edit' | 'reject'): string {
   return { approve: '批准', edit: '修订', reject: '驳回' }[action]
 }
@@ -705,7 +713,7 @@ onBeforeUnmount(() => {
                 {{
                   searchQuery
                     ? '没有匹配的异常设备，请调整搜索内容。'
-                    : '当前没有规则命中的异常设备；这不代表已完成硬件验收。'
+                    : '当前没有规则命中的异常设备。'
                 }}
               </p>
             </article>
@@ -846,9 +854,7 @@ onBeforeUnmount(() => {
           role="tabpanel"
           aria-labelledby="teacher-tab-class-resources"
         >
-          <p class="teacher-section-note">
-            诊断解释审核、工单处理与正式案例审核各自独立。批准解释不代表确认硬件恢复或发布正式案例。
-          </p>
+          <p class="teacher-section-note">批准解释不等于确认硬件恢复，也不会发布正式案例。</p>
           <MemoryGovernancePanel
             v-if="!REVIEW_MODE && sessionStore.accessToken"
             :access-token="sessionStore.accessToken"
@@ -1027,9 +1033,7 @@ onBeforeUnmount(() => {
                 {{ dashboard.knowledge_cases.approved_case_count ?? 0 }}
               </p>
             </div>
-            <span class="knowledge-status-chip"
-              >本页展示状态，案例审核操作通过现有审核接口进行</span
-            >
+            <span class="knowledge-status-chip">本页仅展示状态，案例审核在审核接口中进行</span>
           </article>
           <p v-if="dashboardStore.workflowSections.metrics.state === 'error'" role="alert">
             诊断统计读取失败，不能视为零。<el-button size="small" @click="refresh"
@@ -1038,71 +1042,93 @@ onBeforeUnmount(() => {
           </p>
           <details v-if="workflowMetrics" class="teacher-system-details">
             <summary>系统详情与诊断统计</summary>
-            <p>沿用当前账号可读取的统计；已解决诊断比例不代表课堂通过率。</p>
+            <p>已解决诊断比例不代表课堂通过率。</p>
             <div v-if="workflowMetrics" class="workflow-metric-strip" aria-label="诊断工作流指标">
-              <span
-                ><small>流程</small><b>{{ workflowMetrics.total ?? 0 }}</b></span
-              >
-              <span
-                ><small>待审</small><b>{{ workflowMetrics.waiting_teacher ?? 0 }}</b></span
-              >
-              <span
-                ><small>完成</small><b>{{ workflowMetrics.completed ?? 0 }}</b></span
-              >
-              <span
-                ><small>驳回</small><b>{{ workflowMetrics.rejected ?? 0 }}</b></span
-              >
-              <span
-                ><small>失败</small><b>{{ workflowMetrics.failed ?? 0 }}</b></span
-              >
-              <span
-                ><small>运行中/其他</small><b>{{ workflowInProgressOrOtherCount }}</b></span
-              >
-              <span
-                ><small>已审</small><b>{{ workflowMetrics.reviewed ?? 0 }}</b></span
-              >
-              <span
-                ><small>修订率</small><b>{{ percent(workflowMetrics.edit_rate ?? 0) }}</b></span
-              >
-              <span
-                ><small>驳回率</small><b>{{ percent(workflowMetrics.reject_rate ?? 0) }}</b></span
-              >
-              <span
-                ><small>恢复</small><b>{{ workflowMetrics.resume_count ?? 0 }}</b></span
-              >
-              <span>
-                <small>节点均耗时</small>
-                <b>{{ workflowMetrics.average_node_duration_ms?.toFixed(1) ?? '—' }}ms</b>
-              </span>
-              <span
-                ><small>AI 调用</small><b>{{ workflowMetrics.ai_call_count ?? 0 }}</b></span
-              >
-              <span>
-                <small>模型用量（Token）</small>
-                <b>{{
-                  (workflowMetrics.ai_input_tokens ?? 0) + (workflowMetrics.ai_output_tokens ?? 0)
-                }}</b>
-              </span>
-              <span>
-                <small>估算成本（元）</small
-                ><b>{{ (workflowMetrics.ai_estimated_cost ?? 0).toFixed(4) }}</b>
-              </span>
-              <span>
-                <small>有反馈诊断</small>
-                <b>{{ workflowMetrics.student_feedback_count ?? 0 }}</b>
-              </span>
-              <span>
-                <small>已解决诊断</small>
-                <b>{{ workflowMetrics.student_resolved_count ?? 0 }}</b>
-              </span>
-              <span>
-                <small>按每个诊断最新反馈计算解决率</small>
-                <b>{{
-                  workflowMetrics.student_resolution_rate === null
-                    ? '—'
-                    : percent(workflowMetrics.student_resolution_rate)
-                }}</b>
-              </span>
+              <section class="workflow-metric-group">
+                <h3>诊断流程</h3>
+                <div>
+                  <span
+                    ><small>流程</small><b>{{ workflowMetrics.total ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>运行中/其他</small><b>{{ workflowInProgressOrOtherCount }}</b></span
+                  >
+                  <span
+                    ><small>完成</small><b>{{ workflowMetrics.completed ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>失败</small><b>{{ workflowMetrics.failed ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>恢复</small><b>{{ workflowMetrics.resume_count ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>节点均耗时</small
+                    ><b>{{ formatDuration(workflowMetrics.average_node_duration_ms) }}</b></span
+                  >
+                </div>
+              </section>
+              <section class="workflow-metric-group">
+                <h3>教师审核</h3>
+                <div>
+                  <span
+                    ><small>待审</small><b>{{ workflowMetrics.waiting_teacher ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>已审</small><b>{{ workflowMetrics.reviewed ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>驳回</small><b>{{ workflowMetrics.rejected ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>修订率</small><b>{{ percent(workflowMetrics.edit_rate ?? 0) }}</b></span
+                  >
+                  <span
+                    ><small>驳回率</small
+                    ><b>{{ percent(workflowMetrics.reject_rate ?? 0) }}</b></span
+                  >
+                </div>
+              </section>
+              <section class="workflow-metric-group">
+                <h3>学生反馈</h3>
+                <div>
+                  <span
+                    ><small>有反馈诊断</small
+                    ><b>{{ workflowMetrics.student_feedback_count ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>已解决诊断</small
+                    ><b>{{ workflowMetrics.student_resolved_count ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>解决率（按最新反馈）</small
+                    ><b>{{
+                      workflowMetrics.student_resolution_rate === null
+                        ? '—'
+                        : percent(workflowMetrics.student_resolution_rate)
+                    }}</b></span
+                  >
+                </div>
+              </section>
+              <section class="workflow-metric-group">
+                <h3>AI 用量</h3>
+                <div>
+                  <span
+                    ><small>AI 调用</small><b>{{ workflowMetrics.ai_call_count ?? 0 }}</b></span
+                  >
+                  <span
+                    ><small>模型用量（Token）</small
+                    ><b>{{
+                      (workflowMetrics.ai_input_tokens ?? 0) +
+                      (workflowMetrics.ai_output_tokens ?? 0)
+                    }}</b></span
+                  >
+                  <span
+                    ><small>估算成本（元）</small
+                    ><b>{{ formatCost(workflowMetrics.ai_estimated_cost ?? 0) }}</b></span
+                  >
+                </div>
+              </section>
             </div>
           </details>
         </section>
@@ -1188,12 +1214,21 @@ onBeforeUnmount(() => {
   color: var(--studio-blue);
   font-size: 18px;
 }
+/* Same baseline as the static counts; the arrow alone marks it as a link. */
 .teacher-task-counts button {
   border: 0;
-  border-bottom: 1px solid var(--studio-line);
   background: transparent;
-  padding: 0 0 4px;
+  padding: 0;
   cursor: pointer;
+}
+.teacher-task-counts button::after {
+  content: '→' / '';
+  margin-left: 4px;
+  color: var(--studio-blue);
+}
+.teacher-task-counts button:hover,
+.teacher-task-counts button:focus-visible {
+  color: var(--studio-blue);
 }
 .teacher-task-panel {
   min-width: 0;
@@ -1438,6 +1473,32 @@ onBeforeUnmount(() => {
 }
 .workflow-metric-strip b {
   font-size: 16px;
+}
+/* Grouped by meaning instead of one flat wall of equal tiles. */
+.workflow-metric-strip {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 28px 40px;
+  padding: 20px 0 4px;
+  border: 0;
+}
+.workflow-metric-group h3 {
+  margin: 0 0 10px;
+  color: var(--studio-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.workflow-metric-group > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  border-top: 1px solid var(--studio-line-strong);
+}
+.workflow-metric-group span {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--studio-line);
 }
 .knowledge-panel {
   grid-template-columns: 32px minmax(0, 1fr);

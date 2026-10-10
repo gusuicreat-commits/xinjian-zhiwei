@@ -411,7 +411,6 @@ onBeforeUnmount(() => {
             }}
             · 最新展示读数记录：{{ latestReadingAt }}
           </p>
-          <small>通信状态不代表硬件正常；记录时间不等于现场已复测。</small>
         </section>
         <section
           v-if="dashboardStore.checkPending && activeView !== 'work'"
@@ -448,7 +447,7 @@ onBeforeUnmount(() => {
           >
             <div class="data-workspace-heading">
               <h2>数据记录</h2>
-              <p>这里展示已上传的数据；切换页面不会启动检查。</p>
+              <p>这里展示设备已上传的数据。</p>
             </div>
             <details class="experiment-details">
               <summary>实验与设备详情</summary>

@@ -11,6 +11,13 @@
   --studio-width: 1280px;
   --studio-gutter: clamp(20px, 4vw, 48px);
   --studio-ease: cubic-bezier(0.2, 0.72, 0.24, 1);
+  /* Status semantics: muted enough for the editorial palette, distinct at a glance. */
+  --studio-ok: #12764a;
+  --studio-ok-bg: #e2f1e8;
+  --studio-warn: #9a5800;
+  --studio-warn-bg: #fbeed6;
+  --studio-danger: #b3261e;
+  --studio-danger-bg: #fbe4e1;
   --md-bg: var(--studio-bg);
   --md-surface: var(--studio-panel);
   --md-surface-subtle: #eeede8;
@@ -151,6 +158,30 @@ body,
   border-color: var(--studio-line-strong);
   color: var(--studio-ink);
   background: transparent;
+}
+
+.student-app .el-tag--success,
+.teacher-app .el-tag--success,
+.readiness-page .el-tag--success {
+  border-color: transparent;
+  color: var(--studio-ok);
+  background: var(--studio-ok-bg);
+}
+
+.student-app .el-tag--warning,
+.teacher-app .el-tag--warning,
+.readiness-page .el-tag--warning {
+  border-color: transparent;
+  color: var(--studio-warn);
+  background: var(--studio-warn-bg);
+}
+
+.student-app .el-tag--danger,
+.teacher-app .el-tag--danger,
+.readiness-page .el-tag--danger {
+  border-color: transparent;
+  color: var(--studio-danger);
+  background: var(--studio-danger-bg);
 }
 
 /* Authentication: Swiss editorial split with a single structural blue axis. */
@@ -630,13 +661,21 @@ body,
   grid-column: 9 / -1;
   justify-self: end;
   align-self: start;
-  min-width: 172px;
-  height: 58px;
+  min-width: 0;
+  height: 44px;
   margin: 20px 0 0 clamp(28px, 4vw, 56px);
-  padding: 0 30px;
-  border: 1px solid var(--studio-blue);
-  color: #fff;
-  background: var(--studio-blue);
+  padding: 0 20px;
+  /* Secondary: the primary action lives in the diagnosis card below. */
+  border: 1px solid var(--studio-line-strong);
+  color: var(--studio-ink);
+  background: transparent;
+}
+
+.content-toolbar > .el-button:hover,
+.content-toolbar > .el-button:focus-visible {
+  border-color: var(--studio-blue);
+  color: var(--studio-blue);
+  background: transparent;
 }
 
 .student-section-nav {
@@ -1270,6 +1309,16 @@ body,
   background: transparent;
 }
 
+/* Counts sit inline after the title; an earlier layer makes them block-level grids. */
+.teacher-panel > header h2 i {
+  display: inline-block;
+  min-width: 0;
+  height: auto;
+  margin-left: 6px;
+  padding: 0;
+  font-style: normal;
+}
+
 .teacher-chart {
   height: 340px;
 }
@@ -1375,9 +1424,16 @@ body,
 }
 
 .workflow-summary-line span,
-.workflow-proof-columns em,
-.knowledge-status-chip {
+.workflow-proof-columns em {
   color: var(--studio-blue);
+  background: transparent;
+}
+
+/* Informational note, not an action: no border so it does not read as a button. */
+.knowledge-status-chip {
+  padding: 0;
+  border: 0;
+  color: var(--studio-muted);
   background: transparent;
 }
 
@@ -1664,6 +1720,12 @@ body,
     padding: 0 16px;
   }
 
+  /* Desktop min-widths from earlier layers push the user actions off-screen. */
+  .app-topbar .brand-lockup,
+  .app-topbar .topbar-user {
+    min-width: 0;
+  }
+
   .app-content {
     padding: 0 20px 96px;
   }
@@ -1691,7 +1753,13 @@ body,
 
   .content-toolbar > .el-button {
     justify-self: start;
-    margin-top: 36px;
+    margin-top: 20px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+
+  .content-toolbar > .el-button svg {
+    margin-right: 6px;
   }
 
   .teacher-hero dl {
@@ -1791,8 +1859,12 @@ body,
     font-size: clamp(3.3rem, 16vw, 4.35rem);
   }
 
-  .content-toolbar > .el-button {
-    width: 100%;
+  .app-topbar .topbar-user {
+    gap: 8px;
+  }
+
+  .app-topbar .topbar-user .avatar {
+    display: none;
   }
 
   .task-card {

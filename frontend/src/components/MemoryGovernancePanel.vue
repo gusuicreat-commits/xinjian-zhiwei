@@ -141,7 +141,7 @@ async function execute() {
 <template>
   <article class="memory-governance">
     <h2>知识停用与影响复核</h2>
-    <p>只列出当前有权查看的关联记录。可能受影响不等于已经误诊；旧记录不会被改写。</p>
+    <p>可能受影响不等于已经误诊；旧记录不会被改写。</p>
     <button :disabled="busy" @click="loadEvents()">读取停用记录</button>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="loaded && !events.length && !error">

@@ -23,6 +23,15 @@ const labels = {
   test_only: '仅测试',
 }
 
+// Not-required and test-only are expected states, so they stay neutral.
+const statusTypes = {
+  ready: 'success',
+  blocked: 'danger',
+  unverified: 'warning',
+  not_required: 'info',
+  test_only: 'info',
+} as const
+
 const readinessDimensions = [
   ['software_ready', '软件就绪'],
   ['demo_ready', '演示就绪'],
@@ -51,7 +60,7 @@ const readinessDimensions = [
           <div v-for="[key, label] in readinessDimensions" :key="key">
             <dt>{{ label }}</dt>
             <dd>
-              <el-tag :type="data[key] ? 'success' : 'danger'">
+              <el-tag :type="data[key] ? 'success' : 'warning'">
                 {{ data[key] ? '已满足' : '未获就绪证据' }}
               </el-tag>
             </dd>
@@ -61,11 +70,7 @@ const readinessDimensions = [
       <section class="readiness-grid" aria-label="就绪检查项">
         <article v-for="item in data.items" :key="item.key" class="panel-card">
           <h2>{{ item.label }}</h2>
-          <el-tag
-            :type="
-              item.status === 'ready' ? 'success' : item.status === 'blocked' ? 'danger' : 'warning'
-            "
-          >
+          <el-tag :type="statusTypes[item.status]">
             {{ labels[item.status] }}
           </el-tag>
           <p>{{ item.evidence }}</p>

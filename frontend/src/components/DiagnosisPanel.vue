@@ -407,9 +407,7 @@ function formatReviewTime(value?: string | null): string {
             >{{ workflowActionLabel }}</el-button
           >
         </div>
-        <p class="next-step-note">
-          重新检查分析已上传记录；“仍未解决”继续原指导。刷新页面不会启动诊断。
-        </p>
+        <p class="next-step-note">只分析已上传的记录；刷新页面不会启动诊断。</p>
         <p v-if="!hasExperimentSession" class="next-step-note">
           请先连接有效的实验会话，再检查当前数据。
         </p>

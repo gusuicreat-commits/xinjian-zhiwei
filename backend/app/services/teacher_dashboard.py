@@ -253,9 +253,8 @@ def build_teacher_dashboard(
     return TeacherDashboardResponse(
         generated_at=now,
         data_notice=(
-            "统计仅来自当前账号可访问范围内的设备、日志、诊断与故障树记录；"
-            "测试数据保留标识。实验完成率尚缺正式任务结果数据；"
-            "知识库只展示已登记和审核的数据。"
+            "统计范围为当前账号可访问的记录，测试数据已标记；"
+            "完成率需正式任务结果后才能计算。"
         ),
         metrics=TeacherMetricSummary(
             online_devices=status_counts["online"],

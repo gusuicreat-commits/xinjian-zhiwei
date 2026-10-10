@@ -13,7 +13,8 @@ let chart: ECharts | null = null
 let disposed = false
 use([PieChart, LegendComponent, TooltipComponent, CanvasRenderer])
 const labels = { online: '在线', offline: '离线', never_seen: '未上报', abnormal: '异常' }
-const colors = { online: '#243bff', offline: '#111111', never_seen: '#aaa9a3', abnormal: '#666666' }
+// Mirrors the --studio-ok / --studio-danger tokens; canvas cannot read CSS variables.
+const colors = { online: '#12764a', offline: '#5f5e59', never_seen: '#c9c8c2', abnormal: '#b3261e' }
 
 function render(): void {
   if (disposed || !element.value) return
