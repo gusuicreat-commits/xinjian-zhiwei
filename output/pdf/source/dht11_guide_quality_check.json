@@ -1,8 +1,0 @@
-{
-  "artifact": "ESP32_DHT11_零基础硬件操作手册.pdf",
-  "pages": 22,
-  "bookmarks": 22,
-  "checks": "all pages rendered and visually reviewed; text, margins, numbering, updated versions verified",
-  "sha256": "06966ebffaac9d01d835b538c83747eef5c7c7c34a5e6868f3cb08f9b0cde5b0",
-  "hardware_tested_by_this_document_task": false
-}
