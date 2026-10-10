@@ -215,12 +215,32 @@ class OpenAICompatibleClient:
             "Content-Type": "application/json",
             "Accept-Encoding": "identity",
         }
+        # Send phase decides retry safety, not the exception name: the whole-call
+        # deadline usually fires before httpx's own connect timeout. A proxy CONNECT
+        # tunnel is still connection setup; only the provider request counts as sent.
+        # Without any trace event (e.g. a non-httpcore transport) the phase is unknown
+        # and the conservative legacy mapping applies.
+        request_started = False
+        phase_traced = False
+
+        async def trace(event_name, info):
+            nonlocal request_started, phase_traced
+            phase_traced = True
+            if event_name.endswith("send_request_headers.started"):
+                if getattr(info.get("request"), "method", b"") != b"CONNECT":
+                    request_started = True
+
         try:
             with anyio.fail_after(limit):
                 async with httpx.AsyncClient(timeout=limit) as client:
                     async with client.stream(
-                        "POST", f"{self._base_url}{path}", headers=headers, json=payload
+                        "POST",
+                        f"{self._base_url}{path}",
+                        headers=headers,
+                        json=payload,
+                        extensions={"trace": trace},
                     ) as response:
+                        request_started = True  # a response proves the request was sent
                         status = response.status_code
                         if status >= 400:
                             # Existing policy: 5xx does not prove non-execution.
@@ -274,6 +294,10 @@ class OpenAICompatibleClient:
                         return result
         except AIProviderError:
             raise
+        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            raise ProviderTemporaryFailure(
+                "AI Provider not connected", code="NOT_SENT"
+            ) from exc
         except (
             TimeoutError,
             httpx.ReadTimeout,
@@ -282,12 +306,12 @@ class OpenAICompatibleClient:
             httpx.WriteError,
             httpx.RemoteProtocolError,
         ) as exc:
+            if phase_traced and not request_started:
+                raise ProviderTemporaryFailure(
+                    "AI Provider not connected", code="NOT_SENT"
+                ) from exc
             raise ProviderOutcomeUnknown(
                 "AI Provider outcome unknown", code="OUTCOME_UNKNOWN"
-            ) from exc
-        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
-            raise ProviderTemporaryFailure(
-                "AI Provider not connected", code="NOT_SENT"
             ) from exc
         except (ValueError, zlib.error, RecursionError) as exc:
             raise ProviderTemporaryFailure(
@@ -295,6 +319,10 @@ class OpenAICompatibleClient:
                 code="INVALID_RESPONSE",
             ) from exc
         except httpx.HTTPError as exc:
+            if phase_traced and not request_started:
+                raise ProviderTemporaryFailure(
+                    "AI Provider not connected", code="NOT_SENT"
+                ) from exc
             raise ProviderOutcomeUnknown(
                 "AI Provider transport failed", code="OUTCOME_UNKNOWN"
             ) from exc

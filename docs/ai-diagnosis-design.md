@@ -423,6 +423,7 @@ manifest修订不一致、MemoryEvent停用、固定包或范围变化、证据�
 | `AIStorageUnavailable`（TemporarilyUnavailable）：范围读取/预留/结算故障 | 否；结算故障恢复按原 dispatching 状态处理 | 发送前失败不新增费用；发送后保留已持久化预留，不退款 | 诊断/解释确定性回退；润色 409，存储失败不伪称范围失效 |
 | `ProviderRequestRejected`（InvalidRequest）：确定 4xx 请求错误 | 否 | 每次实际尝试保留原保守预留 | 诊断/解释确定性回退；润色 409 |
 | `ProviderTemporaryFailure`（TemporarilyUnavailable）：429、确定未连接或原策略允许重试的无效 JSON | 仅原策略允许时；429 不早于 Retry-After | 每次实际尝试单独记账，成功按可用 token 结算 | 重试成功沿用成功响应；耗尽后确定性回退/润色 409 |
+| 超时或传输失败的发送阶段判定 | 以 httpcore trace 是否已开始写出提供方请求头为准（代理 CONNECT 不算发送）：未写出 → `NOT_SENT`，已写出或已有响应 → `OUTCOME_UNKNOWN`；无 trace 事件时沿用保守映射 | 同所属类型 | 见 `tests/test_ai_send_phase.py` 与 [Kimi 复验](kimi-api-integration.md) |
 | `ProviderOutcomeUnknown` / 恢复时 `AIOutcomeUnknown`（Conflict）：读写中断、超时、截断、5xx、未决旧预留 | 否；必须核对原操作 | 保留原预留/失败费用，不自动退款 | 确定性回退/润色 409；恢复不新增外发 |
 | `ValidationError` / `CaseDraftError`（Conflict）：响应已完成但 Schema/事实校验拒绝 | 沿用原输出校验重试次数，不视为未知发送 | 每次已完成响应保留结算费用 | 润色耗尽后原 409/detail |
 | `AuthorizationDenied` / `ScopeViolation`（AccessDenied）：当前身份/权限撤回 | 否，显式传播 | 已返回并结算的费用保留 | 原 401/403 状态与响应体；拒绝交付 |
