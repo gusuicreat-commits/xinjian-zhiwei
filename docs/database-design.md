@@ -32,7 +32,7 @@
 | 记忆治理 | `memory_uses`、`memory_events`、`memory_impact_reviews`、`memory_cleanup_plans`；来源使用、停用、影响复核和固定缓存清理计划，不复制事实正文 |
 | 教师处置 | `intervention_cases`、`intervention_events`、`classroom_messages`；工单、公开/私密事件与课堂消息 |
 | 通用审计 | `audit_events`；身份、版本发布、会话管理、导出等事件 |
-| 历史向量兼容 | `knowledge_embeddings`；保留旧结构，不是当前诊断真相源或检索依赖 |
+| 历史向量兼容 | `knowledge_embeddings`；早期代码直接建表、无迁移管理，空库升级不会创建；从旧库升级时保留（外键随分块级联删除），不是当前诊断真相源或检索依赖 |
 
 ## 3. 原始归属与采集约束
 
