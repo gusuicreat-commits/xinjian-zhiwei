@@ -68,11 +68,19 @@ def test_registered_sources_match_actual_files_and_pending_materials_remain_pend
     manual = sources["sensirion-sht3x-dis-datasheet-v7"]
     assert manual.kind == "vendor_document"
     assert manual.sha256 == "095b1853e7f4328f5897c9ca6c392a7dd8b0202eda66b0a2629f9cb840dd496d"
+    repo_root = PACKAGE_ROOT.parents[1]
     for source in sources.values():
         if source.availability == "available":
-            raw = (PACKAGE_ROOT.parents[1] / source.location).read_bytes()
-            assert hashlib.sha256(raw).hexdigest() == source.sha256
             assert source.revision and source.locator
+            path = repo_root / source.location
+            # Vendor originals stay out of Git (data/knowledge/raw/ is ignored); their
+            # pinned hashes are re-verified by firmware/esp32s3_sht31/docs/fetch_sources.py.
+            if source.location.startswith("data/knowledge/raw/"):
+                assert source.kind == "vendor_document"
+                if not path.exists():
+                    continue
+            raw = path.read_bytes()
+            assert hashlib.sha256(raw).hexdigest() == source.sha256
     for sid in ("pending.hardware", "pending.teacher", "pending.course"):
         assert sources[sid].availability == "pending" and sources[sid].sha256 is None
     for sid in (
