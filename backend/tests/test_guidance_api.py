@@ -48,7 +48,7 @@ def test_guidance_api_persists_ranked_reasons_and_is_idempotent(
     assert first.json() == second.json()
     item = first.json()["items"][0]
     assert item["hint_level"] == 1
-    assert len(item["ranked_causes"]) == 3
+    assert len(item["ranked_causes"]) == 6
     assert all(cause["confidence"] == "low" for cause in item["ranked_causes"])
     with api_context["session_factory"]() as db:
         assert db.query(GuidanceHistory).count() == 1

@@ -23,7 +23,7 @@ const examples: Array<[string, Component, Record<string, unknown>]> = [
       readings: [
         {
           id: 'reading',
-          sensor_type: 'dht11',
+          sensor_type: 'SHT31',
           metric_key: 'temperature',
           value: 23.5,
           unit: '°C',

@@ -68,7 +68,7 @@ def test_settings(url):
 
 @contextmanager
 def fixture(dsn, control_dir, origin):
-    env = WorkflowEnvironment("dht11_temperature_humidity", "valid", dsn)
+    env = WorkflowEnvironment("sht31_temperature_humidity", "valid", dsn)
     with psycopg.connect(dsn, autocommit=True, connect_timeout=5) as admin:
         extension = admin.execute(
             "SELECT n.nspname FROM pg_extension e JOIN pg_namespace n "
@@ -156,7 +156,7 @@ def fixture(dsn, control_dir, origin):
                     for item in json.loads(
                         (BACKEND / "evaluation/workflow_inputs.json").read_text()
                     )
-                    if item["id"] == "dht-valid"
+                    if item["id"] == "sht31-valid"
                 )
                 (control_dir / "manifest.json").write_text(
                     json.dumps(

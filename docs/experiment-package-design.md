@@ -96,8 +96,8 @@ draft → pending → approved → published → superseded/revoked
 
 ## 当前示例与校验入口
 
-当前完整包为 `dht11_temperature_humidity@2.0.11` 和
-`gpio_led_output@2.0.4`。DHT11 工作区版本 2.0.11 仍是测试草稿；两包用于证明同一套加载、规则、故障树和证据链可以处理不同实验。
+当前完整包为 `sht31_temperature_humidity@1.0.0` 和
+`gpio_led_output@2.0.4`。SHT31 包于 2026-10-11 直接替换原 DHT11 包，仍是测试草稿；两包用于证明同一套加载、规则、故障树和证据链可以处理不同实验。
 
 两个包及其案例均为合成测试资料，并明确标记测试数据；没有真实硬件和教师审核时不能作为
 正式实验知识发布。`metadata.compatibility.engine` 在导入、发布检查和运行装载时执行版本范围校验。
@@ -118,7 +118,7 @@ draft → pending → approved → published → superseded/revoked
 
 ### 失败计数
 
-DHT11 规则使用 `failure_count_in_window`，现保留阈值 5，含义是所选窗口内累计的指定组件失败事件数；阈值仍在 rules.yaml 可配置，待硬件校准。规则证据 details 同时记录累计数及 `consecutive_failure_count: null`。没有经过验证的逐次成功/失败完整序列，因此未实现或启用连续失败阈值，不以累计次数冒充连续失败。
+SHT31 规则使用 `failure_count_in_window`，现保留阈值 5（程序约 1 秒一次，5 次失败几秒内即可累积），含义是所选窗口内累计的指定组件失败事件数；阈值仍在 rules.yaml 可配置，待硬件校准。规则证据 details 同时记录累计数及 `consecutive_failure_count: null`。没有经过验证的逐次成功/失败完整序列，因此未实现或启用连续失败阈值，不以累计次数冒充连续失败。
 
 `required_parameters.consecutive_failure_threshold: null` 是待确认占位，不是正在运行的规则。工作流 `failure_count/historical_failures` 表达持久化问题中的异常证据轮次；`attempt_count` 表达未解决排查尝试。它们都不能替代设备采样失败计数。
 
@@ -155,7 +155,7 @@ normal 的 scope 固定为 reported_telemetry_only，并携带 pending_hardware�
 
 ### 接入与校验
 
-legacy 日志归一化支持 sensor_snapshot.component_id/interface_id；仍由已声明组件和规则参数匹配，未凭错误码猜组件。DHT11 的错误事件、temperature/humidity，LED 四类观测均与实际持久化名称对齐。对声明新 runtime_expectations 的包，新增 evidence.runtime_types 校验，阻止声明类型与静态映射输出类型不一致；旧包维持兼容。
+legacy 日志归一化支持 sensor_snapshot.component_id/interface_id；串口桥日志不带组件身份时，只有固定包内恰好一条事件映射与日志匹配才按该映射补组件，不凭错误码模糊猜测，也不补引脚或地址。SHT31 的错误事件、temperature/humidity，LED 四类观测均与实际持久化名称对齐。对声明新 runtime_expectations 的包，新增 evidence.runtime_types 校验，阻止声明类型与静态映射输出类型不一致；旧包维持兼容。
 
 包内 facts 样例仍只验证规则结构，零命中样例明确不声称正常。HTTP→持久化→context→Evidence UUID、显式正常、LED 语义隔离和累计计数的回归覆盖在 `backend/tests/test_experiment_trust.py`。这些都是自动化合成数据测试，不能当真实硬件案例。
 
@@ -201,9 +201,9 @@ LED 旧 level 映射用 `match.metric: null` 与显式 command/electrical/optica
 - Wokwi：[电路结构](https://docs.wokwi.com/diagram-format)、[自动化场景](https://docs.wokwi.com/wokwi-ci/automation-scenarios)用于记录可复现场景；仿真不能证明真实供电、接触和器件状态，也不要求采用其接口。
 - Zephyr：[样例规范](https://docs.zephyrproject.org/latest/samples/sample_definition_and_criteria.html)用于写清硬件要求、运行方法及预期输出；可运行样例不能代替异常与恢复测试。
 
-## DHT11 2.0.7内容修订
+## SHT31 1.0.0 内容来源（2026-10-11）
 
-项目`minimum_interval_ms`与配置周期均为3000ms；厂商V1.3的严格大于2秒限制由原始手册定位解释，不把2000ms当允许的等值边界。`identify`是connect/configure/observe的先行参考，`protocol_evidence`在三个读取失败原因分支的四级提示中可选取；只影响新指导参考快照。来源新增厂商附件与对应固件源码hash，旧基线保留为内容沿革；硬件/教师/课程分别待确认。LED 2.0.4内容未变。
+硬件事实取自同学现行程序（原样入库）、Sensirion SHT3x 手册 V7 与 ESP32-S3 资料；串口格式、映射与时间语义取自串口桥代码。故障树列六类 I²C 候选（接线、供电/地、地址、上拉/线长、程序配置、器件异常），现有失败日志无法区分，全部保持待验证。2026-10-11 的真机观察只证明程序运行并返回合理数值，接线、精度、周期与故障区分仍为 pending_hardware；教师与课程材料仍为 pending。DHT11 2.0.x 的内容沿革见提交 `2876e91`。LED 2.0.4 内容未变。
 
 ## 内容制作与来源审查
 
@@ -219,7 +219,7 @@ LED 旧 level 映射用 `match.metric: null` 与显式 command/electrical/optica
 | 6. 分层验证 | 软件、真实硬件、教学试用分别记录结果及未执行项，失败可返回前面阶段修订 |
 | 7. 审核维护 | 按职责确认事实和教学判据，走已有审核发布；新证据修订追加版本，保留原来源与旧结论 |
 
-允许独立工作并行，不必等齐外部材料才写软件草稿或做合成验证，但不能越过缺失的事实确认门槛。2026-09-22用户已授权维护者在缺购置硬件/教师支持时按官方资料选择候选板卡、器件与框架并推进软件自审；候选标`project_design`，实物/课程/教师结论保持pending，不能预填确认人和时间。用户于2026-09-28确认首轮硬件选型，决定统一记录于[真实性看板](project-truth-status.md)；采购选型确认与实物验证状态分开，不因选型确定清除pending。
+允许独立工作并行，不必等齐外部材料才写软件草稿或做合成验证，但不能越过缺失的事实确认门槛。2026-09-22用户已授权维护者在缺购置硬件/教师支持时按官方资料选择候选板卡、器件与框架并推进软件自审；候选标`project_design`，实物/课程/教师结论保持pending，不能预填确认人和时间。用户于2026-09-28确认的首轮硬件选型已于2026-10-11改为同学现行的 ESP32-S3 + SHT31 程序，决定统一记录于[真实性看板](project-truth-status.md)；采购选型确认与实物验证状态分开，不因选型确定清除pending。
 
 - **采信来源：**课程目标/判据优先教师和正式指导书；板卡/器件用对应厂商版本的手册、原理图；程序语义用实际源码、依赖和官方示例；实物结论用接线、原始日志、独立测量、操作及恢复新样本。社区材料只能提出待核查线索，通用器件参数不自动成为板级接线或阈值。
 - **来源登记：**至少记录位置、版本、页码/章节/代码定位、适用硬件、支持内容与未决问题；保留原附件，包内保存经审阅内容及引用。来源冲突先查型号、版本、条件和测量语义；教师经验有提供者和依据。使用现有字段/审阅材料，不向严格Schema偷加字段。

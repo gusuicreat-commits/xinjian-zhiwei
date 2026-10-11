@@ -1,7 +1,7 @@
 [
   {
-    "id": "dht-missing",
-    "package": "dht11_temperature_humidity",
+    "id": "sht31-missing",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -62,8 +62,8 @@
     "actions": []
   },
   {
-    "id": "dht-ambiguous",
-    "package": "dht11_temperature_humidity",
+    "id": "sht31-ambiguous",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -76,9 +76,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -87,9 +87,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -98,9 +98,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -109,9 +109,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -120,9 +120,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -131,8 +131,8 @@
     "actions": []
   },
   {
-    "id": "dht-valid",
-    "package": "dht11_temperature_humidity",
+    "id": "sht31-valid",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -145,9 +145,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -156,9 +156,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -167,9 +167,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -178,9 +178,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -189,9 +189,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -200,8 +200,8 @@
     "actions": []
   },
   {
-    "id": "dht-foreign_evidence",
-    "package": "dht11_temperature_humidity",
+    "id": "sht31-foreign_evidence",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -214,9 +214,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -225,9 +225,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -236,9 +236,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -247,9 +247,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -258,9 +258,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -269,8 +269,8 @@
     "actions": []
   },
   {
-    "id": "dht-invalid_json",
-    "package": "dht11_temperature_humidity",
+    "id": "sht31-invalid_json",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -283,9 +283,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -294,9 +294,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -305,9 +305,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -316,9 +316,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -327,9 +327,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -338,8 +338,8 @@
     "actions": []
   },
   {
-    "id": "dht-timeout",
-    "package": "dht11_temperature_humidity",
+    "id": "sht31-timeout",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -352,9 +352,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -363,9 +363,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -374,9 +374,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -385,9 +385,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -396,9 +396,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -407,8 +407,8 @@
     "actions": []
   },
   {
-    "id": "dht-candidate-linkage",
-    "package": "dht11_temperature_humidity",
+    "id": "sht31-candidate-linkage",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -421,9 +421,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -432,9 +432,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -443,9 +443,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -454,9 +454,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -465,9 +465,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -477,7 +477,7 @@
   },
   {
     "id": "feedback-roundtrip",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -490,9 +490,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -501,9 +501,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -512,9 +512,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -523,9 +523,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -534,9 +534,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -550,7 +550,7 @@
   },
   {
     "id": "duplicate-feedback",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -563,9 +563,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -574,9 +574,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -585,9 +585,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -596,9 +596,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -607,9 +607,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -622,7 +622,7 @@
   },
   {
     "id": "teacher-roundtrip",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -635,9 +635,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -646,9 +646,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -657,9 +657,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -668,9 +668,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -679,9 +679,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -695,7 +695,7 @@
   },
   {
     "id": "foreign-session-read",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -708,9 +708,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -719,9 +719,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -730,9 +730,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -741,9 +741,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -752,9 +752,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -766,7 +766,7 @@
   },
   {
     "id": "foreign-session-feedback",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -779,9 +779,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -790,9 +790,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -801,9 +801,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -812,9 +812,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -823,9 +823,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -837,7 +837,7 @@
   },
   {
     "id": "foreign-package-version",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -850,9 +850,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -861,9 +861,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -872,9 +872,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -883,9 +883,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -894,9 +894,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -908,7 +908,7 @@
   },
   {
     "id": "postgres-restart",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -921,9 +921,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -932,9 +932,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -943,9 +943,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -954,9 +954,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -965,9 +965,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -982,7 +982,7 @@
   },
   {
     "id": "feedback-conflict-action",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -995,9 +995,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1006,9 +1006,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1017,9 +1017,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1028,9 +1028,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1039,9 +1039,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -1054,7 +1054,7 @@
   },
   {
     "id": "feedback-conflict-note",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -1067,9 +1067,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1078,9 +1078,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1089,9 +1089,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1100,9 +1100,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1111,9 +1111,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -1126,7 +1126,7 @@
   },
   {
     "id": "feedback-new-attempt",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -1139,9 +1139,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1150,9 +1150,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1161,9 +1161,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1172,9 +1172,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1183,9 +1183,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -1198,7 +1198,7 @@
   },
   {
     "id": "feedback-missing-session",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -1211,9 +1211,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1222,9 +1222,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1233,9 +1233,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1244,9 +1244,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1255,9 +1255,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -1269,7 +1269,7 @@
   },
   {
     "id": "feedback-missing-request-id",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -1282,9 +1282,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1293,9 +1293,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1304,9 +1304,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1315,9 +1315,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1326,9 +1326,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -1340,7 +1340,7 @@
   },
   {
     "id": "feedback-invalid-request-id",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -1353,9 +1353,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1364,9 +1364,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1375,9 +1375,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1386,9 +1386,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1397,9 +1397,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -1411,7 +1411,7 @@
   },
   {
     "id": "foreign-session-feedback-replay",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -1424,9 +1424,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1435,9 +1435,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1446,9 +1446,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1457,9 +1457,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1468,9 +1468,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -1483,7 +1483,7 @@
   },
   {
     "id": "postgres-restart-replay",
-    "package": "dht11_temperature_humidity",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -1496,9 +1496,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1507,9 +1507,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1518,9 +1518,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1529,9 +1529,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1540,9 +1540,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }
@@ -1555,8 +1555,8 @@
     ]
   },
   {
-    "id": "dht-unrelated-evidence",
-    "package": "dht11_temperature_humidity",
+    "id": "sht31-unrelated-evidence",
+    "package": "sht31_temperature_humidity",
     "records": [
       {
         "type": "heartbeat",
@@ -1569,9 +1569,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1580,9 +1580,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1591,9 +1591,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1602,9 +1602,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       },
@@ -1613,9 +1613,9 @@
         "payload": {
           "level": "error",
           "message": "synthetic failure, not a hardware observation",
-          "event_code": "DHT11_READ_FAILED",
+          "event_code": "SHT31_READ_FAILED",
           "sensor_snapshot": {
-            "component_id": "dht11"
+            "component_id": "sht31"
           }
         }
       }

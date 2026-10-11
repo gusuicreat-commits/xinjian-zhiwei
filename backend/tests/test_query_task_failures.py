@@ -277,7 +277,10 @@ def test_definite_evidence_change_is_stale_not_retryable(api_context, task, dele
     if deleted:
         task["db"].delete(row)
     else:
-        row.raw_payload = {"event_code": "DHT11_READ_FAILED", "sensor_snapshot": {"gpio": 5}}
+        row.raw_payload = {
+            "event_code": "SHT31_READ_FAILED",
+            "sensor_snapshot": {"sda": 10, "scl": 9, "address": 68},
+        }
     task["db"].commit()
     response = api_context["client"].get(f"/api/v1/student/queries/{result['id']}", headers=headers)
     assert response.status_code == 200, response.text

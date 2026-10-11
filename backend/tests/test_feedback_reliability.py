@@ -22,7 +22,9 @@ from app.models import DiagnosisFeedback, DiagnosisResult, ExperimentSession
 @contextmanager
 def live_workflow(dsn=None):
     case = next(
-        c for c in json.loads((DATA / "workflow_inputs.json").read_text()) if c["id"] == "dht-valid"
+        c
+        for c in json.loads((DATA / "workflow_inputs.json").read_text())
+        if c["id"] == "sht31-valid"
     )
     with workflow_environment(case["package"], "valid", dsn) as env:
         now = datetime.now(timezone.utc).isoformat()

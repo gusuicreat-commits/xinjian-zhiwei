@@ -1,5 +1,5 @@
 {
-  "dht-missing": {
+  "sht31-missing": {
     "errors": [],
     "normal": "unknown",
     "statuses": [
@@ -28,7 +28,7 @@
     "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
     "action_http_statuses": []
   },
-  "dht-ambiguous": {
+  "sht31-ambiguous": {
     "errors": [
       "SENSOR_READ_FAILED"
     ],
@@ -41,7 +41,7 @@
     "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
     "action_http_statuses": []
   },
-  "dht-valid": {
+  "sht31-valid": {
     "errors": [
       "SENSOR_READ_FAILED"
     ],
@@ -55,7 +55,7 @@
     "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
     "action_http_statuses": []
   },
-  "dht-foreign_evidence": {
+  "sht31-foreign_evidence": {
     "errors": [
       "SENSOR_READ_FAILED"
     ],
@@ -69,7 +69,7 @@
     "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
     "action_http_statuses": []
   },
-  "dht-invalid_json": {
+  "sht31-invalid_json": {
     "errors": [
       "SENSOR_READ_FAILED"
     ],
@@ -83,7 +83,7 @@
     "source": "docs/evaluation-requirements.md + phase2 workflow contract; synthetic, not hardware ground truth",
     "action_http_statuses": []
   },
-  "dht-timeout": {
+  "sht31-timeout": {
     "errors": [
       "SENSOR_READ_FAILED"
     ],
@@ -222,7 +222,7 @@
       200
     ]
   },
-  "dht-candidate-linkage": {
+  "sht31-candidate-linkage": {
     "errors": [
       "SENSOR_READ_FAILED"
     ],
@@ -372,7 +372,7 @@
       201
     ]
   },
-  "dht-unrelated-evidence": {
+  "sht31-unrelated-evidence": {
     "errors": [
       "SENSOR_READ_FAILED"
     ],

@@ -114,7 +114,7 @@ def test_student_dashboard_exposes_diagnosis_guidance_and_feedback(
     payload = dashboard.json()
     assert payload["diagnosis"]["id"] == diagnosis_id
     assert len(payload["diagnosis"]["matches"]) == 2
-    assert len(payload["guidance"][0]["ranked_causes"]) == 3
+    assert len(payload["guidance"][0]["ranked_causes"]) == 6
     assert payload["feedback"]["action"] == "request_teacher_help"
     explanation = payload["device_state_explanation"]
     assert explanation["source"] == "rule"

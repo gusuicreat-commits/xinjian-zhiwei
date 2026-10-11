@@ -75,7 +75,7 @@ def test_package_publication_requires_current_administrator(api_context):
 
     with api_context['session_factory']() as db:
         actor = authorize_write_fixture(db, db.scalar(select(User)))
-        bundle, _ = load_experiment_package(PACKAGE_ROOT / 'dht11_temperature_humidity')
+        bundle, _ = load_experiment_package(PACKAGE_ROOT / 'sht31_temperature_humidity')
         _, version = import_experiment_package(db, actor, package_documents(bundle))
         db.execute(delete(user_roles).where(user_roles.c.user_id == actor.id))
         assign_role(db, actor, ensure_rbac_catalog(db)['teacher'])

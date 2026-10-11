@@ -14,9 +14,9 @@ const backendPort = Number(process.env.INTEGRATION_BACKEND_PORT ?? '18101')
 const backendURL = `http://127.0.0.1:${backendPort}`
 const origin = `http://127.0.0.1:${process.env.INTEGRATION_FRONTEND_PORT ?? '15173'}`
 const fixtureModule = 'app.cli.browser_integration_fixture'
-const dht11MetadataPath = join(
+const sht31MetadataPath = join(
   backendDir,
-  'experiment_packages/dht11_temperature_humidity/metadata.yaml',
+  'experiment_packages/sht31_temperature_humidity/metadata.yaml',
 )
 
 type Manifest = {
@@ -67,10 +67,10 @@ async function migrationHead() {
   return revisions[revisions.length - 1]
 }
 
-async function currentDht11PackageVersion() {
-  const metadata = await readFile(dht11MetadataPath, 'utf8')
+async function currentSht31PackageVersion() {
+  const metadata = await readFile(sht31MetadataPath, 'utf8')
   const match = metadata.match(/^  version:\s*([0-9]+\.[0-9]+\.[0-9]+)\s*$/m)
-  if (!match) throw new Error(`DHT11 package version is missing: ${dht11MetadataPath}`)
+  if (!match) throw new Error(`SHT31 package version is missing: ${sht31MetadataPath}`)
   return match[1]
 }
 
@@ -507,7 +507,7 @@ test('teaching references are visible from persisted package guidance and surviv
   await expect(reference).toBeVisible()
   await reference.locator('summary').click()
   await expect(reference).toContainText('测试资料，待硬件与教师确认')
-  await expect(reference).toContainText(`版本 ${await currentDht11PackageVersion()}`)
+  await expect(reference).toContainText(`版本 ${await currentSht31PackageVersion()}`)
   await expect(reference).toContainText('不是实测结果')
   await expect(reference).toContainText('不代表已经执行')
   const before = await reference.innerText()
@@ -788,7 +788,7 @@ with Session(engine, expire_on_commit=False) as db:
     db.commit()
     token = create_session(db, admin.username, 'prepared-browser-admin-password', 1)[1]
     version = next(v for v in db.scalars(select(ExperimentVersion))
-                   if v.package_content['metadata.yaml']['experiment']['code'] == 'dht11_temperature_humidity')
+                   if v.package_content['metadata.yaml']['experiment']['code'] == 'sht31_temperature_humidity')
     version_id, digest = version.id, version.package_hash
 engine.dispose()
 os.environ.update(APP_ENV='test', LAB_TEST_DSN=url.render_as_string(hide_password=False),
@@ -851,7 +851,7 @@ print(json.dumps({'device_key': result['objects']['device_key'],
   await ingestAndDiagnose(page, current)
   const reference = page.locator('.teaching-reference').first()
   await reference.locator('summary').click()
-  await expect(reference).toContainText(`版本 ${await currentDht11PackageVersion()}`)
+  await expect(reference).toContainText(`版本 ${await currentSht31PackageVersion()}`)
   await expect(reference).toContainText('不是实测结果')
   await testInfo.attach('prepared-internal-lab', {
     body: await reference.screenshot(),

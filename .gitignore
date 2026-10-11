@@ -72,3 +72,7 @@ output/package-context-preview/
 /output/guizang/
 /output/images/
 /output/ppt/
+bridge/.venv/
+bridge/.pytest_cache/
+bridge/**/__pycache__/
+bridge/*.egg-info/

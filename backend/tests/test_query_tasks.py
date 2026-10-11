@@ -308,7 +308,7 @@ def test_formal_scope_finishes_unknown_without_question(task):
 
 
 def test_package_stop_returns_stale_without_saved_conclusion(real_task):
-    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
+    task = real_task([({"sda": 8, "scl": 9, "address": 68}, "0.2.5", "pipeline-boot")])
     result = begin(task)
     assert result["requirements"]["firmware_gpio_vs_requirement"]["judgement"] == "match"
     register_stop(task["db"], package_source(task["version"]), task["student"], "synthetic stop")
@@ -350,7 +350,7 @@ def account_headers(context, task):
 
 
 def test_http_ingest_publish_save_start_answer_read_end_to_end(api_context, real_task):
-    current = real_task([({"gpio": 5}, "0.2.5", "xj004-boot")])
+    current = real_task([({"sda": 10, "scl": 9, "address": 68}, "0.2.5", "xj004-boot")])
     headers = account_headers(api_context, current)
     client = api_context["client"]
     started = client.post(
@@ -601,7 +601,7 @@ def test_saved_scope_revision_change_returns_stale_on_read_and_repeat_start(task
 
 
 def test_completed_known_requirements_and_case_withdrawal_preserves_r1_r2(real_task):
-    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
+    task = real_task([({"sda": 8, "scl": 9, "address": 68}, "0.2.5", "pipeline-boot")])
     case = add_case(task)
     before = task["diagnosis"].matched_rules.copy()
     result = begin(task)
@@ -665,7 +665,7 @@ def test_find_query_null_is_authorized_and_has_no_writes_or_queries(task, monkey
 def test_find_query_revalidates_stale_projection_without_persisting(real_task, monkeypatch):
     from sqlalchemy import event
 
-    task = real_task([({"gpio": 4}, "0.2.5", "pipeline-boot")])
+    task = real_task([({"sda": 8, "scl": 9, "address": 68}, "0.2.5", "pipeline-boot")])
     result = begin(task)
     register_stop(task["db"], package_source(task["version"]), task["student"], "synthetic stop")
     task["db"].commit()
@@ -707,7 +707,9 @@ def test_http_find_query_null_restore_and_revocation_non_disclosure(api_context,
     with task["factory"]() as db:
         db.query(Enrollment).update({"status": "withdrawn"})
         db.commit()
-    responses = [client.get(path, headers=headers), client.get(
-        f"/api/v1/student/diagnoses/{uuid4()}/queries", headers=headers)]
+    responses = [
+        client.get(path, headers=headers),
+        client.get(f"/api/v1/student/diagnoses/{uuid4()}/queries", headers=headers),
+    ]
     assert all(response.status_code == 403 for response in responses)
     assert responses[0].json() == responses[1].json()

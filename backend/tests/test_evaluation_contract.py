@@ -254,7 +254,7 @@ def test_semantic_catalog_is_binary_and_every_item_is_reported_unreviewed():
 
 def test_package_fault_sample_rejects_an_additional_error_type():
     bundle, _ = load_experiment_package(
-        Path(__file__).resolve().parents[1] / "experiment_packages/dht11_temperature_humidity"
+        Path(__file__).resolve().parents[1] / "experiment_packages/sht31_temperature_humidity"
     )
     assert all(check.passed for check in _run_package_tests(bundle))
     # Same trigger, additional error: a contains-only expectation missed this.

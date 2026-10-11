@@ -4,22 +4,22 @@
   "cases": {
     "CTX-F01": {
       "eligible_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "matched_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "selected_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "forbidden_ids": [],
       "omission_counts": {},
       "attribution": "provided_material_ready",
       "source_versions": {
-        "dht-synthetic": "fixture-1"
+        "sht31-synthetic": "fixture-1"
       },
       "required_fields": {
-        "dht-synthetic": {
+        "sht31-synthetic": {
           "normalState": {
             "voltage": "3.3 V"
           },
@@ -32,7 +32,7 @@
       "matched_ids": [],
       "selected_ids": [],
       "forbidden_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "omission_counts": {},
       "attribution": "source_unreviewed"
@@ -42,7 +42,7 @@
       "matched_ids": [],
       "selected_ids": [],
       "forbidden_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "omission_counts": {},
       "attribution": "source_unreviewed"
@@ -52,7 +52,7 @@
       "matched_ids": [],
       "selected_ids": [],
       "forbidden_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "omission_counts": {},
       "attribution": "source_unreviewed"
@@ -62,7 +62,7 @@
       "matched_ids": [],
       "selected_ids": [],
       "forbidden_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "omission_counts": {},
       "attribution": "source_unreviewed"
@@ -72,7 +72,7 @@
       "matched_ids": [],
       "selected_ids": [],
       "forbidden_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "omission_counts": {},
       "attribution": "source_inapplicable"
@@ -82,17 +82,17 @@
       "matched_ids": [],
       "selected_ids": [],
       "forbidden_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "omission_counts": {},
       "attribution": "source_inapplicable"
     },
     "CTX-F08": {
       "eligible_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "matched_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "selected_ids": [],
       "forbidden_ids": [],
@@ -114,7 +114,7 @@
       "matched_ids": [],
       "selected_ids": [],
       "forbidden_ids": [
-        "dht-synthetic"
+        "sht31-synthetic"
       ],
       "omission_counts": {},
       "attribution": "source_inapplicable"

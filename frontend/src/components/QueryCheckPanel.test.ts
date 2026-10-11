@@ -20,7 +20,7 @@ const credentials = { deviceId: 'device', deviceToken: 'test', experimentSession
 function result(overrides: Partial<QueryTask> = {}): QueryTask {
   return {
     id: 'task',
-    contract_version: 'dht11-query-v1',
+    contract_version: 'sht31-query-v1',
     status: 'waiting_answer',
     terminal_reason: null,
     requirements: {
@@ -37,7 +37,7 @@ function result(overrides: Partial<QueryTask> = {}): QueryTask {
       },
     },
     question: {
-      question_id: 'synthetic.dht11.wiring_observation',
+      question_id: 'synthetic.sht31.wiring_observation',
       version: 'v1',
       requirement: 'wiring_observation',
       synthetic: true,

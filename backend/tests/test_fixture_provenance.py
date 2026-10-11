@@ -156,18 +156,18 @@ def test_scanner_visits_nested_files_and_only_exempts_root_pipeline(tmp_path):
     assert scan_constructors(tmp_path) == {"nested/pipeline.py": {"DeviceLog": 1}}
 
 
-@pytest.mark.parametrize("name", ["dht11_temperature_humidity", "gpio_led_output"])
+@pytest.mark.parametrize("name", ["sht31_temperature_humidity", "gpio_led_output"])
 def test_pipeline_preserves_ingested_reading_identity_and_package_semantics(api_context, name):
     """Independent protocol/package expectations for the reusable record factories."""
     from datetime import timedelta
 
     from pipeline import (
-        dht11_reading,
         diagnose_session,
         heartbeat,
         ingest_batch,
         led_reading,
         publish_package,
+        sht31_reading,
     )
     from sqlalchemy import select
 
@@ -175,10 +175,10 @@ def test_pipeline_preserves_ingested_reading_identity_and_package_semantics(api_
     from app.models.base import utc_now
 
     now = utc_now()
-    if name == "dht11_temperature_humidity":
+    if name == "sht31_temperature_humidity":
         records = [
-            dht11_reading("temperature", 24, occurred_at=now),
-            dht11_reading("humidity", 50, occurred_at=now),
+            sht31_reading("temperature", 24, occurred_at=now),
+            sht31_reading("humidity", 50, occurred_at=now),
         ]
         expected = {"observation.temperature", "observation.humidity"}
     else:
@@ -226,11 +226,11 @@ def test_pipeline_preserves_ingested_reading_identity_and_package_semantics(api_
         assert db.scalar(select(DeviceHeartbeat)).firmware_version == "0.2.5"
         assert {r.id for r in db.scalars(select(SensorReading))} == reading_ids
         by_type = {row.evidence_type: row for row in rows}
-        if name == "dht11_temperature_humidity":
+        if name == "sht31_temperature_humidity":
             assert by_type["observation.temperature"].normalized_value["unit"] == "°C"
             assert by_type["observation.humidity"].normalized_value["unit"] == "%RH"
             assert all(
-                row.raw_payload["metadata"]["measurement_semantics"] == "previous_conversion"
+                row.raw_payload["metadata"]["source"] == "serial_bridge"
                 for row in rows
             )
         else:

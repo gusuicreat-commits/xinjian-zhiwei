@@ -1,10 +1,10 @@
 {
   "schema_version": "package-context-expectations-v1",
   "cases": {
-    "draft-dht11": {
+    "draft-sht31": {
       "matched_ids": [],
       "matcher_reasons": {
-        "dht11.sensor-read-failed.test-data.v2_0_2": "review_not_approved"
+        "sht31.sensor-read-failed.test-data.v1": "review_not_approved"
       },
       "stages": {
         "reasoning": {

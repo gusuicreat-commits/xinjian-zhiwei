@@ -1,0 +1,112 @@
+version: 1.0.0
+trees:
+- id: sht31-read-failure-v1
+  title: SHT31 I²C 窗口累计读取失败
+  status: placeholder
+  continuity_window_seconds: 3600
+  trigger:
+  - fact: diagnosis_error_count
+    operator: gte
+    value: 1
+    weight: 20
+    description: 规则确认窗口累计失败达到配置阈值，候选原因仍未区分
+    params: &id001
+      error_type: SENSOR_READ_FAILED
+  escalation:
+  - level: 1
+    min_failure_count: 1
+    min_duration_seconds: 0
+  - level: 2
+    min_failure_count: 3
+    min_duration_seconds: 300
+  - level: 3
+    min_failure_count: 6
+    min_duration_seconds: 900
+  - level: 4
+    min_failure_count: 10
+    min_duration_seconds: 1800
+  causes:
+  - id: wiring.i2c_lines
+    title: SDA/SCL 接反或接触不良
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 仅支持存在异常；unknown / need_verification
+      params: *id001
+    hints:
+      1: 先观察 SDA、SCL 线缆和接插件是否松动。
+      2: 断电后按接线表核对 SDA→GPIO8、SCL→GPIO9 与共同地。
+      3: 重新插接后只运行最小 I²C 读取程序并保留串口输出。
+      4: 保留接线照片和失败日志，请教师协助。
+  - id: wiring.power_ground
+    title: 供电或地线异常
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 仅支持存在异常；unknown / need_verification
+      params: *id001
+    hints:
+      1: 检查 3.3V、GND 与模块供电指示。
+      2: 断电后用万用表核对供电和共同参考。
+      3: 恢复供电后观察是否仍有 SHT31_READ_FAILED。
+      4: 请教师协助进行电气测量。
+  - id: wiring.address_mismatch
+    title: ADDR 地址与程序不符
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 地址缺失或不符不能单独确定根因；unknown / need_verification
+      params: *id001
+    hints:
+      1: 核对 ADDR 电平与地址 0x44/0x45。
+      2: 对照程序中的 SHT31_ADDR=0x44。
+      3: 记录地址扫描或失败日志后再请求教师复核。
+      4: 保留 ADDR、地址扫描和失败日志，请教师协助；地址匹配不证明接线正确。
+  - id: wiring.pullup_or_length
+    title: 上拉不足或 I²C 线过长
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 只能提出待验证候选；unknown / need_verification
+      params: *id001
+    hints:
+      1: 检查 SDA/SCL 是否有合适上拉。
+      2: 缩短线缆并按资料评估各线电容。
+      3: 逐项记录改变后的读数或失败日志。
+      4: 请教师确认允许的电气测量和上拉方案。
+  - id: software.i2c_config
+    title: 程序引脚或端口配置不符
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 当前程序不自报引脚；仅有失败日志不能区分；unknown / need_verification
+      params: *id001
+    hints:
+      1: 查看代码是否使用 GPIO8/GPIO9、I²C0 与 100 kHz。
+      2: 对照实验包核对 0x44、0x2400 和 20 ms 等待。
+      3: 保存源码版本和串口桥输入日志。
+      4: 请教师协助复核构建与端口配置。
+  - id: hardware.sensor_failure
+    title: SHT31 传感器本体异常
+    evidence:
+    - fact: diagnosis_error_count
+      operator: gte
+      value: 1
+      weight: 20
+      description: 仅支持存在异常，不证明器件损坏；unknown / need_verification
+      params: *id001
+    hints:
+      1: 不要仅凭读取失败判定传感器损坏。
+      2: 先完成供电、线路、地址和程序配置核对。
+      3: 使用已知正常的同型号器件做对照测试。
+      4: 由教师确认后再更换器件。

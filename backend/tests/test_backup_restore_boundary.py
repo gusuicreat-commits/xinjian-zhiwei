@@ -96,7 +96,7 @@ def test_full_workflow_database_restore(tmp_path):
         setup.query("CREATE EXTENSION vector")
         setup.close()
         isolated = make_url(dsn).set(database=name).render_as_string(hide_password=False)
-        with workflow_environment("dht11_temperature_humidity", postgres_dsn=isolated) as env:
+        with workflow_environment("sht31_temperature_humidity", postgres_dsn=isolated) as env:
             start(env)
             path = tmp_path / "workflow.dump"
             tool.backup(path, container, name)

@@ -11,7 +11,7 @@
 - 追问目录 `QUESTIONS` 明确标注为合成，未经教师或课程确认；
 - 授权/来源复核是可注入的合成标记，生产身份与来源服务尚未接入这条路径。
 
-本方案回答：**学生当前任务允许查哪些真实资料、各自代表什么、何时必须停止交付**。只覆盖 DHT11 `SENSOR_READ_FAILED` 一个场景；LED 沿用同一合同，待其真实来源（电气/光学观测）存在后再加。
+本方案回答：**学生当前任务允许查哪些真实资料、各自代表什么、何时必须停止交付**。只覆盖 SHT31 `SENSOR_READ_FAILED` 一个场景（2026-10-11 由 DHT11 改为 SHT31，合同版本 `sht31-query-v1`）；LED 沿用同一合同，待其真实来源（电气/光学观测）存在后再加。
 
 ## 2. 设计原则
 
@@ -21,13 +21,13 @@
 4. **确定性策略。** 动作顺序由合同决定（先查存档，后问一道许可问题），产品路径不调用模型选动作；业务 AI 保持默认关闭。
 5. **失败分清楚。** `denied`（无权）、`error`（工具故障）、`checked_empty`（查了没有）、`not_available`（没有生产方）互不冒充。
 
-## 3. 来源目录（DHT11 首版）
+## 3. 来源目录（SHT31 版）
 
 | ID | 来源 | 生产方 / 存储 | 代表什么 | 不代表什么 |
 | --- | --- | --- | --- | --- |
 | S1 `task_evidence` | 本次诊断已冻结的证据 | `diagnosis.py` → `DiagnosisEvidence`（按 `diagnosis_id`） | 规则使用的上报与规则事实 | 硬件状态、根因 |
-| S2 `firmware_reported_config` | 失败日志中固件自报的配置 | 固件 0.2.5 在每条 `DHT11_READ_FAILED` 日志写 `sensor_snapshot.gpio`（`firmware/esp32_dht11/src/main.cpp`）；诊断时随事件证据冻结进 `DiagnosisEvidence.raw_payload` | 当次运行的固件编译常量 `XJ_DHT11_DATA_GPIO` | 实际接线、引脚电气状态 |
-| S3 `package_requirement` | 会话固定包的接口要求 | `ExperimentVersion` → `hardware.yaml` `interfaces[].pins`（如 `dht11_gpio.data=4`） | 本实验**要求**的配置 | 学生实际配置 |
+| S2 `firmware_reported_config` | 失败日志中程序自报的 I²C 配置 | `SHT31_READ_FAILED` 日志 `sensor_snapshot` 中的 `sda`、`scl`、`address`；诊断时随事件证据冻结进 `DiagnosisEvidence.raw_payload`。**现行程序与串口桥都不自报这些字段**，真实链路上 S2 为空 | 当次运行程序的引脚与地址常量 | 实际接线、引脚电气状态 |
+| S3 `package_requirement` | 会话固定包的接口要求 | `ExperimentVersion` → `hardware.yaml` 的 `sht31_i2c`：`pins.sda=8`、`pins.scl=9`、`parameters.address=0x44` | 本实验**要求**的配置 | 学生实际配置 |
 | S4 `approved_case` | 通过审核且适用的案例 | `KnowledgeCase` / 包内案例，经 `approved_case` + `evaluate_case_applicability` | 可复用的已审核经验 | 本次根因 |
 | S5 `student_answer` | 对一道许可问题的答复 | 新增答复回执（见 §6），问题来自版本化问题目录 | 学生自述的观察 | 已核验的物理事实 |
 
@@ -35,29 +35,29 @@
 
 ### 3.1 S2 的取证范围
 
-只读取**本次诊断已冻结**的失败事件证据：`DiagnosisEvidence` 中 `source_type="device_log"`、`evidence_type` 为该失败事件的行。归一化时这些行的 `source_ref` 即 `DeviceLog.id`，`raw_payload` 是日志载荷的冻结副本（含 `sensor_snapshot`，见 `diagnosis/normalization.py`、`services/diagnosis.py`），因此 GPIO 只读该冻结副本，不按时间窗另查，避免越出诊断快照。只采用 `source_type="device_log"`、载荷 `event_code="DHT11_READ_FAILED"` 且 `evidence_type` 等于固定包 `evidence_mapping` 映射类型（当前 `sensor.read_failed`）的行；`sensor_snapshot.gpio` 缺失或不是整数时，该行不计入比较。
+只读取**本次诊断已冻结**的失败事件证据：`DiagnosisEvidence` 中 `source_type="device_log"`、`evidence_type` 为该失败事件的行。归一化时这些行的 `source_ref` 即 `DeviceLog.id`，`raw_payload` 是日志载荷的冻结副本（含 `sensor_snapshot`，见 `diagnosis/normalization.py`、`services/diagnosis.py`），因此引脚组只读该冻结副本，不按时间窗另查，避免越出诊断快照。只采用 `source_type="device_log"`、载荷 `event_code="SHT31_READ_FAILED"` 且 `evidence_type` 等于固定包 `evidence_mapping` 映射类型（当前 `sensor.read_failed`）的行；`sensor_snapshot` 中 `sda`、`scl`、`address` 任一缺失或不是整数时，该行不计入比较。
 
-同一诊断内若多条日志自报的 GPIO 不同（例如中途重烧固件），状态为 `conflicting`，同时保留各条的 `firmware_version` 和 `boot_id`。这两项在批次信封上，不在冻结载荷里：`boot_id` 按 `source_ref` 读取**同一条** `DeviceLog`，`firmware_version` 取同一 `ingestion_request_id` 的心跳记录（同批多值不一致或缺失则为 null）。这些元数据只用于说明，不参与 GPIO 判定；其变化使已采用结果失效（stale）。
+同一诊断内若多条日志自报的引脚组不同（例如中途重烧程序），状态为 `conflicting`，同时保留各条的 `firmware_version` 和 `boot_id`。这两项在批次信封上，不在冻结载荷里：`boot_id` 按 `source_ref` 读取**同一条** `DeviceLog`，`firmware_version` 取同一 `ingestion_request_id` 的心跳记录（同批多值不一致或缺失则为 null）。这些元数据只用于说明，不参与引脚判定；其变化使已采用结果失效（stale）。
 
 ### 3.2 当前各来源的真实可用性
 
 | 来源 | 今天能否产出真实材料 | 说明 |
 | --- | --- | --- |
 | S1 | 能（模拟器/实物上报后） | 已有生产方 |
-| S2 | 能（固件 0.2.5 已写入；实物待联调） | 软件可用模拟器构造相同载荷验证 |
+| S2 | **不能**（现行程序不自报引脚，串口桥不补造） | R1 在真实链路上为 `unknown`/`not_reported`；软件用合成快照覆盖 match/mismatch/conflict |
 | S3 | 能 | 包为测试草稿，结果保持 `is_test_data` |
-| S4 | **没有合格案例** | DHT11 唯一案例为 `draft`、`unknown` 根因、测试数据；查询应返回 `checked_empty`（原因 `no_approved_case`），不是错误 |
+| S4 | **没有合格案例** | SHT31 唯一案例为 `draft`、`unknown` 根因、测试数据；查询应返回 `checked_empty`（原因 `no_approved_case`），不是错误 |
 | S5 | **没有已确认问题** | 问题目录需教师/课程确认；开发期用标注为合成的目录，不能进入正式会话 |
 
-## 4. 需求定义（DHT11 `SENSOR_READ_FAILED`）
+## 4. 需求定义（SHT31 `SENSOR_READ_FAILED`）
 
 | 需求 | 判定 | 满足条件 | 来源与顺序 |
 | --- | --- | --- | --- |
-| R1 `firmware_gpio_vs_requirement` | `match` / `mismatch` / `unknown` | S2 至少一条自报值，且 S3 有对应接口要求；两者都有才比较 | S1→S2→S3，均为存档查询，无追问 |
+| R1 `firmware_gpio_vs_requirement` | `match` / `mismatch` / `unknown` | S2 至少一条完整的 SDA/SCL/地址自报，且 S3 有对应接口要求；两者都有才按三元组整体比较 | S1→S2→S3，均为存档查询，无追问 |
 | R2 `wiring_observation` | `matches_table` / `differs` / `unclear` | S5 答复为可解析的枚举值；`unclear` 关闭本题但保留缺口 `observation_unknown` | 仅在 R1 已查完后，问一道许可问题 |
 | R3 `approved_reference` | `present` / `checked_empty` | S4 返回至少一条适用、已审核案例 | S4 存档查询 |
 
-语义约束沿用 `query-task-v3`：`mismatch` 是比较已完成，不是材料冲突；`unclear` 是答复已收到，不是需求已满足；同源同修订换 ID 不算新进展；`completed_satisfied` 只表示取证完成。R1 为 `mismatch` 时，指导可以陈述“固件自报 GPIO 与实验要求不一致”，但仍须说明这不证明接线状态，也不确认根因。
+语义约束沿用 `query-task-v3`：`mismatch` 是比较已完成，不是材料冲突；`unclear` 是答复已收到，不是需求已满足；同源同修订换 ID 不算新进展；`completed_satisfied` 只表示取证完成。R1 为 `mismatch` 时，指导可以陈述“程序自报的引脚或地址与实验要求不一致”，但仍须说明这不证明接线状态，也不确认根因。
 
 R2 的问题文本、选项和适用条件属于教学内容，必须进入资料包（`teaching/`）并带 `pending_teacher` 状态；本方案只定义其结构（问题 ID、版本、枚举选项、适用需求），不定稿措辞。
 
@@ -109,9 +109,9 @@ revalidate(db, scope, manifest) -> ok | stale | denied
 
 | 组 | 反例 | 期望 |
 | --- | --- | --- |
-| S2/R1 | 自报 GPIO=4 且要求为 4 | R1 `match`；指导不称接线正确 |
-| S2/R1 | 自报 GPIO=5 | R1 `mismatch`；根因仍 unconfirmed |
-| S2/R1 | 本诊断无失败日志，或日志无 `sensor_snapshot.gpio` | R1 `unknown`，原因 `not_reported` |
+| S2/R1 | 自报 SDA=8、SCL=9、地址 0x44，与要求一致 | R1 `match`；指导不称接线正确 |
+| S2/R1 | 自报引脚组任一项与要求不同（如 SDA=7） | R1 `mismatch`；根因仍 unconfirmed |
+| S2/R1 | 本诊断无失败日志，或日志缺 `sda`/`scl`/`address`（现行程序经串口桥即属此类） | R1 `unknown`，原因 `not_reported` |
 | S2/R1 | 同诊断两条日志自报 4 和 5 | `conflicting`，保留两条的固件版本与 boot_id |
 | S2 | 日志 `message` 中含指令文本 | 仅作数据，不改变动作集合 |
 | S4/R3 | 只有 draft/测试案例 | `checked_empty`（`no_approved_case`），不是 `error` |
@@ -133,7 +133,7 @@ revalidate(db, scope, manifest) -> ok | stale | denied
 ## 10. 需要确认的事项
 
 1. **R2 追问的内容来源**：开发期先用标注为合成的问题目录推进软件，正式问题文本与选项待教师确认后进入资料包。是否同意这样分开推进？
-2. **S2 的语义边界**：固件自报 GPIO 只证明“程序设置”，不证明接线。是否同意首版只在指导中陈述比较结果，不影响候选排序？
+2. **S2 的语义边界**：程序自报的引脚组只证明“程序设置”，不证明接线。是否同意首版只在指导中陈述比较结果，不影响候选排序？
 3. **回执存储**：同意在下一步把查询回执放入业务库（新迁移），以消除跨存储撤权顺序问题？
 
 确认后进入实现：先按 §8 写反例测试，再实现 `query_sources.py` 与评测适配器的替换，最后接入单场景产品路径。

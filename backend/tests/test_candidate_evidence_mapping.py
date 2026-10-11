@@ -29,7 +29,7 @@ from app.services.diagnosis import save_diagnosis_result
 def persisted_facts(api_context):
     now = datetime.now(timezone.utc)
     bundle, _ = load_experiment_package(
-        Path(__file__).resolve().parents[1] / "experiment_packages/dht11_temperature_humidity"
+        Path(__file__).resolve().parents[1] / "experiment_packages/sht31_temperature_humidity"
     )
     with api_context["session_factory"]() as db:
         device = db.scalar(select(Device))
@@ -49,9 +49,9 @@ def persisted_facts(api_context):
                 ),
                 *[
                     ContextEvent(
-                        id=f"event:failure-{index}:dht",
+                        id=f"event:failure-{index}:sht31",
                         type="sensor.read_failed",
-                        component_id="dht11",
+                        component_id="sht31",
                         source="device_log",
                         source_ref=f"failure-{index}",
                         occurred_at=now,
@@ -119,7 +119,7 @@ def persisted_facts(api_context):
         yield db, device, context, outcome, diagnosis, rows, tree
 
 
-def test_real_dht_rule_hit_links_aggregate_and_all_matching_events(persisted_facts):
+def test_real_sht31_rule_hit_links_aggregate_and_all_matching_events(persisted_facts):
     _, _, _, _, diagnosis, rows, tree = persisted_facts
     expected = {
         row.id
@@ -127,7 +127,7 @@ def test_real_dht_rule_hit_links_aggregate_and_all_matching_events(persisted_fac
         if row.evidence_type in {"sensor.read_failed", "rule.failure_count_in_window"}
     }
     assert len(expected) == 6  # Five original failures and their aggregate rule fact.
-    assert len(tree.ranked_causes) == 3
+    assert len(tree.ranked_causes) == 6
     for cause in tree.ranked_causes:
         refs = _candidate_evidence_refs(cause.model_dump(), diagnosis, rows)
         assert set(refs) == expected

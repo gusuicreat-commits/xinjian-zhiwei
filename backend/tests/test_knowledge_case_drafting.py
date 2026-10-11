@@ -47,11 +47,11 @@ def _draft() -> KnowledgeCaseDraft:
     return KnowledgeCaseDraft(
         diagnosis_result_id="diagnosis-1",
         feedback_id="feedback-1",
-        experiment_type="dht11_temperature_humidity",
+        experiment_type="sht31_temperature_humidity",
         error_type="SENSOR_READ_FAILED",
         fact_snapshot={"feedback_action": "resolved"},
         template_payload={
-            "experimentType": "dht11_temperature_humidity",
+            "experimentType": "sht31_temperature_humidity",
             "errorType": "SENSOR_READ_FAILED",
             "symptom": "连续读取失败",
             "normalState": {},
@@ -112,7 +112,7 @@ def persisted_draft(api_context):
             ruleset_version="polish-test",
             ruleset_hash="1" * 64,
             input_fingerprint="2" * 64,
-            experiment_id="dht11_temperature_humidity",
+            experiment_id="sht31_temperature_humidity",
             matched_rules=[{"error_type": "SENSOR_READ_FAILED"}],
             evidence=[{"fact": "log_event_count", "observed_value": 20}],
             context_snapshot={"is_test_data": True},

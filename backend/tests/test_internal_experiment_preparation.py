@@ -44,7 +44,7 @@ def seed_preparation(db):
     db.flush()
     assign_role(db, actor, roles["admin"])
     db.commit()
-    root = Path(__file__).resolve().parents[1] / "experiment_packages/dht11_temperature_humidity"
+    root = Path(__file__).resolve().parents[1] / "experiment_packages/sht31_temperature_humidity"
     bundle, _ = load_experiment_package(root)
     authorize_write_fixture(db, actor)
     _, version = import_experiment_package(db, actor, package_documents(bundle), is_test_data=True)

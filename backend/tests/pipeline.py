@@ -1,7 +1,8 @@
 """Synthetic inputs, real HTTP ingestion, package publication and diagnosis persistence.
 
 No ORM rows for pipeline-derived models are fabricated here. Record factories follow
-firmware/esp32_dht11/src/main.cpp and docs/device-protocol.md; LED records follow the
+bridge/xinjian_serial_bridge/protocol.py and bridge/docs/protocol-example.json.
+LED records follow the
 HTTP trust test's explicit measurement-source contract. Expected evidence types stay
 in the consuming tests, independently of the production normalizer.
 """
@@ -42,65 +43,53 @@ def _record(kind, payload, occurred_at):
     return {"type": kind, "occurredAt": (occurred_at or utc_now()).isoformat(), "payload": payload}
 
 
-def dht11_failure_log(*, snapshot=None, occurred_at=None, read_completed_uptime_ms=3000):
-    """An explicit snapshot replaces defaults, allowing missing-GPIO test inputs."""
+def sht31_failure_log(*, snapshot=None, occurred_at=None):
+    """Map a serial-bridge failure line; the real bridge does not self-report I²C config."""
     if snapshot is None:
         snapshot = {
-            "component_id": "dht11",
-            "interface_id": "dht11_gpio",
-            "gpio": 4,
-            "read_completed_uptime_ms": read_completed_uptime_ms,
+            "source": "serial_bridge",
+            "time_source": "host_serial_receive",
         }
     return _record(
         "log",
         {
-            "level": "warning",
-            "message": "synthetic read failure",
-            "event_code": "DHT11_READ_FAILED",
+            "level": "error",
+            "message": "读取失败！检查接线或者把地址改成0x45",
+            "event_code": "SHT31_READ_FAILED",
             "sensor_snapshot": dict(snapshot),
         },
         occurred_at,
     )
 
 
-def dht11_reading(
-    metric,
-    value,
-    *,
-    occurred_at=None,
-    conversion_triggered_uptime_ms=0,
-    read_completed_uptime_ms=3000,
-):
-    """DHT11 measurements refer to the previous conversion, as in the firmware."""
+def sht31_reading(metric, value, *, occurred_at=None):
+    """Build the same reading payload emitted by the serial bridge."""
     units = {"temperature": "°C", "humidity": "%RH"}
     return _record(
         "reading",
         {
-            "sensor_type": "dht11",
+            "sensor_type": "SHT31",
             "metric_key": metric,
             "value": value,
             "unit": units[metric],
             "metadata": {
-                "conversion_triggered_uptime_ms": conversion_triggered_uptime_ms,
-                "read_completed_uptime_ms": read_completed_uptime_ms,
-                "measurement_semantics": "previous_conversion",
-                "event_time_quality": "device_reported",
+                "source": "serial_bridge",
+                "time_source": "host_serial_receive",
             },
         },
         occurred_at,
     )
 
 
-def heartbeat(*, firmware_version=None, occurred_at=None, primed=False):
+def heartbeat(*, firmware_version=None, occurred_at=None):
     payload = {
         "metadata": {
-            "source": "xinjian-esp32-dht11",
-            "event_time_quality": "device_reported",
-            "dht11_sample_primed": primed,
+            "source": "serial_bridge",
+            "time_source": "host_serial_receive",
         }
     }
     # Legacy record-level firmware metadata is still accepted by protocol v1;
-    # current firmware normally sends it on the envelope via ingest_batch.
+    # the bridge registers it on the envelope; it is not firmware self-reporting.
     if firmware_version is not None:
         payload["firmware_version"] = firmware_version
     return _record("heartbeat", payload, occurred_at)
@@ -155,7 +144,7 @@ def ingest_batch(
     return response.json()
 
 
-def publish_package(db, name="dht11_temperature_humidity") -> ExperimentVersion:
+def publish_package(db, name="sht31_temperature_humidity") -> ExperimentVersion:
     """Import the on-disk package and traverse its real review/publication states."""
     publisher = User(
         username=f"pipeline-publisher-{uuid4().hex}",
@@ -230,8 +219,8 @@ def query_task_factory(api_context):
             now = utc_now()
             for index, (snapshot, firmware, boot) in enumerate(batches):
                 records = [
-                    dht11_failure_log(
-                        snapshot={"component_id": "dht11", **snapshot},
+                    sht31_failure_log(
+                        snapshot={"component_id": "sht31", **snapshot},
                         occurred_at=now,
                     )
                     for _ in range(5)

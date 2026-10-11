@@ -17,7 +17,20 @@ from app.models.knowledge import KnowledgeCase
 
 def main() -> None:
     definitions = load_case_definitions()
-    if len(definitions) != 5 or any(item.review_status != "pending" for item in definitions):
+    sht31 = next(
+        (item for item in definitions if item.experiment_type == "sht31_temperature_humidity"),
+        None,
+    )
+    if (
+        len(definitions) != 5
+        or sht31 is None
+        or sht31.review_status != "draft"
+        or not sht31.is_test_data
+        or sht31.root_cause_status != "unknown"
+        or sht31.teacher_notes is not None
+        or sht31.confirmed_by is not None
+        or any(item.review_status != "pending" for item in definitions if item is not sht31)
+    ):
         raise SystemExit("external knowledge case validation failed")
     graph_nodes = set(build_diagnosis_graph(InMemorySaver()).get_graph().nodes)
     required_v2_nodes = {
@@ -68,7 +81,7 @@ def main() -> None:
     Base.metadata.create_all(engine)
     try:
         with Session(engine) as db:
-            source = definitions[0]
+            source = sht31
             values = source.model_dump(by_alias=False)
             values["review_status"] = "approved"
             values["is_test_data"] = True

@@ -7,12 +7,12 @@ from pydantic import ValidationError
 from app.knowledge.matcher import match_knowledge_case_definitions
 from app.schemas.knowledge_case import CaseConfirmationMaterial
 
-LIMITS = "只适用于已核对接线的 DHT11；没有独立恢复测量时不得确认根因。"
+LIMITS = "只适用于已核对接线的 SHT31；没有独立恢复测量时不得确认根因。"
 
 
 def case_record(case_id="case-1", **updates):
     values = dict(
-        id=case_id, experiment_type="dht11", error_type="READ_FAILED", symptom="read failed",
+        id=case_id, experiment_type="sht31", error_type="READ_FAILED", symptom="read failed",
         normal_state={}, evidence=[], possible_causes=["wiring"], solution_steps=["检查接线"],
         teacher_notes=None, root_cause_value="wiring", root_cause_status="confirmed",
         source_ref="review:one", version="1", is_test_data=False, review_status="approved",
@@ -25,10 +25,10 @@ def case_record(case_id="case-1", **updates):
 
 def diagnosis_record(**updates):
     values = dict(
-        experiment_id="dht11", experiment_version_id="version-1", is_test_data=False,
+        experiment_id="sht31", experiment_version_id="version-1", is_test_data=False,
         matched_rules=[{"error_type": "READ_FAILED", "summary": "read failed", "evidence": []}],
         context_snapshot={
-            "experiment_id": "dht11", "experiment_version": "2.0.5",
+            "experiment_id": "sht31", "experiment_version": "2.0.5",
             "experiment_version_id": "version-1", "experiment_package_hash": "a" * 64,
         },
     )
@@ -38,7 +38,7 @@ def diagnosis_record(**updates):
 
 def guidance_record(keys=None, *, kind="component"):
     return SimpleNamespace(
-        fault_tree_scope={"kind": kind, "keys": ["dht11"] if keys is None else keys},
+        fault_tree_scope={"kind": kind, "keys": ["sht31"] if keys is None else keys},
         ranked_causes=[],
     )
 
@@ -80,7 +80,7 @@ def test_limits_kept_from_only_authoritative_source_and_private_data_not_seriali
 
 def test_component_mismatch_is_filtered_before_top_k():
     mismatch = conditional_case(
-        condition("experiment_code", "dht11"), condition("component_id", "other"),
+        condition("experiment_code", "sht31"), condition("component_id", "other"),
         case_id="case-0",
     )
     good = case_record("case-1")
@@ -92,8 +92,8 @@ def test_component_mismatch_is_filtered_before_top_k():
 
 def test_all_declared_conditions_must_match_fixed_snapshot():
     record = conditional_case(
-        condition("experiment_code", "dht11"), condition("package_version", "2.0.5"),
-        condition("component_id", "dht11"),
+        condition("experiment_code", "sht31"), condition("package_version", "2.0.5"),
+        condition("component_id", "sht31"),
     )
     matched = match_knowledge_case_definitions(diagnosis_record(), [guidance_record()], [record])
     assert matched[0].applicability.condition_status == "matched"
@@ -104,19 +104,19 @@ def test_all_declared_conditions_must_match_fixed_snapshot():
 
 
 @pytest.mark.parametrize("guidance", [
-    [], [guidance_record(["dht11", "second"])], [guidance_record(kind="interface")],
+    [], [guidance_record(["sht31", "second"])], [guidance_record(kind="interface")],
     [guidance_record(), guidance_record(["second"])],
 ])
 def test_missing_or_ambiguous_component_scope_is_not_guessed(guidance):
     record = conditional_case(
-        condition("experiment_code", "dht11"), condition("component_id", "dht11"),
+        condition("experiment_code", "sht31"), condition("component_id", "sht31"),
     )
     assert match_knowledge_case_definitions(diagnosis_record(), guidance, [record]) == []
 
 
 def test_unbound_package_version_is_unknown_even_if_legacy_version_text_exists():
     record = conditional_case(
-        condition("experiment_code", "dht11"), condition("package_version", "2.0.5"),
+        condition("experiment_code", "sht31"), condition("package_version", "2.0.5"),
     )
     diagnosis = diagnosis_record(experiment_version_id=None)
     diagnosis.context_snapshot.pop("experiment_version_id")
@@ -134,9 +134,9 @@ def test_applicability_does_not_relax_existing_eligibility(updates):
 
 @pytest.mark.parametrize("conditions", [
     [], [condition("experiment_code")], [condition("firmware", "1")],
-    [condition("component_id", "dht11")],
-    [condition("experiment_code", "dht11"), condition("experiment_code", "led")],
-    [{"field": "experiment_code", "operator": "eval", "values": ["dht11"]}],
+    [condition("component_id", "sht31")],
+    [condition("experiment_code", "sht31"), condition("experiment_code", "led")],
+    [{"field": "experiment_code", "operator": "eval", "values": ["sht31"]}],
 ])
 def test_malformed_declared_conditions_are_rejected_by_approval_schema(conditions):
     with pytest.raises(ValidationError):
@@ -158,12 +158,12 @@ def test_old_approval_without_structured_conditions_still_valid():
 def test_condition_values_deduplicated_without_changing_order_or_source():
     from app.knowledge.applicability import CaseApplicabilityContext, evaluate_case_applicability
 
-    record = conditional_case(condition("experiment_code", "dht11", "dht11", "led"))
+    record = conditional_case(condition("experiment_code", "sht31", "sht31", "led"))
     original = deepcopy(record.solution_record)
     result = evaluate_case_applicability(
-        record.solution_record, CaseApplicabilityContext(experiment_code="dht11"),
+        record.solution_record, CaseApplicabilityContext(experiment_code="sht31"),
     )
-    assert result.projection.checks[0].values == ["dht11", "led"]
+    assert result.projection.checks[0].values == ["sht31", "led"]
     assert record.solution_record == original
 
 
@@ -196,7 +196,7 @@ def test_conflicting_frozen_experiment_identity_is_unknown():
 
     diagnosis = diagnosis_record()
     diagnosis.context_snapshot["experiment_id"] = "led"
-    record = conditional_case(condition("experiment_code", "dht11"))
+    record = conditional_case(condition("experiment_code", "sht31"))
     matched, trace = match_case_candidates([record], diagnosis, [])
     assert matched == []
     assert trace[0]["reason"] == "applicability_unknown"
@@ -220,7 +220,7 @@ def test_global_and_package_paths_produce_same_controlled_projection():
     from app.models.knowledge import KnowledgeCase
 
     good = conditional_case(
-        condition("experiment_code", "dht11"), condition("component_id", "dht11"),
+        condition("experiment_code", "sht31"), condition("component_id", "sht31"),
     )
     records = [good, case_record("missing", solution_record={}),
                case_record("draft", review_status="draft")]

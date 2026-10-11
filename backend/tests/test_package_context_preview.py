@@ -76,7 +76,7 @@ def test_independent_strict_fixtures_use_both_runtime_stages(monkeypatch):
 
 
 def test_original_package_and_fixture_stay_immutable():
-    sample = _sample("draft-dht11")
+    sample = _sample("draft-sht31")
     bundle = _bundle(sample)
     original = bundle.model_dump_json()
     frozen_sample = deepcopy(sample)

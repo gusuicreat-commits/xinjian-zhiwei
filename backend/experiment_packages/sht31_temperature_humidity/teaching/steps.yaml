@@ -1,0 +1,123 @@
+steps:
+- step_id: connect
+  title: 断电核对 I²C 接线
+  expected_state: 断电后核对 SHT31 的实物引脚，3.3V、共同 GND、SDA→GPIO8、SCL→GPIO9 与 ADDR 电平；评估外接上拉和线长，保留照片。配置要求不证明接线正确。
+  prerequisite_step_ids:
+  - identify
+- step_id: configure
+  title: 核对现行程序与串口桥
+  expected_state: 对照现行源码核对 I²C0、GPIO8/9、0x44、100 kHz、0x2400、20 ms 等待与 1000 ms 延迟；先关闭
+    COMTool，再运行串口桥，115200 8N1，不能同时占用串口。不补造程序未自报的引脚。
+  prerequisite_step_ids:
+  - identify
+- step_id: observe
+  title: 区分串口输出与平台接收
+  expected_state: 记录读数、失败、启动行和桥 HTTP 回执，电脑接收时间不等于设备采样时间。2026-10-11 COMTool 曾显示合理读数，仅说明程序运行，接线、精度、周期和故障可区分性仍
+    pending_hardware。保留操作前后原始记录，缺判据保持 unknown。
+  prerequisite_step_ids:
+  - identify
+- step_id: identify
+  title: 核对设备与采集身份
+  expected_state: 核对用户报告 ESP32-S3-N16R8、器件标识、桥登记固件版本、设备授权、活动会话和固定包；记录实物采集或合成回放方式。官方
+    DevKitC-1 身份未核验。
+expected_behaviors: []
+bindings:
+- tree_id: sht31-read-failure-v1
+  cause_id: wiring.i2c_lines
+  component_id: sht31
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - sht31.i2c_config
+  - sht31.i2c_lines
+  - sht31.protocol_evidence
+  - sht31.power_ground
+  - sht31.identity_scope
+  step_ids:
+  - connect
+- tree_id: sht31-read-failure-v1
+  cause_id: wiring.power_ground
+  component_id: sht31
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - sht31.i2c_config
+  - sht31.i2c_lines
+  - sht31.protocol_evidence
+  - sht31.power_ground
+  - sht31.identity_scope
+  step_ids:
+  - connect
+- tree_id: sht31-read-failure-v1
+  cause_id: wiring.address_mismatch
+  component_id: sht31
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - sht31.i2c_config
+  - sht31.i2c_lines
+  - sht31.protocol_evidence
+  - sht31.power_ground
+  - sht31.identity_scope
+  step_ids:
+  - connect
+- tree_id: sht31-read-failure-v1
+  cause_id: wiring.pullup_or_length
+  component_id: sht31
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - sht31.i2c_config
+  - sht31.i2c_lines
+  - sht31.protocol_evidence
+  - sht31.power_ground
+  - sht31.identity_scope
+  step_ids:
+  - connect
+- tree_id: sht31-read-failure-v1
+  cause_id: software.i2c_config
+  component_id: sht31
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - sht31.i2c_config
+  - sht31.i2c_lines
+  - sht31.protocol_evidence
+  - sht31.power_ground
+  - sht31.identity_scope
+  step_ids:
+  - configure
+- tree_id: sht31-read-failure-v1
+  cause_id: hardware.sensor_failure
+  component_id: sht31
+  levels:
+  - 1
+  - 2
+  - 3
+  - 4
+  concept_ids:
+  - sht31.i2c_config
+  - sht31.i2c_lines
+  - sht31.failure_counts
+  - sht31.protocol_evidence
+  - sht31.power_ground
+  - sht31.delivery_evidence
+  - sht31.identity_scope
+  - sht31.recovery_boundary
+  step_ids:
+  - observe

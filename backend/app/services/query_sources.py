@@ -1,4 +1,4 @@
-"""DHT11 archived sources. Runtime-only scope; no model, receipts or graph writes.
+"""SHT31 archived sources. Runtime-only scope; no model, receipts or graph writes.
 
 Transactions and final adoption belong to the caller: revalidate in its protected
 transaction immediately before use. Manifests cover all inspected eligible units,
@@ -73,7 +73,7 @@ ReasonCode = Literal[
     "reported_conflict",
     "material_omitted",
 ]
-EXPERIMENT = "dht11_temperature_humidity"
+EXPERIMENT = "sht31_temperature_humidity"
 ERROR = "SENSOR_READ_FAILED"
 R1 = "firmware_gpio_vs_requirement"
 R2 = "wiring_observation"
@@ -343,7 +343,7 @@ def _evidence_unit(row, flag):
 
 
 def _config_metadata(db, scope, diagnosis, version, source_ref):
-    """Exact scoped log/batch only; live payloads never supply GPIO or event identity."""
+    """Exact scoped log/batch only; live payloads never supply I²C config or event identity."""
     log = db.scalar(
         select(DeviceLog)
         .where(
@@ -410,7 +410,7 @@ def _query_evidence(db, scope, diagnosis, version, *, config=False):
                 item.evidence_type
                 for item in runtime.bundle.hardware.evidence_mapping
                 if item.source.type == "device_error_code"
-                and item.source.value == "DHT11_READ_FAILED"
+                and item.source.value == "SHT31_READ_FAILED"
             ),
             None,
         )
@@ -432,14 +432,16 @@ def _query_evidence(db, scope, diagnosis, version, *, config=False):
         if config:
             if (
                 row.source_type != "device_log"
-                or payload.get("event_code") != "DHT11_READ_FAILED"
+                or payload.get("event_code") != "SHT31_READ_FAILED"
                 or mapped_type is None
                 or row.evidence_type != mapped_type
             ):
                 continue
             snapshot = payload.get("sensor_snapshot")
-            gpio = snapshot.get("gpio") if isinstance(snapshot, dict) else None
-            if type(gpio) is not int:
+            if not isinstance(snapshot, dict):
+                continue
+            reported_config = {key: snapshot.get(key) for key in ("sda", "scl", "address")}
+            if any(type(value) is not int for value in reported_config.values()):
                 continue
             boot_id, firmware_version, metadata_revision, metadata_flags = _config_metadata(
                 db, scope, diagnosis, version, row.source_ref
@@ -449,7 +451,7 @@ def _query_evidence(db, scope, diagnosis, version, *, config=False):
             unit = {
                 "evidence_id": row.id,
                 "source_ref": row.source_ref,
-                "gpio": gpio,
+                **reported_config,
                 "firmware_version": firmware_version,
                 "boot_id": boot_id,
                 "is_test_data": row_flag,
@@ -462,7 +464,9 @@ def _query_evidence(db, scope, diagnosis, version, *, config=False):
         entries,
         flag,
         empty_reason="not_reported" if config else "no_task_evidence",
-        conflicting=config and len({unit["gpio"] for _, _, unit in entries}) > 1,
+        conflicting=config
+        and len({tuple(unit[key] for key in ("sda", "scl", "address")) for _, _, unit in entries})
+        > 1,
     )
 
 
@@ -481,15 +485,18 @@ def _query_requirement(db, scope, diagnosis, version):
         return SourceResult("not_available", reason_code="package_not_bound", is_test_data=flag)
     entries = []
     for interface in runtime.bundle.hardware.interfaces:
-        if interface.id != "dht11_gpio" or "dht11" not in interface.component_ids:
+        if interface.id != "sht31_i2c" or "sht31" not in interface.component_ids:
             continue
-        gpio = interface.pins.get("data")
-        if type(gpio) is not int:
+        pins = {key: interface.pins.get(key) for key in ("sda", "scl")}
+        address = interface.parameters.get("address")
+        if any(type(value) is not int for value in (*pins.values(), address)):
             continue
         unit = {
             "interface_id": interface.id,
             "pins": interface.pins,
-            "gpio": gpio,
+            "sda": pins["sda"],
+            "scl": pins["scl"],
+            "address": address,
             "package_version_id": version.id,
             "package_version": version.version,
             "is_test_data": flag,
@@ -644,7 +651,11 @@ class GPIOComparison:
 
 
 def compare_gpio(reported: SourceResult, requirement: SourceResult) -> GPIOComparison:
-    """Only projected integers can support the comparison; conflict precedes projection."""
+    """Compare the reported I²C SDA/SCL/address tuple with the package requirement.
+
+    The historical R1 identifier and function name remain stable for stored tasks,
+    but GPIO-only snapshots are deliberately treated as not reported.
+    """
     for result in (reported, requirement):
         if result.status in {"denied", "error"} or result.reason_code == "source_stale":
             return GPIOComparison("unknown", result.reason_code, checked=False)
@@ -656,8 +667,17 @@ def compare_gpio(reported: SourceResult, requirement: SourceResult) -> GPIOCompa
         return GPIOComparison("unknown", requirement.reason_code or "requirement_missing")
     if reported.omitted_count or requirement.omitted_count:
         return GPIOComparison("unknown", "material_omitted")
-    actual = {u.get("gpio") for u in reported.units if type(u.get("gpio")) is int}
-    expected = {u.get("gpio") for u in requirement.units if type(u.get("gpio")) is int}
+    keys = ("sda", "scl", "address")
+    actual = {
+        tuple(u.get(key) for key in keys)
+        for u in reported.units
+        if all(type(u.get(key)) is int for key in keys)
+    }
+    expected = {
+        tuple(u.get(key) for key in keys)
+        for u in requirement.units
+        if all(type(u.get(key)) is int for key in keys)
+    }
     if len(actual) != 1 or len(expected) != 1:
         return GPIOComparison("unknown", "not_reported" if not actual else "requirement_missing")
     return GPIOComparison("match" if actual == expected else "mismatch")
@@ -723,7 +743,7 @@ class QuestionDefinition:
 
 
 # Structural synthetic catalog only; teaching wording awaits teacher approval.
-QUESTIONS = (QuestionDefinition("synthetic.dht11.wiring_observation", "synthetic-1"),)
+QUESTIONS = (QuestionDefinition("synthetic.sht31.wiring_observation", "synthetic-1"),)
 
 
 def eligible_question(

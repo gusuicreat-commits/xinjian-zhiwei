@@ -4,7 +4,7 @@
 
 面向高校嵌入式与物联网实验课程，收集学生不容易直接观察或理解的设备状态、日志和读数，结合实验预期，通过规则和受约束的 AI 辅助分析提供排查指导、学生反馈与教师处置。AI 只分析实际取得的证据，未采集的内部状态仍为未知。产品目标与需求见[开发背景与 PRD](docs/product-background-prd.md)。后端使用 FastAPI/PostgreSQL，前端使用 Vue 3，LangGraph 编排固定诊断流程。
 
-目前具备 V2 软件框架，正在准备实物验证。DHT11 资料包是 **`2.0.11` 测试草稿**，ESP32 固件已编译，尚未完成硬件和课堂验收。
+目前具备 V2 软件框架，硬件已于 2026-10-11 改为 ESP32-S3 + SHT31（同学现行程序）并完成首次真机联调。SHT31 资料包是 **`1.0.0` 测试草稿**，接线核对、故障与恢复、课堂验收尚未完成。
 
 ## 能做什么
 
@@ -18,7 +18,8 @@
 
 | 当前范围 | 说明 |
 | --- | --- |
-| 实验资料 | DHT11 温湿度 `2.0.11` 与 GPIO LED `2.0.4`，均为测试草稿。包内保存硬件配置、规则、故障树、知识、步骤和测试样例，运行绑定发布快照。 |
+| 设备 | ESP32-S3-N16R8 + SHT31，[板上程序](firmware/esp32s3_sht31/README.md)只打印串口；电脑端[串口桥](bridge/README.md)按设备协议 V1 上传。 |
+| 实验资料 | SHT31 温湿度 `1.0.0` 与 GPIO LED `2.0.4`，均为测试草稿。包内保存硬件配置、规则、故障树、知识、步骤和测试样例，运行绑定发布快照。 |
 | AI 辅助 | 默认关闭；开启后辅助候选排序与中文解释，失败时保留确定性诊断。当前不使用 RAG、向量检索或自由规划 Agent。 |
 | 已知边界 | “仍未解决”继续原指导；“重新检查”分析已上传数据，不控制硬件采样。资料包更新不会改写历史判断。 |
 
@@ -52,6 +53,6 @@ docker compose exec backend python -m app.cli.seed_demo --prefix demo-local-
 
 - 开发前读[开发入口](AGENTS.md)和[开发准则](docs/development-guidelines.md)，按[文档索引](docs/README.md)定位模块契约。
 - 开发验证入口为 `scripts/verify.sh`，需要 Python 3.10+ 及对应依赖；可用 `BACKEND_PYTHON=/path/to/python scripts/verify.sh` 指定环境。命令和覆盖范围见[测试与评测](docs/evaluation.md)。
-- 当前按[内部技术目标和到货清单](docs/experiments/dht11-arrival-checklist.md)先完成首轮DHT11实物功能与证据链，再按[硬件验证计划](docs/hardware-validation-plan.md)扩展对照；教师课程判据仍单独确认。
+- 当前按 [SHT31 内部实验指南](docs/experiments/sht31-internal-lab.md) 补齐 T1—T4 实物功能与证据链（2026-10-11 已完成真机经串口桥接入隔离平台），再按[硬件验证计划](docs/hardware-validation-plan.md)扩展对照；教师课程判据仍单独确认。
 
 知识文档工作区与模型选择动作的查询评测原型已移除；资料核对使用 `query_sources` / `query_tasks`，案例草稿审核与撤回继续沿用原流程。评测结论见[受控查询摘要](docs/controlled-query-evaluation-20261008.md)。

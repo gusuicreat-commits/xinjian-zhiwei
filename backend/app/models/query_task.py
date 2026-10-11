@@ -1,4 +1,4 @@
-"""Business receipts for deterministic DHT11 queries; no checkpoint dependency."""
+"""Business receipts for deterministic SHT31 queries; no checkpoint dependency."""
 
 from datetime import datetime
 from typing import Any

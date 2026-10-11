@@ -1,0 +1,822 @@
+schema_version: '1.1'
+experiment:
+  code: sht31_temperature_humidity
+  name: SHT31 温湿度实验
+  category: sensor
+  locale: zh-CN
+package:
+  version: 1.0.0
+  status: draft
+compatibility:
+  engine: '>=2.2,<3.0'
+  platforms:
+  - esp32
+maintainer:
+  organization: 芯鉴知微项目组
+  author: 项目组（草稿，未教师审核）
+content_registry:
+  sources:
+  - source_id: sensirion-sht3x-dis-datasheet-v7
+    kind: vendor_document
+    revision: SHT3x-DIS version 7
+    location: data/knowledge/raw/esp32s3-sht31/sensirion-sht3x-dis-datasheet.pdf
+    locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    availability: available
+    sha256: 095b1853e7f4328f5897c9ca6c392a7dd8b0202eda66b0a2629f9cb840dd496d
+  - source_id: espressif-esp32-s3-devkitc-1-user-guide-v1.1
+    kind: vendor_document
+    revision: 2026-10-11 archived snapshot
+    location: data/knowledge/raw/esp32s3-sht31/esp32-s3-devkitc-1-user-guide.html
+    locator: GPIO restrictions and module pin tables; board identity not verified
+    availability: available
+    sha256: 519a5e9f8c8f761b58f3762be90a9f0491f16a007c82d182f392be6a3d14098e
+  - source_id: espressif-esp32-s3-wroom-1-datasheet
+    kind: vendor_document
+    revision: 2026-10-11 archived snapshot
+    location: data/knowledge/raw/esp32s3-sht31/esp32-s3-wroom-1-datasheet-en.pdf
+    locator: GPIO restrictions and module pin tables; board identity not verified
+    availability: available
+    sha256: 27d71971da07c280c6068d08c74720d1a25b8f20cf8494dc1765bdd28d40d435
+  - source_id: espressif-esp32-s3-datasheet
+    kind: vendor_document
+    revision: 2026-10-11 archived snapshot
+    location: data/knowledge/raw/esp32s3-sht31/esp32-s3-datasheet-en.pdf
+    locator: GPIO restrictions and module pin tables; board identity not verified
+    availability: available
+    sha256: 2d5a7cb7fd559d8d972bd88db32669c0196d23f22d7afaafb0f63d099b589a3f
+  - source_id: firmware.main
+    kind: code
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: firmware/esp32s3_sht31/main/main.c
+    locator: i2c_init / sht31_read / app_main
+    availability: available
+    sha256: bf9ab269c2e9ec6dc2e06791a58944a6c6545deb3ac8ddb2d62bdc7379df9a23
+  - source_id: firmware.build
+    kind: code
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: firmware/esp32s3_sht31/CMakeLists.txt
+    locator: ESP-IDF project declaration
+    availability: available
+    sha256: 41e9a348a61473962771e2f86cf8d273f3d0220b3927487c5f4be6ab2c52b595
+  - source_id: firmware.component-build
+    kind: code
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: firmware/esp32s3_sht31/main/CMakeLists.txt
+    locator: idf_component_register
+    availability: available
+    sha256: 613f5dd7015e0e77cb57d7feb40ae6ee85989e4e232f733e4703f3fdd108b048
+  - source_id: firmware.defaults
+    kind: code
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: firmware/esp32s3_sht31/sdkconfig.defaults
+    locator: ESP32-S3 build defaults
+    availability: available
+    sha256: ea2c692cfb06ee05f381d583481375ed71c6c3c44fa979d90bcbc937093cc1ea
+  - source_id: bridge.parser
+    kind: code
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: bridge/xinjian_serial_bridge/parser.py
+    locator: parse_line
+    availability: available
+    sha256: d76c56e56530d4a33a0dcfc158456438b065c91974b2d059d050bd73d3ccfdec
+  - source_id: bridge.mapping
+    kind: code
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: bridge/xinjian_serial_bridge/protocol.py
+    locator: record_for_line / heartbeat_record / FIRMWARE_VERSION
+    availability: available
+    sha256: 374103f9cd476236a9a8d2663353f85aaa4bdbd77fc474e2536970515712e202
+  - source_id: bridge.batcher
+    kind: code
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: bridge/xinjian_serial_bridge/batcher.py
+    locator: BatchBuilder
+    availability: available
+    sha256: 264805015bb07cee62fe8aa0bceb5eed87801ee1a5fe74f2b1f2ce5fac758ef1
+  - source_id: bridge.protocol-example
+    kind: code
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: bridge/docs/protocol-example.json
+    locator: fixed replay envelope and records
+    availability: available
+    sha256: 292b9f21a2ceb586666823b7f119fd33a72f8cb4d5c0330fe1c127961750eba8
+  - source_id: bridge.guide
+    kind: internal_document
+    revision: esp32s3-sht31-1.0.0 / XJ-025
+    location: bridge/README.md
+    locator: serial ownership, host time and replay
+    availability: available
+    sha256: 2926c19fcf787653c4d1c636e2146672c72d4297adb87b430a27c4c12e753bd3
+  - source_id: design.hardware
+    kind: project_design
+    revision: XJ-026 draft 1.0.0
+    location: backend/experiment_packages/sht31_temperature_humidity/hardware.yaml
+    locator: complete draft artifact; not hardware or teacher acceptance
+    availability: available
+    sha256: 99e962163f2289a5bf4fa74d85a37fe3958e3085ef3d365947806d3763ccedb4
+  - source_id: design.diagnosis.rules
+    kind: project_design
+    revision: XJ-026 draft 1.0.0
+    location: backend/experiment_packages/sht31_temperature_humidity/diagnosis/rules.yaml
+    locator: complete draft artifact; not hardware or teacher acceptance
+    availability: available
+    sha256: 50ca554ad52d3b276597a51c77673f77a87ed2b6f66546f8f76c301d55c372a7
+  - source_id: design.diagnosis.fault_tree
+    kind: project_design
+    revision: XJ-026 draft 1.0.0
+    location: backend/experiment_packages/sht31_temperature_humidity/diagnosis/fault_tree.yaml
+    locator: complete draft artifact; not hardware or teacher acceptance
+    availability: available
+    sha256: e7cd53c4c12ba25f3f0e50caa625e13fc291acce7bd0db33eeb9114f3f62db0e
+  - source_id: design.knowledge.concepts
+    kind: project_design
+    revision: XJ-026 draft 1.0.0
+    location: backend/experiment_packages/sht31_temperature_humidity/knowledge/concepts.yaml
+    locator: complete draft artifact; not hardware or teacher acceptance
+    availability: available
+    sha256: 39f7aafc1abb333de77ce7ee07e0ce8603523cd571acc05e50c29f9b3cca003a
+  - source_id: design.knowledge.cases
+    kind: project_design
+    revision: XJ-026 draft 1.0.0
+    location: backend/experiment_packages/sht31_temperature_humidity/knowledge/cases.yaml
+    locator: complete draft artifact; not hardware or teacher acceptance
+    availability: available
+    sha256: 643b87afdabc29dc00380c92a06807558d10a4aad66261040bcddd1c637d02b3
+  - source_id: design.teaching.steps
+    kind: project_design
+    revision: XJ-026 draft 1.0.0
+    location: backend/experiment_packages/sht31_temperature_humidity/teaching/steps.yaml
+    locator: complete draft artifact; not hardware or teacher acceptance
+    availability: available
+    sha256: 10b1a6ac9687173b964fad1a1056ae0a58a98f6d9c1c93c6ab3063825231f068
+  - source_id: pending.hardware
+    kind: experiment_record
+    revision: null
+    location: 接线逐项核验、精度、周期和故障注入记录待取得；一次 COMTool 合理读数不替代验收
+    locator: null
+    availability: pending
+    sha256: null
+  - source_id: pending.teacher
+    kind: course_material
+    revision: null
+    location: 教师案例、提示和动作审核待取得
+    locator: null
+    availability: pending
+    sha256: null
+  - source_id: pending.course
+    kind: course_material
+    revision: null
+    location: 课程指导书与验收判据待取得
+    locator: null
+    availability: pending
+    sha256: null
+  units:
+  - unit_id: interface.sht31_i2c
+    target:
+      artifact: hardware.yaml
+      entity_kind: interface
+      entity_id: sht31_i2c
+    statement_kind: project_configuration
+    source_refs:
+    - source_id: design.hardware
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: interfaces
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+  - unit_id: component.sht31
+    target:
+      artifact: hardware.yaml
+      entity_kind: component
+      entity_id: sht31
+    statement_kind: project_configuration
+    source_refs:
+    - source_id: design.hardware
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: hardware.components
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+  - unit_id: rule.sht31-read-failed-v1
+    target:
+      artifact: diagnosis/rules.yaml
+      entity_kind: rule
+      entity_id: sht31-read-failed-v1
+    statement_kind: project_configuration
+    source_refs:
+    - source_id: design.diagnosis.rules
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: rules
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+  - unit_id: fault_tree.sht31-read-failure-v1
+    target:
+      artifact: diagnosis/fault_tree.yaml
+      entity_kind: fault_tree
+      entity_id: sht31-read-failure-v1
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.diagnosis.fault_tree
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: trees
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+  - unit_id: concept.sht31.i2c_config
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: sht31.i2c_config
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.concepts
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: concepts
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: concept.sht31.i2c_lines
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: sht31.i2c_lines
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.concepts
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: concepts
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: concept.sht31.failure_counts
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: sht31.failure_counts
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.concepts
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: concepts
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: concept.sht31.protocol_evidence
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: sht31.protocol_evidence
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.concepts
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: concepts
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: concept.sht31.power_ground
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: sht31.power_ground
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.concepts
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: concepts
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: concept.sht31.delivery_evidence
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: sht31.delivery_evidence
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.concepts
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: concepts
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: concept.sht31.identity_scope
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: sht31.identity_scope
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.concepts
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: concepts
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: concept.sht31.recovery_boundary
+    target:
+      artifact: knowledge/concepts.yaml
+      entity_kind: concept
+      entity_id: sht31.recovery_boundary
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.concepts
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: concepts
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: case.sht31.sensor-read-failed.test-data.v1
+    target:
+      artifact: knowledge/cases.yaml
+      entity_kind: case
+      entity_id: sht31.sensor-read-failed.test-data.v1
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.knowledge.cases
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: cases
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+  - unit_id: step.connect
+    target:
+      artifact: teaching/steps.yaml
+      entity_kind: step
+      entity_id: connect
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.teaching.steps
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: steps
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: step.configure
+    target:
+      artifact: teaching/steps.yaml
+      entity_kind: step
+      entity_id: configure
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.teaching.steps
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: steps
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: step.observe
+    target:
+      artifact: teaching/steps.yaml
+      entity_kind: step
+      entity_id: observe
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.teaching.steps
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: steps
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  - unit_id: step.identify
+    target:
+      artifact: teaching/steps.yaml
+      entity_kind: step
+      entity_id: identify
+    statement_kind: pending_proposal
+    source_refs:
+    - source_id: design.teaching.steps
+      claim: 当前项目草稿配置或合成材料，非实测结论
+      locator: steps
+    - source_id: sensirion-sht3x-dis-datasheet-v7
+      claim: SHT31 I²C、供电、命令、时间和测量限制；不证明当前硬件已验收
+      locator: Datasheet §§1.1,2,3,4.3,4.4,4.12
+    - source_id: firmware.main
+      claim: 当前程序配置与已知限制
+      locator: i2c_init / sht31_read / app_main
+    - source_id: bridge.mapping
+      claim: 串口桥字段、大小写和电脑接收时间
+      locator: record_for_line / heartbeat_record
+    - source_id: pending.hardware
+      claim: 实物接线、精度、周期与故障区分性待核验
+      locator: pending acceptance
+    derived_from: []
+    depends_on: []
+    applicability:
+      limits_text: 仅供 SHT31 测试草稿参考；未实测/未教师审核，不确认根因或课程验收。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31
+  value_owners:
+  - parameter_id: sda_pin
+    owner:
+      target:
+        artifact: hardware.yaml
+        entity_kind: interface
+        entity_id: sht31_i2c
+        field: pins.sda
+      unit: gpio
+    copies:
+    - target:
+        artifact: hardware.yaml
+        entity_kind: required_parameters
+        field: sda_pin
+      unit: gpio
+  - parameter_id: scl_pin
+    owner:
+      target:
+        artifact: hardware.yaml
+        entity_kind: interface
+        entity_id: sht31_i2c
+        field: pins.scl
+      unit: gpio
+    copies:
+    - target:
+        artifact: hardware.yaml
+        entity_kind: required_parameters
+        field: scl_pin
+      unit: gpio
+  - parameter_id: address
+    owner:
+      target:
+        artifact: hardware.yaml
+        entity_kind: interface
+        entity_id: sht31_i2c
+        field: parameters.address
+      unit: i2c_address
+    copies:
+    - target:
+        artifact: hardware.yaml
+        entity_kind: required_parameters
+        field: address
+      unit: i2c_address
+  - parameter_id: bus_frequency_hz
+    owner:
+      target:
+        artifact: hardware.yaml
+        entity_kind: interface
+        entity_id: sht31_i2c
+        field: parameters.frequency_hz
+      unit: Hz
+    copies:
+    - target:
+        artifact: hardware.yaml
+        entity_kind: required_parameters
+        field: bus_frequency_hz
+      unit: Hz
+  - parameter_id: measurement_command
+    owner:
+      target:
+        artifact: hardware.yaml
+        entity_kind: interface
+        entity_id: sht31_i2c
+        field: parameters.measurement_command
+      unit: command
+    copies:
+    - target:
+        artifact: hardware.yaml
+        entity_kind: required_parameters
+        field: measurement_command
+      unit: command
+  - parameter_id: configured_sample_interval_ms
+    owner:
+      target:
+        artifact: hardware.yaml
+        entity_kind: interface
+        entity_id: sht31_i2c
+        field: parameters.configured_sample_interval_ms
+      unit: ms
+    copies:
+    - target:
+        artifact: hardware.yaml
+        entity_kind: required_parameters
+        field: configured_sample_interval_ms
+      unit: ms

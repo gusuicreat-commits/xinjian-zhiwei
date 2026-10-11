@@ -50,15 +50,15 @@ def write_workflow_report(report: dict, output: Path, *, details: str = "failure
 
 def render_summary(report: dict) -> str:
     titles = {
-        "dht-missing": "DHT11 缺少读数",
+        "sht31-missing": "SHT31 缺少读数",
         "led-legacy": "LED 旧 level 语义",
         "led-command": "LED 命令状态边界",
-        "dht-ambiguous": "DHT11 故障原因不明确",
-        "dht-valid": "DHT11 有效诊断流程",
-        "dht-foreign_evidence": "拒绝其他诊断的证据",
-        "dht-invalid_json": "模型返回无效 JSON",
-        "dht-timeout": "模型超时降级",
-        "dht-candidate-linkage": "候选与证据关联",
+        "sht31-ambiguous": "SHT31 故障原因不明确",
+        "sht31-valid": "SHT31 有效诊断流程",
+        "sht31-foreign_evidence": "拒绝其他诊断的证据",
+        "sht31-invalid_json": "模型返回无效 JSON",
+        "sht31-timeout": "模型超时降级",
+        "sht31-candidate-linkage": "候选与证据关联",
         "feedback-roundtrip": "学生反馈完整往返",
         "duplicate-feedback": "重复反馈幂等",
         "teacher-roundtrip": "教师审核完整往返",
@@ -74,7 +74,7 @@ def render_summary(report: dict) -> str:
         "feedback-invalid-request-id": "反馈请求编号无效",
         "foreign-session-feedback-replay": "跨会话重放反馈",
         "postgres-restart-replay": "重建连接后重放反馈",
-        "dht-unrelated-evidence": "拒绝无关证据",
+        "sht31-unrelated-evidence": "拒绝无关证据",
     }
     labels = {
         "passed": "通过",

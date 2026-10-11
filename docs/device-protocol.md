@@ -2,10 +2,10 @@
 
 ## 状态与边界
 
-代码核对日期：2026-09-27。本文说明当前服务端传输契约，不是实物验收结果。仓库已有
-ESP32-DevKitC V4/WROOM-32E、裸DHT11、GPIO4、3.3V和3秒采样的候选配置，以及0.2.2固件；
-具体构建、接线来源和待实测范围见[固件说明](../firmware/esp32_dht11/README.md)。
-通用协议不把这些候选参数变成所有设备的固定要求。下面的通用样例及模拟器输入为
+代码核对日期：2026-10-11。本文说明当前服务端传输契约，不是实物验收结果。当前硬件基线为
+ESP32-S3-N16R8 + SHT31：板上程序只打印串口，由电脑端[串口桥](../bridge/README.md)按本协议上传
+（映射见下文“串口桥映射”）；程序与接线见[板上程序说明](../firmware/esp32s3_sht31/README.md)。
+通用协议不把这些参数变成所有设备的固定要求。下面的通用样例及模拟器输入为
 `isTestData=true`合成数据，真实字段应与锁定实验包和设备适配一致。
 
 ## 认证与端点
@@ -165,11 +165,22 @@ actor→device 锁顺序，摄入只锁 device，不反向索取 actor 锁。
 - `protocolVersion=1.0` 和 `schemaVersion=1` 是当前唯一支持组合。
 - 新增可选字段时保持旧客户端可用；破坏性字段语义变更必须增加 schema 版本。
 - 真实硬件接入时应新增设备适配配置和契约测试，不改变通用字段含义。
-- 新设备的固件、GPIO、字段、单位、采样与批量策略须明确登记和校验；当前DHT11候选固件已有代码契约，实物表现仍待验证。
+- 新设备的固件、GPIO、字段、单位、采样与批量策略须明确登记和校验；当前 SHT31 串口桥已有代码契约并完成首次真机联调，故障与恢复表现仍待验证。
 
 ## 记录语义与硬件事实边界
 
-DHT11 日志的组件标识可放在 `payload.sensor_snapshot.component_id`，例如 `dht11`；接口标识可放在同层 interface_id，未填时按组件的已声明接口解析。错误码映射由版本化实验包控制；当前DHT11固件代码会输出 `DHT11_READ_FAILED`，包映射为 `sensor.read_failed`。代码约定不能证明每种真实故障都会输出该错误，更不能凭它确认唯一根因。
+日志的组件标识可放在 `payload.sensor_snapshot.component_id`；接口标识可放在同层 interface_id，未填时按组件的已声明接口解析。串口桥不知道组件与 I²C 配置，因此不填这些字段；只有当前固定包内恰好一条事件映射与日志匹配时，归一化才按该映射补组件身份，不补造引脚或地址。错误码映射由版本化实验包控制；当前 SHT31 包把 `SHT31_READ_FAILED` 映射为 `sensor.read_failed`，规则再产出通用诊断类型 `SENSOR_READ_FAILED`。程序对断线、地址不符、上拉不足、器件异常都只输出同一句失败行，代码约定不能证明每种真实故障都会出现，更不能凭它确认唯一根因。
+
+### 串口桥映射
+
+| 串口行（现行程序原文） | 上传记录 |
+| --- | --- |
+| `温度: <t> ℃ \| 湿度: <h> %RH` | 两条 `reading`：`sensor_type=SHT31`，`metric_key` 为 `temperature`（`°C`）与 `humidity`（`%RH`） |
+| `读取失败！检查接线或者把地址改成0x45` | `log`：`level=error`，`event_code=SHT31_READ_FAILED`，`message` 为原行 |
+| `SHT31 传感器启动!` | `log`：`level=info`，`event_code=SHT31_BOOT`；同时换新 `bootId`、`sequenceNo` 从 0 计 |
+| 其他行 | 不上传，只计数 |
+
+`occurredAt` 为电脑收到该行的 UTC 时间，记录 metadata/sensor_snapshot 标注 `time_source=host_serial_receive` 与 `source=serial_bridge`；服务端仍按有效 `occurredAt` 记 `device_reported`，读者需据 `time_source` 区分它不是设备时钟。回放保存的文本时不发 `occurredAt`（`time_source=replay_unknown`，服务端记 `server_fallback`）。心跳只在收到新行后附带，串口静默时不补发；`firmwareVersion` 取 `firmware/esp32s3_sht31/VERSION`。
 
 LED reading 的 metric_key 使用 level（旧值，来源未知）、gpio_command_level（命令）、gpio_actual_level（电气观测）或 led_physically_on（光学观测）。后三者分别要求 metadata.measurement_source 为 command / electrical_measurement / optical_observation；缺失或不匹配时标准观测 status=unknown。命令与电气观测还需 metadata.command_id 相同，且满足包配置的响应窗口才参与比较。数据契约支持这些语义不代表当前设备已经实现电气/光学检测，真实来源仍 pending_hardware。
 

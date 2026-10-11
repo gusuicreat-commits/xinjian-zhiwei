@@ -45,7 +45,7 @@ def context_for(name, payloads=()):
     return bundle, context
 
 
-@pytest.mark.parametrize("name", ["dht11_temperature_humidity", "gpio_led_output"])
+@pytest.mark.parametrize("name", ["sht31_temperature_humidity", "gpio_led_output"])
 def test_unverified_cases_cannot_claim_approval(name):
     bundle, _ = context_for(name)
     case = bundle.cases.cases[0]
@@ -62,11 +62,11 @@ def test_window_failure_count_does_not_claim_consecutive_failures():
     for _ in range(5):
         payloads.extend(
             [
-                {"error_code": "DHT11_READ_FAILED"},
-                {"sensor": "dht11", "metric": "temperature", "value": 25},
+                {"event_code": "SHT31_READ_FAILED"},
+                {"sensor_type": "SHT31", "metric_key": "temperature", "value": 25},
             ]
         )
-    _, context = context_for("dht11_temperature_humidity", payloads)
+    _, context = context_for("sht31_temperature_humidity", payloads)
     outcome = diagnose(context)
     match = next(m for m in outcome.matches if m.error_type == "SENSOR_READ_FAILED")
     assert match.evidence[0].fact == "failure_count_in_window"
@@ -75,7 +75,7 @@ def test_window_failure_count_does_not_claim_consecutive_failures():
     assert "累计" in match.summary
 
 
-@pytest.mark.parametrize("name", ["dht11_temperature_humidity", "gpio_led_output"])
+@pytest.mark.parametrize("name", ["sht31_temperature_humidity", "gpio_led_output"])
 def test_common_health_checks_are_shared_and_missing_data_is_not_normal(name):
     bundle, context = context_for(name)
     assert not {"DEVICE_OFFLINE", "HEARTBEAT_STALE", "DATA_STALE"} & {
@@ -87,54 +87,56 @@ def test_common_health_checks_are_shared_and_missing_data_is_not_normal(name):
         required.maximum_age_seconds = 10  # Synthetic test setting, not hardware calibration.
     errors = {m.error_type for m in diagnose(context).matches}
     assert errors == {"DATA_STALE"}
+    context.runtime_expectations.heartbeat_maximum_age_seconds = 90  # Synthetic policy.
     context.heartbeats = []
     assert "HEARTBEAT_STALE" in {m.error_type for m in diagnose(context).matches}
     context.last_seen_at = NOW - timedelta(seconds=100)
     assert "DEVICE_OFFLINE" in {m.error_type for m in diagnose(context).matches}
 
 
-def normal_dht():
+def normal_sht31():
     payloads = [
         {
-            "sensor": "dht11",
-            "metric": m,
+            "sensor_type": "SHT31",
+            "metric_key": m,
             "value": v,
-            "timestamp": (NOW - timedelta(seconds=age)).isoformat(),
+            "occurredAt": (NOW - timedelta(seconds=age)).isoformat(),
         }
         for age in (5, 0)
         for m, v in (("temperature", 25), ("humidity", 50))
     ]
-    _, context = context_for("dht11_temperature_humidity", payloads)
+    _, context = context_for("sht31_temperature_humidity", payloads)
+    context.runtime_expectations.heartbeat_maximum_age_seconds = 90
     for r in context.runtime_expectations.required_observations:
         r.maximum_age_seconds = 10
     return context
 
 
 def test_normal_requires_heartbeat_periodic_valid_data_and_no_rule_hits():
-    context = normal_dht()
+    context = normal_sht31()
     assert not diagnose(context).matches
     assert context.normal_assessment["status"] == "normal"
     context.observations[-1].value = float("nan")
     diagnose(context)
     assert context.normal_assessment["status"] == "abnormal"
-    context = normal_dht()
+    context = normal_sht31()
     context.evaluated_at += timedelta(seconds=11)
     assert "DATA_STALE" in {m.error_type for m in diagnose(context).matches}
-    context = normal_dht()
+    context = normal_sht31()
     context.observations[0].observed_at -= timedelta(seconds=30)
     assert "DATA_STALE" in {m.error_type for m in diagnose(context).matches}
-    context = normal_dht()
+    context = normal_sht31()
     context.heartbeats = []
     diagnose(context)
     assert context.normal_assessment["status"] != "normal"
 
 
 def test_single_sample_and_unconfigured_period_are_not_periodic_success():
-    context = normal_dht()
+    context = normal_sht31()
     context.observations = context.observations[-2:]
     diagnose(context)
     assert context.normal_assessment["status"] == "unknown"
-    context = normal_dht()
+    context = normal_sht31()
     context.runtime_expectations.required_observations[0].maximum_age_seconds = None
     diagnose(context)
     assert context.normal_assessment["status"] == "unknown"
@@ -232,28 +234,28 @@ def test_led_evidence_persists_distinct_types_and_real_uuids(api_context):
 
 
 def test_legacy_log_preserves_nested_component_identity():
-    bundle, _ = context_for("dht11_temperature_humidity")
+    bundle, _ = context_for("sht31_temperature_humidity")
     result = normalize_legacy_context(
         logs=[
             ContextLog(
                 id="synthetic",
                 level="error",
                 message="test",
-                event_code="DHT11_READ_FAILED",
+                event_code="SHT31_READ_FAILED",
                 occurred_at=NOW,
                 is_test_data=True,
-                raw_payload={"sensor_snapshot": {"component_id": "dht11"}},
+                raw_payload={"sensor_snapshot": {"component_id": "sht31"}},
             )
         ],
         heartbeats=[],
         readings=[],
         definition=package_to_experiment_definition(bundle),
     )
-    assert result.events[0].component_id == "dht11"
-    assert result.events[0].interface_id == "dht11_gpio"
+    assert result.events[0].component_id == "sht31"
+    assert result.events[0].interface_id == "sht31_i2c"
 
 
-@pytest.mark.parametrize("name", ["dht11_temperature_humidity", "gpio_led_output"])
+@pytest.mark.parametrize("name", ["sht31_temperature_humidity", "gpio_led_output"])
 def test_http_ingest_to_package_evidence_uses_same_semantics(api_context, name):
     from uuid import uuid4
 
@@ -266,15 +268,15 @@ def test_http_ingest_to_package_evidence_uses_same_semantics(api_context, name):
 
     bundle, _ = context_for(name)
     now = datetime.now(timezone.utc)
-    if name.startswith("dht"):
+    if name.startswith("sht31"):
         records = [
             {
                 "type": "log",
                 "payload": {
                     "level": "error",
                     "message": "synthetic read failure",
-                    "event_code": "DHT11_READ_FAILED",
-                    "sensor_snapshot": {"component_id": "dht11"},
+                    "event_code": "SHT31_READ_FAILED",
+                    "sensor_snapshot": {"component_id": "sht31"},
                 },
             }
             for _ in range(5)
@@ -334,11 +336,11 @@ def test_http_ingest_to_package_evidence_uses_same_semantics(api_context, name):
         rows = list(
             db.scalars(select(DiagnosisEvidence).where(DiagnosisEvidence.diagnosis_id == result.id))
         )
-        if name.startswith("dht"):
+        if name.startswith("sht31"):
             assert {m.error_type for m in outcome.matches} == {"SENSOR_READ_FAILED"}
             failures = [e for e in rows if e.evidence_type == "sensor.read_failed"]
             assert len(failures) == 5
-            assert all(e.normalized_value["component_id"] == "dht11" for e in failures)
+            assert all(e.normalized_value["component_id"] == "sht31" for e in failures)
         else:
             by_type = {r.evidence_type: r for r in rows}
             assert by_type["observation.level"].normalized_value["status"] == "unknown"

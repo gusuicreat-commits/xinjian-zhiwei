@@ -37,7 +37,7 @@ from app.services.query_sources import (
 )
 from app.services.student_authorization import authorize_student_actor
 
-CONTRACT_VERSION = "dht11-query-v1"
+CONTRACT_VERSION = "sht31-query-v1"
 ACTIVE_SECONDS = 120
 SOURCE_ORDER = ("task_evidence", "firmware_reported_config", "package_requirement", "approved_case")
 

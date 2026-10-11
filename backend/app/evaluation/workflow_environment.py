@@ -217,7 +217,7 @@ class WorkflowEnvironment:
             publisher._actor_context = ActorContext(publisher.id, mode="local_admin")
             self.versions = {}
             self.hashes = {}
-            for package in ("dht11_temperature_humidity", "gpio_led_output"):
+            for package in ("sht31_temperature_humidity", "gpio_led_output"):
                 bundle, _ = load_experiment_package(PACKAGE_ROOT / package)
                 from sqlalchemy import select
 

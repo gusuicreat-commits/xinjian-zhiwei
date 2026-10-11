@@ -1,0 +1,59 @@
+concepts:
+- concept_id: sht31.i2c_config
+  description: 现行 ESP-IDF 程序使用 I²C0、SDA GPIO8、SCL GPIO9、100 kHz、地址 0x44；ADDR 为高时地址
+    0x45。单次高重复性无时钟拉伸命令 0x2400，手册最长 15.5 ms，源码等待 20 ms 后读取并延迟 1000 ms，实际周期略大于 1 s，仍待实测。
+  references:
+  - hardware.yaml
+  - firmware/esp32s3_sht31/main/main.c
+  - bridge/README.md
+- concept_id: sht31.i2c_lines
+  description: SHT31 使用 I²C SDA/SCL 双线接口。实验接线要求 SDA→GPIO8、SCL→GPIO9、3.3V 与共同 GND。GPIO
+    名称不是排针序号；ESP32-S3-N16R8 型号为用户报告，是否官方 DevKitC-1 未核实。Octal PSRAM 模组 GPIO35/36/37
+    不可外用。
+  references:
+  - hardware.yaml
+  - firmware/esp32s3_sht31/main/main.c
+  - bridge/README.md
+- concept_id: sht31.failure_counts
+  description: failure_count_in_window 是窗口累计读取失败数；consecutive_failure_count 未知，不能从累计次数推导。阈值
+    5 是待实测的项目设定，不是厂商故障标准。
+  references:
+  - hardware.yaml
+  - firmware/esp32s3_sht31/main/main.c
+  - bridge/README.md
+- concept_id: sht31.protocol_evidence
+  description: 现行程序输出串口文本，由电脑桥映射成 sensor_type=SHT31、temperature(°C)/humidity(%RH)
+    读数；失败行对应 level=error、SHT31_READ_FAILED，启动行对应 level=info、SHT31_BOOT。occurredAt
+    是电脑收到行的时间，回放样例缺时间且保持 replay_unknown。心跳仅在收到新行后发出，不证明独立采样或硬件健康。
+  references:
+  - hardware.yaml
+  - firmware/esp32s3_sht31/main/main.c
+  - bridge/README.md
+- concept_id: sht31.power_ground
+  description: 现行程序只启用 ESP32 内部上拉；Sensirion 手册建议外接上拉，例如 SDA/SCL 各 10 kΩ，实际以模块和总线条件确认。SHT31
+    供电范围 2.15–5.5 V，本实验使用 3.3 V。仅合理读数不能证明接线逐项正确或精度。
+  references:
+  - hardware.yaml
+  - firmware/esp32s3_sht31/main/main.c
+  - bridge/README.md
+- concept_id: sht31.delivery_evidence
+  description: 板上没有 Wi-Fi 上传、令牌或持久化批次；电脑串口桥上传设备协议 V1 批次，HTTP accepted 回执只证明接收，不证明传感器精度或根因。COMTool
+    与桥不能同时占用同一个串口；先关闭 COMTool 再运行桥。
+  references:
+  - hardware.yaml
+  - firmware/esp32s3_sht31/main/main.c
+  - bridge/README.md
+- concept_id: sht31.identity_scope
+  description: 设备标识、授权活动会话、固定包版本与本次记录须对应。桥登记 firmwareVersion=esp32s3-sht31-1.0.0 是电脑配置，不是固件自报；程序和桥不自报
+    SDA/SCL/地址，R1 必须保持 not_reported。合成快照只验证查询语义。
+  references:
+  - hardware.yaml
+  - firmware/esp32s3_sht31/main/main.c
+  - bridge/README.md
+- concept_id: sht31.recovery_boundary
+  description: 重新检查只分析当前会话上传的新记录，不控制采样。无异常规则命中不证明正常或恢复。SHT31 温度范围 -40–125 °C，典型精度
+    ±0.2 °C(0–90 °C)，湿度 0–100 %RH、典型 ±2 %RH、分辨率 0.01；推荐正常工作范围见手册 1.1 节。程序未校验 CRC、忽略写命令返回值，读失败才打印失败行，因此故障区分性与精度仍待核验。
+  references:
+  - hardware.yaml
+  - firmware/esp32s3_sht31/main/main.c
+  - bridge/README.md

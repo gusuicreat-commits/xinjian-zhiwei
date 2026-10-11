@@ -1,0 +1,37 @@
+hints:
+- cause_id: wiring.i2c_lines
+  levels:
+    1: 先观察 SDA、SCL 线缆和接插件是否松动。
+    2: 断电后按接线表核对 SDA→GPIO8、SCL→GPIO9 与共同地。
+    3: 重新插接后只运行最小 I²C 读取程序并保留串口输出。
+    4: 保留接线照片和失败日志，请教师协助。
+- cause_id: wiring.power_ground
+  levels:
+    1: 检查 3.3V、GND 与模块供电指示。
+    2: 断电后用万用表核对供电和共同参考。
+    3: 恢复供电后观察是否仍有 SHT31_READ_FAILED。
+    4: 请教师协助进行电气测量。
+- cause_id: wiring.address_mismatch
+  levels:
+    1: 核对 ADDR 电平与地址 0x44/0x45。
+    2: 对照程序中的 SHT31_ADDR=0x44。
+    3: 记录地址扫描或失败日志后再请求教师复核。
+    4: 保留 ADDR、地址扫描和失败日志，请教师协助；地址匹配不证明接线正确。
+- cause_id: wiring.pullup_or_length
+  levels:
+    1: 检查 SDA/SCL 是否有合适上拉。
+    2: 缩短线缆并按资料评估各线电容。
+    3: 逐项记录改变后的读数或失败日志。
+    4: 请教师确认允许的电气测量和上拉方案。
+- cause_id: software.i2c_config
+  levels:
+    1: 查看代码是否使用 GPIO8/GPIO9、I²C0 与 100 kHz。
+    2: 对照实验包核对 0x44、0x2400 和 20 ms 等待。
+    3: 保存源码版本和串口桥输入日志。
+    4: 请教师协助复核构建与端口配置。
+- cause_id: hardware.sensor_failure
+  levels:
+    1: 不要仅凭读取失败判定传感器损坏。
+    2: 先完成供电、线路、地址和程序配置核对。
+    3: 使用已知正常的同型号器件做对照测试。
+    4: 由教师确认后再更换器件。

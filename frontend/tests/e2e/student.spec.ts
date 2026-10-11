@@ -268,14 +268,14 @@ test('shows workflow provenance, licensed guidance and teacher review history', 
   const payload = dashboard({
     task: {
       configured: true,
-      title: 'DHT11 温湿度实验（模拟）',
+      title: 'SHT31 温湿度实验（模拟）',
       template_id: 'synthetic-template',
       notice: null,
     },
     readings: [
       {
         id: 'snapshot-reading',
-        sensor_type: 'dht11',
+        sensor_type: 'SHT31',
         metric_key: 'temperature',
         value: 23.5,
         unit: '°C',
@@ -610,7 +610,7 @@ test('normal readings remain available and tab navigation never submits work', a
       readings: [
         {
           id: 'r-normal',
-          sensor_type: 'dht11',
+          sensor_type: 'SHT31',
           metric_key: 'temperature',
           value: 23.5,
           unit: '°C',
@@ -817,11 +817,11 @@ for (const unavailable of [false, true]) {
           evidence: [],
           matches: [
             {
-              rule_id: 'dht11-read',
+              rule_id: 'sht31-read',
               evidence: [],
               error_type: 'SENSOR_READ_FAILED',
               priority: 10,
-              summary: 'DHT11 读取失败',
+              summary: 'SHT31 读取失败',
             },
           ],
         },
@@ -834,7 +834,7 @@ for (const unavailable of [false, true]) {
     function projection() {
       return {
         id: 'query-task',
-        contract_version: 'dht11-query-v1',
+        contract_version: 'sht31-query-v1',
         status: answered ? 'completed_satisfied' : 'waiting_answer',
         terminal_reason: null,
         requirements: {
@@ -849,7 +849,7 @@ for (const unavailable of [false, true]) {
         question: answered
           ? null
           : {
-              question_id: 'synthetic.dht11.wiring_observation',
+              question_id: 'synthetic.sht31.wiring_observation',
               version: 'v1',
               requirement: 'wiring_observation',
               options: ['matches_table', 'differs', 'unclear'],

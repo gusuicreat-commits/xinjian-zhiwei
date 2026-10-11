@@ -126,17 +126,17 @@ def test_pre_reasoning_knowledge_exposes_only_structured_constraints(
     is_test_data, root_status, confirmed
 ) -> None:
     reference = AIKnowledgeReference(
-        chunk_id="dht11.case.v1",
-        source_key="knowledge/cases/dht11.yaml",
-        source_title="DHT11",
+        chunk_id="sht31.case.v1",
+        source_key="knowledge/cases/sht31.yaml",
+        source_title="SHT31",
         source_type="structured_case",
         source_uri=None,
         content=json.dumps(
             {
-                "caseId": "dht11.case.v1",
-                "experimentType": "dht11_temperature_humidity",
+                "caseId": "sht31.case.v1",
+                "experimentType": "sht31_temperature_humidity",
                 "errorType": "SENSOR_READ_FAILED",
-                "symptom": "DHT11 连续读取失败",
+                "symptom": "SHT31 连续读取失败",
                 "normalState": {"metrics": ["temperature", "humidity"]},
                 "possibleCauses": ["GPIO 配置错误"],
                 "solutionSteps": ["核对 GPIO"],
@@ -150,10 +150,10 @@ def test_pre_reasoning_knowledge_exposes_only_structured_constraints(
     )
 
     constraints = build_reasoning_knowledge_constraints(
-        {"experiment_id": "dht11_temperature_humidity"}, [reference]
+        {"experiment_id": "sht31_temperature_humidity"}, [reference]
     )
 
-    assert constraints["experiment_definition"]["experiment_id"] == ("dht11_temperature_humidity")
+    assert constraints["experiment_definition"]["experiment_id"] == ("sht31_temperature_humidity")
     assert constraints["normal_conditions"][0]["normal_state"]["metrics"] == [
         "temperature",
         "humidity",
@@ -180,7 +180,7 @@ def test_post_reasoning_validation_rejects_unknown_cause_and_evidence() -> None:
         "next_verification_action": "直接更换主板",
         "knowledge_constraints": {
             "teacher_confirmed_cases": [
-                {"case_id": "dht11.case.v1", "error_type": "SENSOR_READ_FAILED"}
+                {"case_id": "sht31.case.v1", "error_type": "SENSOR_READ_FAILED"}
             ]
         },
     }

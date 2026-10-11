@@ -1,6 +1,6 @@
 # 内部测试实验准备与合成演练
 
-日期：2026-09-29。对象：维护者在自己管理的隔离测试环境准备一次实验。入口为`app.cli.prepare_internal_experiment`；首个配置使用DHT11。硬件、学生与教师真实验收仍单独记录。
+日期：2026-09-29。对象：维护者在自己管理的隔离测试环境准备一次实验。入口为`app.cli.prepare_internal_experiment`；当前配置使用 SHT31（2026-10-11 替换 DHT11）。硬件、学生与教师真实验收仍单独记录。
 
 ## 1. 环境与管理员
 
@@ -36,7 +36,7 @@ PYTHONPATH=backend python - <<'PY'
 import json
 from pathlib import Path
 from app.experiment_packages.loader import load_experiment_package, package_documents
-bundle, _ = load_experiment_package(Path('backend/experiment_packages/dht11_temperature_humidity'))
+bundle, _ = load_experiment_package(Path('backend/experiment_packages/sht31_temperature_humidity'))
 Path('/tmp/internal-lab-package-import.json').write_text(json.dumps({
     'documents': package_documents(bundle), 'is_test_data': True,
 }, ensure_ascii=False))
@@ -60,7 +60,7 @@ PY
 ```bash
 APP_ENV=test PYTHONPATH=backend python -m app.cli.prepare_internal_experiment plan \
   --test-database --dsn-env INTERNAL_LAB_DSN --actor-token-env INTERNAL_LAB_ADMIN_TOKEN \
-  --prefix lab-dht11-first --device-kind synthetic \
+  --prefix lab-sht31-first --device-kind synthetic \
   --package-version-id "$INTERNAL_LAB_VERSION_ID" --package-hash "$INTERNAL_LAB_PACKAGE_HASH"
 ```
 
@@ -72,7 +72,7 @@ APP_ENV=test PYTHONPATH=backend python -m app.cli.prepare_internal_experiment pl
 
 对象和审计在一个事务提交；前缀锁与包状态锁后重新核验身份。同前缀换包、正式对象混入、无回执的残缺对象或绑定改变会拒绝，不自动“修复”历史。需要换版本时使用新前缀准备新任务，已有会话继续保留原版本。
 
-这里创建的账号名为`lab-dht11-first-student`和`lab-dht11-first-teacher`。教师账号只是软件测试角色，不能填写成某位教师本人。默认synthetic设备只接合成输入；到货后使用不同前缀与`--device-kind hardware`准备实物内部测试身份，不能将先前合成数据当作板卡履历。
+这里创建的账号名为`lab-sht31-first-student`和`lab-sht31-first-teacher`。教师账号只是软件测试角色，不能填写成某位教师本人。默认synthetic设备只接合成输入；到货后使用不同前缀与`--device-kind hardware`准备实物内部测试身份，不能将先前合成数据当作板卡履历。
 
 ## 4. 由学生开始会话
 
@@ -97,4 +97,4 @@ PYTHONPATH=backend python -m pytest backend/tests/test_internal_experiment_cli.p
 
 演练覆盖：空数据、有效字段、累计读取失败、重复批次、错误设备/会话、资料快照、反馈、旧数据/缺测、新数据重新检查和结束会话。有效数值不会自动校准未知的时效参数；无异常不等于已确认正常，累计失败不等于唯一根因。AI关闭时审计仍可记录skipped，核对attempt_count为0，不能把审计行数当模型调用次数。
 
-本轮实际软件结果见[验收记录](../../output/audits/dht11-readiness-20260929/report.md)。这份命令说明不是硬件/课堂通过证据。完成后清理自己的临时导入文件和凭据环境变量；一次性测试库可销毁，持续内部测试环境保留原记录与版本。
+2026-09-29 的软件验收记录针对已删除的 DHT11 包，仅作历史参考。这份命令说明不是硬件/课堂通过证据。完成后清理自己的临时导入文件和凭据环境变量；一次性测试库可销毁，持续内部测试环境保留原记录与版本。

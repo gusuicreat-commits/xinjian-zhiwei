@@ -45,7 +45,7 @@ ESP32 固件 / 模拟器
 | `knowledge/`、`services/teaching_materials.py` | 受审核案例匹配、事实绑定草稿、只读教学参考 |
 | `services/interventions.py` | 工单状态、公开与私密事件、幂等操作及问题解决报告 |
 | `frontend/src/` | 按学生/教师任务展示已有授权数据，保存未决请求身份；刷新只读 |
-| `firmware/esp32_dht11/`、`simulator/` | 采样与协议发送；模拟数据始终保留测试身份 |
+| `firmware/esp32s3_sht31/`、`bridge/`、`simulator/` | 板上采样只输出串口；电脑端串口桥按协议上传；模拟数据始终保留测试身份 |
 
 跨模块改动按[规则与执行位置对应表](development-guidelines.md#rule-map)核对全部入口。
 
@@ -54,7 +54,7 @@ ESP32 固件 / 模拟器
 批量入口在同一设备的短事务中重新校验设备与会话、查重、检查额度并写入回执及遥测。
 数据库唯一约束防止相同请求身份或序列被重复写入；同身份同载荷重放原结果，内容冲突拒绝。
 协议外层和每条记录都要校验，离线固件先保存冻结批次再发送。详细错误码和固件存储边界见
-[设备协议](device-protocol.md) 与 [固件目录](../firmware/esp32_dht11/)。
+[设备协议](device-protocol.md) 与 [板上程序](../firmware/esp32s3_sht31/)、[串口桥](../bridge/)。
 
 遥测保存可空 `experiment_session_id`，诊断保存创建时会话范围；工作流另有学生、设备和会话外键。
 归属不明的历史资料不能从今天的设备绑定推断后展示给学生。设备密钥只代表上传设备；正式学生

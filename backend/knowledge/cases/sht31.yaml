@@ -1,0 +1,59 @@
+cases:
+- id: sht31.sensor-read-failed.v1
+  experimentType: sht31_temperature_humidity
+  errorType: SENSOR_READ_FAILED
+  symptom: 测试数据：窗口内累计出现读取失败事件，不能推断连续失败、无读数或具体根因。
+  normalState:
+    requirements:
+    - 有来源的温湿度读数
+    - 周期、新鲜度和课程判据待实测
+    - 无异常命中不等于硬件正常
+    verification_status: unverified
+  evidence:
+  - evidenceType: sensor.read_failed
+    description: 窗口内累计出现标准读取失败事件，不代表连续失败
+  possibleCauses:
+  - wiring.i2c_lines
+  - wiring.power_ground
+  - wiring.address_mismatch
+  - wiring.pullup_or_length
+  - software.i2c_config
+  - hardware.sensor_failure
+  solutionSteps:
+  - 断电核对 SDA→GPIO8、SCL→GPIO9、3.3V、GND 与 ADDR。
+  - 核对 I²C0、0x44/0x45、上拉、线长与程序构建。
+  - 关闭 COMTool 后运行串口桥并保留 HTTP 回执；仍失败请教师协助。
+  teacherNotes: null
+  rootCauseValue: null
+  rootCauseStatus: unknown
+  confirmedBy: null
+  confirmedAt: null
+  sourceType: test_data
+  factsLocked: false
+  qualityCheckPassed: false
+  reviewStatus: draft
+  sourceRef: knowledge/cases/sht31.yaml
+  version: 1.0.0
+  isTestData: true
+  facts:
+    verification_status: unverified
+    hardware_status: pending_hardware
+    source_type: test_data
+    note: 合成示例，不是真实教师经验或学生案例。
+    teacher_status: pending_teacher
+    student_case_status: pending_teacher
+    course_status: pending_course_confirmation
+  solutionRecord:
+    confirmation_material:
+      applicability_limits: 仅用于验证软件合同的合成草稿；未核验实物、根因、恢复结果或教师经验，不得作为正式案例召回。
+      applicability_conditions:
+        version: 1
+        conditions:
+        - field: experiment_code
+          operator: in
+          values:
+          - sht31_temperature_humidity
+        - field: component_id
+          operator: in
+          values:
+          - sht31

@@ -95,7 +95,7 @@ def case_scope(api_context):
             ruleset_version="scope-test",
             ruleset_hash="1" * 64,
             input_fingerprint="2" * 64,
-            experiment_id="dht11_temperature_humidity",
+            experiment_id="sht31_temperature_humidity",
             matched_rules=[
                 {
                     "rule_id": "scope-rule",

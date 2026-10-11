@@ -283,10 +283,20 @@ def normalize_legacy_context(
     for log in logs:
         snapshot = log.raw_payload.get("sensor_snapshot")
         snapshot = snapshot if isinstance(snapshot, dict) else {}
+        # A package may identify a component from the exact declared log mapping.
+        # The serial bridge intentionally reports no component or I²C configuration.
+        mappings = [
+            item
+            for item in (definition.normalization.mappings if definition else [])
+            if item.output == "event"
+            and all(_field(log.raw_payload, key) == value for key, value in item.match.items())
+        ]
+        mapping = mappings[0] if len(mappings) == 1 else None
         component_id = (
             log.raw_payload.get("component_id")
             or log.raw_payload.get("component")
             or snapshot.get("component_id")
+            or (mapping.component_id if mapping else None)
         )
         interface_id = (
             log.raw_payload.get("interface_id")

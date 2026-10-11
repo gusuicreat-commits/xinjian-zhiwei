@@ -16,32 +16,32 @@ from app.services.teaching_materials import select_teaching_materials
 
 
 def documents():
-    bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
+    bundle, _ = load_experiment_package(PACKAGE_ROOT / "sht31_temperature_humidity")
     docs = package_documents(bundle)
     docs["teaching/steps.yaml"]["bindings"] = [
         {
             "tree_id": bundle.fault_trees.trees[0].id,
-            "cause_id": "wiring.data_pin_mismatch",
-            "component_id": "dht11",
+            "cause_id": "wiring.i2c_lines",
+            "component_id": "sht31",
             "levels": [1, 2],
-            "concept_ids": ["dht11.single_bus"],
+            "concept_ids": ["sht31.i2c_lines"],
             "step_ids": ["connect"],
         }
     ]
     return docs
 
 
-def dht11_package_version():
-    bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
+def sht31_package_version():
+    bundle, _ = load_experiment_package(PACKAGE_ROOT / "sht31_temperature_humidity")
     return bundle.metadata.package.version
 
 
 def select(bundle, **overrides):
     args = dict(
         tree_id=bundle.fault_trees.trees[0].id,
-        cause_id="wiring.data_pin_mismatch",
+        cause_id="wiring.i2c_lines",
         level=1,
-        scope={"kind": "component", "keys": ["dht11"]},
+        scope={"kind": "component", "keys": ["sht31"]},
     )
     args.update(overrides)
     return select_teaching_materials(bundle, **args)
@@ -50,7 +50,7 @@ def select(bundle, **overrides):
 def test_selection_is_explicit_scoped_and_does_not_create_actions():
     bundle, _ = load_experiment_package_payload(documents())
     result = select(bundle)
-    assert [c["concept_id"] for c in result["concepts"]] == ["dht11.single_bus"]
+    assert [c["concept_id"] for c in result["concepts"]] == ["sht31.i2c_lines"]
     assert [s["step_id"] for s in result["steps"]] == ["identify", "connect"]
     assert "actions" not in result
     for overrides in (
@@ -59,7 +59,7 @@ def test_selection_is_explicit_scoped_and_does_not_create_actions():
         {"level": 3},
         {"scope": {"kind": "component", "keys": ["other"]}},
         {"scope": {"kind": "unknown", "keys": []}},
-        {"scope": {"kind": "component", "keys": ["dht11", "other"]}},
+        {"scope": {"kind": "component", "keys": ["sht31", "other"]}},
     ):
         assert select(bundle, **overrides) == {"concepts": [], "steps": []}
 
@@ -129,7 +129,7 @@ def start(env):
     case = next(
         c
         for c in json.loads((PACKAGE_ROOT.parent / "evaluation/workflow_inputs.json").read_text())
-        if c["id"] == "dht-valid"
+        if c["id"] == "sht31-valid"
     )
     now = datetime.now(timezone.utc).isoformat()
     response = env.request(
@@ -170,7 +170,7 @@ def test_http_guidance_snapshot_survives_feedback_and_all_ai_modes(mode):
     from app.evaluation.workflow_environment import workflow_environment
 
     with workflow_environment(
-        "dht11_temperature_humidity", "timeout" if mode == "timeout" else "valid"
+        "sht31_temperature_humidity", "timeout" if mode == "timeout" else "valid"
     ) as env:
         settings = env.app.dependency_overrides[get_settings]()
         if mode == "disabled":
@@ -181,12 +181,12 @@ def test_http_guidance_snapshot_survives_feedback_and_all_ai_modes(mode):
         before = dashboard(env)["guidance"]
         materials = [h["teaching"] for g in before for h in g["hints"]]
         assert materials and any(m["status"] == "available" for m in materials)
-        assert all(m["package_version"] == dht11_package_version() for m in materials)
+        assert all(m["package_version"] == sht31_package_version() for m in materials)
         assert all(m["is_test_data"] for m in materials)
         for material in materials:
             if material["status"] == "available":
                 assert material["steps"][0]["step_id"] == "identify"
-                assert "dht11.protocol_evidence" in [c["concept_id"] for c in material["concepts"]]
+                assert "sht31.protocol_evidence" in [c["concept_id"] for c in material["concepts"]]
         request = {"request_id": str(uuid4()), "action": "unresolved"}
         path = f"/api/v1/student/diagnoses/{workflow['diagnosis_result_id']}/feedback"
         for _ in range(2):
@@ -208,7 +208,7 @@ def test_new_release_does_not_rewrite_guidance_and_revocation_stops_display():
         transition_experiment_package,
     )
 
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         start(env)
         before = dashboard(env)["guidance"]
         with env.sessions() as db:
@@ -247,7 +247,7 @@ def test_reference_text_is_not_sent_to_real_provider_entry_points(monkeypatch):
         return load_experiment_package_payload(docs)
 
     monkeypatch.setattr(module, "load_experiment_package", with_reference)
-    with module.workflow_environment("dht11_temperature_humidity") as env:
+    with module.workflow_environment("sht31_temperature_humidity") as env:
         with patch.object(env.provider, "complete_json", wraps=env.provider.complete_json) as spy:
             start(env)
         assert {c["stage"] for c in env.provider.calls} == {"reasoning", "explanation"}
@@ -313,7 +313,7 @@ def test_old_guidance_is_not_backfilled_and_new_unavailable_material_fails_close
     from app.services.guidance import history_to_evaluation
     from app.services.teaching_materials import attach_teaching_materials
 
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         workflow = start(env)
         with env.sessions() as db:
             diagnosis = db.get(DiagnosisResult, workflow["diagnosis_result_id"])
@@ -336,7 +336,7 @@ def test_old_guidance_is_not_backfilled_and_new_unavailable_material_fails_close
                 db,
                 diagnosis,
                 tree_id=record.fault_tree_id,
-                scope={"kind": "component", "keys": ["dht11"]},
+                scope={"kind": "component", "keys": ["sht31"]},
                 hints=record.hints,
             )
             assert all(h["teaching"]["status"] == "unavailable" for h in result)
@@ -351,7 +351,7 @@ def test_old_snapshot_without_new_optional_fields_keeps_its_hash():
     from app.models.experiment import ExperimentVersion
     from app.services.experiment_packages import load_experiment_package_runtime
 
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         with env.sessions() as db:
             version = db.scalar(
                 select(ExperimentVersion).where(ExperimentVersion.id == env.versions[env.package])

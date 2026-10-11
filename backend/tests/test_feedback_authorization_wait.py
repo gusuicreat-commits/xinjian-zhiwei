@@ -99,7 +99,7 @@ def test_revocation_during_lock_wait_has_no_feedback_side_effects(lock_kind, mod
     dsn = os.getenv("XINJIAN_EVAL_POSTGRES_DSN")
     if not dsn:
         pytest.skip("requires explicitly selected test PostgreSQL")
-    with workflow_environment("dht11_temperature_humidity", postgres_dsn=dsn) as env:
+    with workflow_environment("sht31_temperature_humidity", postgres_dsn=dsn) as env:
         first = start(env)
         if mode == "account":
             account_login(env)
@@ -152,7 +152,7 @@ def test_pending_recovery_rechecks_login_after_workflow_row_wait(monkeypatch):
     dsn = os.getenv("XINJIAN_EVAL_POSTGRES_DSN")
     if not dsn:
         pytest.skip("requires explicitly selected test PostgreSQL")
-    with workflow_environment("dht11_temperature_humidity", postgres_dsn=dsn) as env:
+    with workflow_environment("sht31_temperature_humidity", postgres_dsn=dsn) as env:
         first = start(env)
         account_login(env)
         path = f"/api/v1/student/diagnoses/{first['diagnosis_result_id']}/feedback"
@@ -198,7 +198,7 @@ def test_pending_recovery_rechecks_login_after_workflow_row_wait(monkeypatch):
 
 
 def test_valid_account_can_replay_applied_feedback_after_session_ends():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         account_login(env)
         path = f"/api/v1/student/diagnoses/{first['diagnosis_result_id']}/feedback"

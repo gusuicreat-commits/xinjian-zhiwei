@@ -11,8 +11,8 @@ describe('user-facing language preserves diagnostic boundaries', () => {
     expect(source).toContain('DEVICE_OFFLINE')
   })
   it('does not replace identifiers, technical names or measurements', () => {
-    expect(readableText('id_DEVICE_OFFLINE DHT11 GPIO USB 23.5 °C')).toBe(
-      'id_DEVICE_OFFLINE DHT11 GPIO USB 23.5 °C',
+    expect(readableText('id_DEVICE_OFFLINE SHT31 GPIO USB 23.5 °C')).toBe(
+      'id_DEVICE_OFFLINE SHT31 GPIO USB 23.5 °C',
     )
     expect(issueLabel('NEW_RULE')).toBe('暂未提供通俗说明')
   })
@@ -32,7 +32,7 @@ describe('user-facing language preserves diagnostic boundaries', () => {
   })
   it('marks synthetic logs and does not invent unknown log meaning', () => {
     expect(
-      logSummary({ event_code: 'DHT11_READ_FAILED', message: 'synthetic', is_test_data: true }),
+      logSummary({ event_code: 'SHT31_READ_FAILED', message: 'synthetic', is_test_data: true }),
     ).toContain('测试记录')
     expect(logSummary({ event_code: 'UNRECOGNIZED', message: 'custom event' })).toContain(
       '暂未提供中文说明',
@@ -58,6 +58,8 @@ describe('query display vocabulary', () => {
     expect(queryCodeLabel('prefix_not_reported')).toBe('暂缺解释')
     expect(queryCodeLabel('new_reason')).toBe('暂缺解释')
     expect(queryQuestionText('unknown')).toBeNull()
-    expect(queryQuestionText('synthetic.dht11.wiring_observation')).toContain('DHT11 的 DATA 线')
+    expect(queryQuestionText('synthetic.sht31.wiring_observation')).toContain(
+      'SHT31 的 SDA、SCL 线',
+    )
   })
 })

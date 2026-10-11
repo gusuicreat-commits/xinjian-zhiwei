@@ -187,11 +187,26 @@ def confirmed_recovery(diagnosis: DiagnosisResult, previous: DiagnosisResult) ->
 def _primary_error(diagnosis: DiagnosisResult) -> str | None:
     if diagnosis.matched_rules:
         return str(diagnosis.matched_rules[0].get("error_type") or "") or None
-    has_error_log = any(
-        str(item.get("level", "")).upper() in {"ERROR", "CRITICAL"}
-        for item in diagnosis.context_snapshot.get("logs", [])
-    )
-    return "UNCLASSIFIED_ANOMALY" if has_error_log else None
+    snapshot = diagnosis.context_snapshot or {}
+    events = {
+        (item.get("source_ref"), item.get("type"))
+        for item in snapshot.get("events", [])
+        if item.get("source") == "device_log"
+    }
+    for log in snapshot.get("logs", []):
+        if str(log.get("level", "")).upper() not in {"ERROR", "CRITICAL"}:
+            continue
+        event_code = log.get("event_code")
+        mapped = next(
+            (event_type for source_ref, event_type in events if source_ref == log.get("id")),
+            None,
+        )
+        # A package-mapped event is already represented by its deterministic rule
+        # window. A single mapped failure below that threshold is evidence, not an
+        # additional unclassified issue. Logs without a mapping remain unclassified.
+        if not event_code or mapped is None or mapped == event_code:
+            return "UNCLASSIFIED_ANOMALY"
+    return None
 
 
 def episode_for_diagnosis(db: Session, diagnosis: DiagnosisResult) -> DiagnosisEpisode | None:

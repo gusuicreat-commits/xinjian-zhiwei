@@ -72,22 +72,22 @@ def test_root_anomaly_returns_multiple_low_confidence_causes() -> None:
     )
 
     assert result is not None
-    assert len(result.ranked_causes) == 3
+    assert len(result.ranked_causes) == 6
     assert {item.confidence for item in result.ranked_causes} == {"low"}
     assert {item.score for item in result.ranked_causes} == {20}
 
 
 def test_specific_evidence_ranks_supported_cause_first() -> None:
     result = evaluate_fault_tree(
-        tree("sensor-read-failure-example-v1"),
-        context("SENSOR_SIGNAL_TIMEOUT"),
+        tree("led-no-light-example-v1"),
+        context("LED_NO_RESPONSE", "OUTPUT_CONNECTION_SUSPECTED"),
         diagnosis(),
         failure_count=1,
         anomaly_duration_seconds=0,
     )
 
     assert result is not None
-    assert result.ranked_causes[0].cause_id == "sensor-signal-path"
+    assert result.ranked_causes[0].cause_id == "led-connection-direction"
     assert result.ranked_causes[0].score == 75
     assert result.ranked_causes[0].confidence == "high"
     assert all(item.score < 70 for item in result.ranked_causes[1:])

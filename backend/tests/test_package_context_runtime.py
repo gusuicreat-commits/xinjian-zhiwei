@@ -73,15 +73,15 @@ def test_package_conditions_reach_actual_two_stage_requests_without_private_revi
 
     def controlled_package(path):
         bundle, report = original_loader(path)
-        if path.name != "dht11_temperature_humidity":
+        if path.name != "sht31_temperature_humidity":
             return bundle, report
         docs = package_documents(bundle)
         case = docs["knowledge/cases.yaml"]["cases"][0]
         # Independent controlled fixture, never changes the draft sample on disk.
         case.update(sourceType="controlled_test", reviewStatus="approved", factsLocked=True,
                     qualityCheckPassed=True, rootCauseStatus="confirmed",
-                    rootCauseValue="wiring.data_pin_mismatch", normalState={}, evidence=[],
-                    possibleCauses=["wiring.data_pin_mismatch"], solutionSteps=[],
+                    rootCauseValue="wiring.i2c_lines", normalState={}, evidence=[],
+                    possibleCauses=["wiring.i2c_lines"], solutionSteps=[],
                     symptom="合成故障 secret-fixture private-reviewer", teacherNotes=None,
                     confirmedBy="private-reviewer")
         case["solutionRecord"] = {"confirmation_material": {
@@ -91,7 +91,7 @@ def test_package_conditions_reach_actual_two_stage_requests_without_private_revi
         return load_experiment_package_payload(docs)
 
     monkeypatch.setattr(fixture, "load_experiment_package", controlled_package)
-    with fixture.workflow_environment("dht11_temperature_humidity") as env:
+    with fixture.workflow_environment("sht31_temperature_humidity") as env:
         original_call = env.provider.complete_json
         prompts = []
 

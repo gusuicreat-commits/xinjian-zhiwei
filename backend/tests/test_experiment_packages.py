@@ -66,25 +66,25 @@ def _context(bundle, records):
     )
 
 
-def test_dht11_and_led_packages_pass_the_same_strict_contract() -> None:
+def test_sht31_and_led_packages_pass_the_same_strict_contract() -> None:
     loaded = load_experiment_packages(PACKAGE_ROOT)
     assert [item[0].metadata.experiment.code for item in loaded] == [
-        "dht11_temperature_humidity",
         "gpio_led_output",
+        "sht31_temperature_humidity",
     ]
     assert all(report.valid for _, report in loaded)
     assert all(len(report.package_hash) == 64 for _, report in loaded)
 
 
 def test_same_engine_diagnoses_two_distinct_experiment_packages() -> None:
-    dht, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
-    dht_context = _context(
-        dht,
+    sht31, _ = load_experiment_package(PACKAGE_ROOT / "sht31_temperature_humidity")
+    sht31_context = _context(
+        sht31,
         [
             RawDeviceRecord(
-                id=f"dht-{index}",
+                id=f"sht31-{index}",
                 source="device_log",
-                payload={"error_code": "DHT11_READ_FAILED"},
+                payload={"event_code": "SHT31_READ_FAILED"},
             )
             for index in range(5)
         ],
@@ -101,7 +101,7 @@ def test_same_engine_diagnoses_two_distinct_experiment_packages() -> None:
         ],
     )
 
-    assert "SENSOR_READ_FAILED" in {m.error_type for m in diagnose(dht_context).matches}
+    assert "SENSOR_READ_FAILED" in {m.error_type for m in diagnose(sht31_context).matches}
     # An unverified legacy level cannot establish an electrical or optical mismatch.
     assert "GPIO_EXPECTATION_FAILED" not in {m.error_type for m in diagnose(led_context).matches}
     assert led_context.normal_assessment["status"] != "normal"
@@ -110,7 +110,7 @@ def test_same_engine_diagnoses_two_distinct_experiment_packages() -> None:
 def test_package_versions_are_immutable_and_runtime_is_database_backed(
     api_context: dict[str, object],
 ) -> None:
-    bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
+    bundle, _ = load_experiment_package(PACKAGE_ROOT / "sht31_temperature_humidity")
     with api_context["session_factory"]() as db:
         actor = User(
             username="package-publisher",
@@ -135,7 +135,7 @@ def test_package_versions_are_immutable_and_runtime_is_database_backed(
 
         assert runtime.experiment.id == experiment.id
         assert runtime.version.package_hash == version.package_hash
-        assert runtime.definition.experiment.id == "dht11_temperature_humidity"
+        assert runtime.definition.experiment.id == "sht31_temperature_humidity"
 
 
 def test_package_management_api_validates_imports_and_publishes(
@@ -170,14 +170,14 @@ def test_package_management_api_validates_imports_and_publishes(
 def test_diagnosis_persists_package_binding_and_normalized_evidence(
     api_context: dict[str, object],
 ) -> None:
-    bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
+    bundle, _ = load_experiment_package(PACKAGE_ROOT / "sht31_temperature_humidity")
     context = _context(
         bundle,
         [
             RawDeviceRecord(
                 id=f"raw-{index}",
                 source="device_log",
-                payload={"error_code": "DHT11_READ_FAILED"},
+                payload={"event_code": "SHT31_READ_FAILED"},
             )
             for index in range(5)
         ],

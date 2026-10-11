@@ -191,7 +191,7 @@ def test_episode_aggregates_five_failures_resolves_and_separates_new_error(
         api_context,
         lookback_seconds=5,
         experiment_template={
-            "template_id": "DHT11",
+            "template_id": "SHT31",
             "metric_ranges": {"temperature": {"minimum": 0, "maximum": 50}},
         },
     )

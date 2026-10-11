@@ -3,7 +3,7 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from pipeline import dht11_reading, diagnose_session, heartbeat, ingest_batch, publish_package
+from pipeline import diagnose_session, heartbeat, ingest_batch, publish_package, sht31_reading
 from sqlalchemy import select
 
 from app.models import DiagnosisEvidence, ExperimentSession, SensorReading
@@ -17,7 +17,7 @@ def test_synthetic_cleanup_leaves_evidence_pointing_to_deleted_reading(api_conte
     ingest_batch(
         client,
         api_context["headers"],
-        [dht11_reading("temperature", 24, occurred_at=now), heartbeat(occurred_at=now)],
+        [sht31_reading("temperature", 24, occurred_at=now), heartbeat(occurred_at=now)],
         sent_at=now,
         test_run_id=run_id,
     )

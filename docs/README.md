@@ -10,7 +10,7 @@
 | 开发与评测 | [检查清单](development-guidelines.md) · [缺陷复盘](development-retrospective-20261002.md) · [测试命令](evaluation.md) · [要求/反例/待验材料](evaluation-requirements.md) · [报告约定](test-reporting.md) |
 | 真实模型证据 | [Kimi接入与实测](kimi-api-integration.md) · [已结束受控查询评测摘要](controlled-query-evaluation-20261008.md) |
 | 运行与使用 | [部署](deployment.md) · [演示](demo-runbook.md) · [真人试用](usability-trial.md) |
-| 实物验收 | [硬件验证计划](hardware-validation-plan.md) · [DHT11内部指南](experiments/dht11-internal-lab.md) · [施工计划](experiments/dht11-hardware-execution-plan.md) · [到货清单](experiments/dht11-arrival-checklist.md) · [测试环境准备](experiments/internal-lab-preparation.md) |
+| 实物验收 | [硬件验证计划](hardware-validation-plan.md) · [SHT31内部实验指南](experiments/sht31-internal-lab.md) · [测试环境准备](experiments/internal-lab-preparation.md) |
 | 来源与历史找回 | [用户模型规范原文](references/model-spec-2026-09-17.md) · [上下文参考原文](references/context-systems-article-2026-09-28.md) · [删除索引](archive/README.md) |
 
 [上下文旧链接入口](context-construction-plan.md)仅兼容只读原文快照，不维护方案。实物施工/验证计划仍有待执行事项；P4概念外发仍未实施，合同归实验包设计。

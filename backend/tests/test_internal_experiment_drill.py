@@ -99,7 +99,7 @@ def test_clean_lab_cli_and_api_drill(migration_db):
         )
         admin_headers = {"Authorization": "Bearer " + login["access_token"]}
         bundle, _ = load_experiment_package(
-            ROOT / "backend/experiment_packages/dht11_temperature_humidity"
+            ROOT / "backend/experiment_packages/sht31_temperature_humidity"
         )
         payload = {"documents": package_documents(bundle), "is_test_data": True}
         request("POST", "/experiments/packages/validate", headers=admin_headers, json=payload)
@@ -226,9 +226,13 @@ def test_clean_lab_cli_and_api_drill(migration_db):
         ]
         assert {item["metric"] for item in missing} == {"temperature", "humidity"}
         assert all(item["status"] == "unknown" and not item["source_refs"] for item in missing)
-        normal_records = json.loads(
-            (ROOT / "firmware/esp32_dht11/docs/protocol-example.json").read_text()
-        )["records"]
+        normal_records = [
+            record
+            for record in json.loads(
+                (ROOT / "bridge/docs/protocol-example.json").read_text()
+            )["records"]
+            if record["type"] in {"reading", "heartbeat"}
+        ]
         first_payload = batch(normal_records)
         request("POST", "/device/ingest", expected=201, headers=device_headers, json=first_payload)
         with factory() as db:
@@ -266,7 +270,7 @@ def test_clean_lab_cli_and_api_drill(migration_db):
         faults = next(
             c["records"]
             for c in json.loads((ROOT / "backend/evaluation/workflow_inputs.json").read_text())
-            if c["id"] == "dht-valid"
+            if c["id"] == "sht31-valid"
         )
         request("POST", "/device/ingest", expected=201, headers=device_headers, json=batch(faults))
         fault = check(normal["diagnosis_result_id"])
@@ -274,7 +278,7 @@ def test_clean_lab_cli_and_api_drill(migration_db):
         assert {item["error_type"] for item in fault["check"]["issues"]} == {"SENSOR_READ_FAILED"}
         visible = request("GET", "/student/dashboard", headers=user_headers)
         encoded = json.dumps(visible["guidance"], ensure_ascii=False)
-        assert "dht11.delivery_evidence" in encoded and "dht11.identity_scope" in encoded
+        assert "sht31.delivery_evidence" in encoded and "sht31.identity_scope" in encoded
         request(
             "POST",
             "/student/diagnoses/" + fault["diagnosis_result_id"] + "/feedback",

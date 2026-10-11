@@ -116,22 +116,35 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  firmware:
+  bridge:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install protocol validator
-        run: python -m pip install -r backend/requirements.lock
-      - name: Validate firmware protocol contract
-        run: PYTHONPATH=backend python scripts/check_firmware_protocol.py
-      - name: Install PlatformIO
-        run: python -m pip install platformio==6.1.19
-      - name: Compile ESP32 firmware
-        run: pio run -d firmware/esp32_dht11
-      - name: Build initial LittleFS image
-        run: pio run -d firmware/esp32_dht11 -t buildfs
-      - name: Firmware host fault regression
-        run: python scripts/test_firmware_host.py
+      - name: Install bridge and protocol validator
+        run: |
+          python -m pip install -r backend/requirements.lock
+          python -m pip install -e 'bridge[dev]'
+      - name: Serial bridge lint and tests
+        run: |
+          ruff check bridge
+          env -u PYTHONPATH pytest bridge/tests
+      - name: Validate serial bridge protocol contract
+        run: |
+          PYTHONPATH=backend:bridge python scripts/check_serial_bridge_protocol.py
+          PYTHONPATH=backend python scripts/check_firmware_protocol.py
+
+  firmware:
+    runs-on: ubuntu-latest
+    container: espressif/idf:v5.3.2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ESP32-S3 SHT31 program
+        shell: bash
+        working-directory: firmware/esp32s3_sht31
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py set-target esp32s3
+          idf.py build

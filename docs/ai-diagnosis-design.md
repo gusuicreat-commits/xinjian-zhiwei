@@ -72,7 +72,7 @@ context_builder → rule_engine → fault_tree_analyzer → knowledge_context
 
 `error_type` 与规则一致；原因属于故障树；证据使用本次已落库 UUID，并与具体候选相关；案例 ID
 来自本次匹配结果。降级先判断完整证据的冲突，再按固定顺序截取。支持等级不是统计概率，合法引用
-也不证明因果。只有 DHT11 累计读取失败而无接线/独立测量依据时，不能推断某个 GPIO 根因。
+也不证明因果。只有 SHT31 累计读取失败而无接线/独立测量依据时，不能推断某个引脚或地址根因。
 HTTP 响应使用 snake_case，实验包 camelCase 不另构成 HTTP 契约。
 
 最终 `steps` 逐字选择工作流允许动作，显式空列表保持为空；没有该字段的旧调用只能选择
@@ -139,7 +139,7 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 | 4 | 从现有允许动作中选择下一步，空集合返回 null | 动作逐字匹配，建议不能冒充已执行 |
 | 5 | 用已有 reason、summary、limitations 等字段表达简洁依据与限制 | 既有独立知识校验与后端解释契约 |
 
-例如：只有 DHT11 读取失败记录，缺少实际接线和代码引脚对照时，提示要求保留“原因尚不能确定”，不能凭相同症状认定接线或 GPIO 配置错误。这个语义要求已写入提示，但还需要真实模型与独立材料验证效果；Mock 返回 unknown 只证明软件能正确处理该结果。
+例如：只有 SHT31 读取失败记录，缺少实际接线和代码引脚对照时，提示要求保留“原因尚不能确定”，不能凭相同症状认定接线或 GPIO 配置错误。这个语义要求已写入提示，但还需要真实模型与独立材料验证效果；Mock 返回 unknown 只证明软件能正确处理该结果。
 
 ### 运行与兼容
 
@@ -335,17 +335,17 @@ AI 只读取固定版本产生的投影，不执行包代码、不拼接其他�
 
 ## 隔离受控查询评测（2026-10-07）
 
-### DHT11 真实资料来源服务层（XJ-003，2026-10-09）
+### 真实资料来源服务层（XJ-003，2026-10-09；2026-10-11 改为 SHT31）
 
 `app/services/query_sources.py` 按[来源合同方案](query-source-contract-plan-20261009.md)实现
 `SENSOR_READ_FAILED` 的 S1–S4 读取和逐来源复核。范围仅由服务器重新授权的会话及其归属诊断构造，
 固定包身份与诊断快照一致；复用学生授权、测试性质传播、来源停用和案例适用性守卫。
-S2 要求证据的 `source_type=device_log`、冻结载荷的 `event_code=DHT11_READ_FAILED`，且
+S2 要求证据的 `source_type=device_log`、冻结载荷的 `event_code=SHT31_READ_FAILED`，且
 `evidence_type` 与会话固定包 `hardware.evidence_mapping` 的错误码映射一致（当前为
-`sensor.read_failed`）。GPIO 只取本诊断冻结载荷中的整数，在投影前判定冲突。
+`sensor.read_failed`）。引脚组（`sda`、`scl`、`address`）只取本诊断冻结载荷中的整数，三项齐全才计入，在投影前判定冲突；现行程序经串口桥不自报这些字段，真实链路上 S2 为空、R1 为 unknown。
 按 XJ-003 第 2 轮验收要求，方案 §3.1 的“不回查 DeviceLog”边界调整为：仅按证据的
 `source_ref` 读取同一设备、同一会话的日志行取 `boot_id`，再从同一 `ingestion_request_id`
-且同范围的心跳取 `firmware_version`；不按时间窗补查，不读取当前设备配置或用实时载荷替换 GPIO。
+且同范围的心跳取 `firmware_version`；不按时间窗补查，不读取当前设备配置或用实时载荷替换引脚组。
 元数据缺失或不在范围内保持 null；同批次心跳的固件版本不唯一也保持 null。
 这些补充来源的测试标记保守传播，身份、批次关联和元数据值纳入 manifest 修订复核。
 
@@ -357,13 +357,13 @@ S2 要求证据的 `source_type=device_log`、冻结载荷的 `event_code=DHT11_
 同时调用 `diagnosis_sources_available`。复核区分 `error`（临时故障）和 `stale`（确定失效），
 撤权优先返回无对象信息的 denied。查询异常和无法完成复核不能证明来源已失效。
 
-R1 只比较程序自报 GPIO 与包要求，不断言接线正确，根因保持 unconfirmed，不改变候选排序或支持边。
+R1 只比较程序自报的 I²C 引脚组与包要求，不断言接线正确，根因保持 unconfirmed，不改变候选排序或支持边。
 R2 仅有明确标注 synthetic 的结构目录与纯函数资格/枚举校验：R1 已查完、测试范围且同需求未问过
 才可提问；`unclear` 关闭本题并保留 `observation_unknown`，调用方须保留已问需求以禁止再问。
 正式教学题目仍待教师确认。来源服务本身保持只读取证；XJ-004 已由
 `services/query_tasks.py` 接入业务库三表（0040）和学生开始/查看/提交三个接口，详见
-[数据库设计](database-design.md#dht11-查询任务与答复回执00402026-10-09)和
-[API设计](api-design.md#dht11-学生受控查询xj-0042026-10-09)。XJ-004第2轮仅调整
+[数据库设计](database-design.md#sht31-查询任务与答复回执00402026-10-09)和
+[API设计](api-design.md#sht31-学生受控查询xj-0042026-10-09)。XJ-004第2轮仅调整
 `query_sources.py` 的故障复核分类及数据库异常传播，
 下方隔离评测代码与存储没有接入产品；现有来源服务使用的纯投影助手仍沿用，产品不引用评测表。
 

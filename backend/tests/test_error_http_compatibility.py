@@ -21,7 +21,9 @@ real_task = pipeline_task_fixture
 
 @pytest.fixture
 def http_task(real_task):
-    return real_task([({"gpio": 4}, "0.2.5", "xj010-synthetic-boot")])
+    return real_task(
+        [({"sda": 8, "scl": 9, "address": 68}, "esp32s3-sht31-1.0.0", "xj010-synthetic-boot")]
+    )
 
 
 @pytest.mark.parametrize("revoked", [False, True], ids=["401", "403"])
@@ -57,7 +59,7 @@ def test_conflict_keeps_string_detail(api_context, http_task):
 
 
 def test_invalid_package_keeps_422_string_detail(api_context):
-    bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
+    bundle, _ = load_experiment_package(PACKAGE_ROOT / "sht31_temperature_humidity")
     documents = package_documents(bundle)
     documents.pop("metadata.yaml")
     response = api_context["client"].post(
@@ -85,7 +87,7 @@ def test_definitely_stale_source_keeps_200_projection(api_context, http_task):
     assert response.status_code == 200
     assert response.json() == {
         "id": result["id"],
-        "contract_version": "dht11-query-v1",
+        "contract_version": "sht31-query-v1",
         "status": "stale",
         "terminal_reason": "source_stale",
         "requirements": {

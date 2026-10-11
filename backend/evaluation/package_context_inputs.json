@@ -2,18 +2,18 @@
   "schema_version": "package-context-inputs-v1",
   "cases": [
     {
-      "id": "draft-dht11",
+      "id": "draft-sht31",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "package",
       "fixture_cases": [],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -27,7 +27,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -76,12 +76,12 @@
     {
       "id": "text-only",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -89,11 +89,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": null,
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -114,11 +114,11 @@
       ],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -132,7 +132,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -145,12 +145,12 @@
     {
       "id": "matched-conditions",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -158,11 +158,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": null,
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -184,14 +184,14 @@
                     "field": "experiment_code",
                     "operator": "in",
                     "values": [
-                      "dht11_temperature_humidity"
+                      "sht31_temperature_humidity"
                     ]
                   },
                   {
                     "field": "component_id",
                     "operator": "in",
                     "values": [
-                      "dht11"
+                      "sht31"
                     ]
                   }
                 ]
@@ -202,11 +202,11 @@
       ],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -220,7 +220,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -233,12 +233,12 @@
     {
       "id": "unknown-component",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -246,11 +246,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": null,
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -272,14 +272,14 @@
                     "field": "experiment_code",
                     "operator": "in",
                     "values": [
-                      "dht11_temperature_humidity"
+                      "sht31_temperature_humidity"
                     ]
                   },
                   {
                     "field": "component_id",
                     "operator": "in",
                     "values": [
-                      "dht11"
+                      "sht31"
                     ]
                   }
                 ]
@@ -292,7 +292,7 @@
       "component_ids": null,
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -306,7 +306,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -319,12 +319,12 @@
     {
       "id": "mismatched-condition",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -332,11 +332,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": null,
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -358,7 +358,7 @@
                     "field": "experiment_code",
                     "operator": "in",
                     "values": [
-                      "dht11_temperature_humidity"
+                      "sht31_temperature_humidity"
                     ]
                   },
                   {
@@ -376,11 +376,11 @@
       ],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -394,7 +394,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -407,12 +407,12 @@
     {
       "id": "missing-limits",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -420,11 +420,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": null,
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -444,11 +444,11 @@
       ],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -462,7 +462,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -475,12 +475,12 @@
     {
       "id": "invalid-condition",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -488,11 +488,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": null,
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -525,11 +525,11 @@
       ],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -543,7 +543,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -556,12 +556,12 @@
     {
       "id": "whole-unit-budget",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -569,11 +569,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": null,
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -594,11 +594,11 @@
       ],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -612,7 +612,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -627,12 +627,12 @@
     {
       "id": "required-prompt-budget",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -640,11 +640,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": null,
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -665,11 +665,11 @@
       ],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -683,7 +683,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],
@@ -698,12 +698,12 @@
     {
       "id": "stage-projection-difference",
       "mode": "offline_fixture",
-      "package": "experiment_packages/dht11_temperature_humidity",
+      "package": "experiment_packages/sht31_temperature_humidity",
       "source_mode": "controlled_test",
       "fixture_cases": [
         {
           "id": "fixture.sensor.failure",
-          "experimentType": "dht11_temperature_humidity",
+          "experimentType": "sht31_temperature_humidity",
           "errorType": "SENSOR_READ_FAILED",
           "symptom": "合成读取失败记录，不确认根因。",
           "normalState": {
@@ -711,11 +711,11 @@
           },
           "evidence": [],
           "possibleCauses": [
-            "software.gpio_mismatch"
+            "software.i2c_config"
           ],
           "solutionSteps": [],
           "teacherNotes": "这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。这是一段只用于合成投影差异的软件测试说明。",
-          "rootCauseValue": "software.gpio_mismatch",
+          "rootCauseValue": "software.i2c_config",
           "rootCauseStatus": "confirmed",
           "sourceType": "controlled_test",
           "factsLocked": true,
@@ -736,11 +736,11 @@
       ],
       "error_type": "SENSOR_READ_FAILED",
       "component_ids": [
-        "dht11"
+        "sht31"
       ],
       "candidates": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "evidence_refs": [
             "fixture-evidence-1"
           ]
@@ -754,7 +754,7 @@
       ],
       "allowed_actions": [
         {
-          "cause_id": "software.gpio_mismatch",
+          "cause_id": "software.i2c_config",
           "hint_level": 1
         }
       ],

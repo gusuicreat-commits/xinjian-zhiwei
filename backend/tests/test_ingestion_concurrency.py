@@ -21,7 +21,7 @@ def test_concurrent_ingestion_contract(mode):
     dsn = os.getenv("XINJIAN_EVAL_POSTGRES_DSN")
     if not dsn:
         pytest.skip("XINJIAN_EVAL_POSTGRES_DSN not configured")
-    with workflow_environment("dht11_temperature_humidity", postgres_dsn=dsn) as env:
+    with workflow_environment("sht31_temperature_humidity", postgres_dsn=dsn) as env:
         settings = env.app.dependency_overrides[get_settings]()
         settings.device_ingest_requests_per_minute = 1 if mode == "rate" else 100
         one = _batch()
@@ -80,7 +80,7 @@ def test_device_permission_is_rechecked_after_waiting_for_lock(revocation, endpo
     dsn = os.getenv("XINJIAN_EVAL_POSTGRES_DSN")
     if not dsn:
         pytest.skip("XINJIAN_EVAL_POSTGRES_DSN not configured")
-    with workflow_environment("dht11_temperature_humidity", postgres_dsn=dsn) as env:
+    with workflow_environment("sht31_temperature_humidity", postgres_dsn=dsn) as env:
         waiting = Event()
 
         def observe(conn, cursor, statement, parameters, context, many):
@@ -144,7 +144,7 @@ def test_busy_device_does_not_block_another_device():
     dsn = os.getenv("XINJIAN_EVAL_POSTGRES_DSN")
     if not dsn:
         pytest.skip("XINJIAN_EVAL_POSTGRES_DSN not configured")
-    with workflow_environment("dht11_temperature_humidity", postgres_dsn=dsn) as env:
+    with workflow_environment("sht31_temperature_humidity", postgres_dsn=dsn) as env:
         with env.sessions() as db:
             original = db.scalar(select(Device)).id
             db.add(
@@ -197,7 +197,7 @@ def test_mixed_legacy_and_batch_compete_for_one_shared_slot():
     dsn = os.getenv("XINJIAN_EVAL_POSTGRES_DSN")
     if not dsn:
         pytest.skip("XINJIAN_EVAL_POSTGRES_DSN not configured")
-    with workflow_environment("dht11_temperature_humidity", postgres_dsn=dsn) as env:
+    with workflow_environment("sht31_temperature_humidity", postgres_dsn=dsn) as env:
         settings = env.app.dependency_overrides[get_settings]()
         settings.device_ingest_requests_per_minute = 1
         gate, worker = Barrier(2), local()

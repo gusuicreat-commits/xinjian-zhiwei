@@ -209,7 +209,7 @@ def _post_failure(ctx, *, count=1, private=False):
 
 def _post_reading(ctx, unit):
     result = ctx["client"].post("/api/v1/device/readings", headers=ctx["headers"], json={
-        "sensor_type": "dht11", "metric_key": "temperature", "value": 25,
+        "sensor_type": "SHT31", "metric_key": "temperature", "value": 25,
         "unit": unit, "observed_at": datetime.now(timezone.utc).isoformat(),
         "is_test_data": True,
     })
@@ -251,7 +251,7 @@ def test_units_are_separate_and_projection_removes_short_secrets():
     context = {
         "device_id": "test-device", "student_name": "李明",
         "logs": [{"level": "error", "message": "李明说失败", "event_code": "error"}],
-        "readings": [{"sensor_type": "dht11", "metric_key": "temperature", "value": 25,
+        "readings": [{"sensor_type": "SHT31", "metric_key": "temperature", "value": 25,
                       "unit": unit} for unit in (None, "", "C")],
     }
     record = DiagnosisResult(id=str(uuid4()), matched_rules=[], context_snapshot=context,

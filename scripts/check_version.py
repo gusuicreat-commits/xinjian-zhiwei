@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "backend"))
 
-from app.experiment_packages.loader import (  # noqa: E402
+from app.experiment_packages.loader import (  # noqa: E402, RUF100
     PACKAGE_FILES,
     _manifest_for_documents,
     _read_documents,
@@ -29,18 +29,18 @@ from app.experiment_packages.loader import (  # noqa: E402
 # and examples must retain their historical versions.
 DOC_VERSIONS = {
     "README.md": {
-        "dht11_temperature_humidity": [
-            r"DHT11 资料包是 \*\*`([^`]+)`",
-            r"DHT11 温湿度 `([^`]+)`",
+        "sht31_temperature_humidity": [
+            r"SHT31 资料包是 \*\*`([^`]+)`",
+            r"SHT31 温湿度 `([^`]+)`",
         ],
         "gpio_led_output": [r"GPIO LED `([^`]+)`"],
     },
     "docs/project-truth-status.md": {
-        "dht11_temperature_humidity": [r"DHT11 工作区 `([^`]+)`"],
+        "sht31_temperature_humidity": [r"SHT31 工作区 `([^`]+)`"],
         "gpio_led_output": [r"LED 工作区 `([^`]+)`"],
     },
     "docs/implementation-status.md": {
-        "dht11_temperature_humidity": [r"`dht11_temperature_humidity@([^`]+)`"],
+        "sht31_temperature_humidity": [r"`sht31_temperature_humidity@([^`]+)`"],
         "gpio_led_output": [r"`gpio_led_output@([^`]+)`"],
     },
 }
@@ -48,7 +48,7 @@ DOC_VERSIONS = {
 
 def git(root, *args):
     result = subprocess.run(
-        ["git", "-C", str(root), *args], capture_output=True, text=True
+        ["git", "-C", str(root), *args], capture_output=True, text=True, check=False
     )
     if result.returncode:
         raise ValueError("version baseline unavailable: " + result.stderr.strip())
@@ -66,6 +66,23 @@ def package_state(directory):
     ):
         raise ValueError(f"invalid package identity/version: {directory}")
     return {"version": version, "sha256": manifest.package_hash}
+
+
+def validate_package_replacements(
+    old_packages: set[str], current_packages: set[str], replacements: dict[str, str]
+):
+    """Validate reviewed replacements against both old and current package sets."""
+    for old, new in replacements.items():
+        if old in current_packages or new not in current_packages:
+            raise ValueError("package replacement requires old deleted and new present")
+        if old in old_packages and new in old_packages:
+            raise ValueError("package replacement successor already exists in baseline")
+    removed = old_packages - current_packages
+    authorized_removed = {old for old in replacements if old in old_packages}
+    if removed != authorized_removed:
+        raise ValueError(
+            "package removal requires a separately reviewed compatibility change"
+        )
 
 
 def check(root: Path, base_ref: str):
@@ -105,6 +122,14 @@ def check(root: Path, base_ref: str):
         p.name: package_state(p) for p in sorted(package_root.iterdir()) if p.is_dir()
     }
     recorded = json.loads((root / "scripts/package_versions.json").read_text())
+    replacements = recorded.pop("replacements", {})
+    if (
+        not isinstance(replacements, dict)
+        or any(not isinstance(old, str) or not isinstance(new, str)
+               for old, new in replacements.items())
+        or len(set(replacements.values())) != len(replacements)
+    ):
+        raise ValueError("package replacement records must be unique string pairs")
     if current != recorded:
         raise ValueError(
             "package manifest differs from content; review version and update manifest"
@@ -114,11 +139,10 @@ def check(root: Path, base_ref: str):
         root, "ls-tree", "-r", "--name-only", baseline, "backend/experiment_packages"
     ).splitlines()
     old_packages = {p.split("/")[2] for p in base_paths if p.endswith("/metadata.yaml")}
-    if old_packages - current.keys():
-        raise ValueError(
-            "package removal requires a separately reviewed compatibility change"
-        )
-    for code in old_packages:
+    # Historical replacement records remain valid once their old package is absent
+    # from the selected baseline; they still require the successor to remain present.
+    validate_package_replacements(old_packages, set(current), replacements)
+    for code in old_packages & current.keys():
         documents = {
             path: yaml.safe_load(
                 git(

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xinjian-serial-bridge"
+version = "1.0.0"
+description = "Serial bridge for the ESP32-S3 SHT31 teaching device"
+requires-python = ">=3.9"
+dependencies = ["pyserial>=3.5,<4.0", "httpx>=0.28,<1.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<10.0", "ruff>=0.9,<1.0"]
+
+[project.scripts]
+xinjian-serial-bridge = "xinjian_serial_bridge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["xinjian_serial_bridge*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --disable-warnings --maxfail=1"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["UP045"]

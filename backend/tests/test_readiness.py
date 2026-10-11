@@ -35,7 +35,7 @@ def test_loadable_published_non_test_package_does_not_require_real_cases(api_con
     from app.services.experiment_packages import import_experiment_package
 
     with api_context["session_factory"]() as db:
-        bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
+        bundle, _ = load_experiment_package(PACKAGE_ROOT / "sht31_temperature_humidity")
         documents = package_documents(bundle)
         documents["knowledge/cases.yaml"]["cases"] = []
         # This fixture intentionally has no cases; remove their declared units,

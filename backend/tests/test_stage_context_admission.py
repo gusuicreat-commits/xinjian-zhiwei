@@ -9,7 +9,7 @@ from app.experiment_packages import context_preview as preview
 from app.experiment_packages.loader import load_experiment_package
 
 
-def scenario(name="draft-dht11"):
+def scenario(name="draft-sht31"):
     samples = json.loads(preview.INPUTS.read_text())["cases"]
     return preview.PreviewScenario.model_validate(
         deepcopy(next(row for row in samples if row["id"] == name))

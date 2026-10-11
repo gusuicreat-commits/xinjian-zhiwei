@@ -37,8 +37,8 @@ def _verify_reasoning_constraints() -> None:
         "historical_failures": 2,
         "fault_tree_candidates": [
             {
-                "cause_id": "gpio_config",
-                "name": "GPIO 配置错误",
+                "cause_id": "i2c_config",
+                "name": "I²C 配置错误",
                 "score": 0.8,
                 "evidence_refs": [failure_id],
             }
@@ -64,14 +64,14 @@ def _verify_reasoning_constraints() -> None:
                 "conclusion": "ranked",
                 "ranked_causes": [
                     {
-                        "cause_id": "gpio_config",
+                        "cause_id": "i2c_config",
                         "cause": "不得改写",
                         "support_level": "high",
                         "used_evidence_ids": [failure_id],
                         "reason": "窗口内累计读取失败，候选方向仍需验证。",
                     }
                 ],
-                "summary": "合成输出仅用于验证候选与引用边界，不证明 GPIO 根因。",
+                "summary": "合成输出仅用于验证候选与引用边界，不证明 I²C 根因。",
                 "limitations": [],
             },
             ensure_ascii=False,
@@ -79,7 +79,7 @@ def _verify_reasoning_constraints() -> None:
         state,
         allowed,
     )
-    if valid.ranked_causes[0].cause != "GPIO 配置错误":
+    if valid.ranked_causes[0].cause != "I²C 配置错误":
         raise SystemExit("reasoning did not preserve the fault-tree cause")
     invalid = json.dumps(
         {
@@ -141,7 +141,7 @@ def _verify_case_draft_governance() -> str:
                     {
                         "rule_id": "sensor-read-failed",
                         "error_type": "SENSOR_READ_FAILED",
-                        "summary": "DHT11 窗口内累计读取失败",
+                        "summary": "SHT31 窗口内累计读取失败",
                         "evidence": [],
                     }
                 ],
@@ -152,12 +152,12 @@ def _verify_case_draft_governance() -> str:
                     }
                 ],
                 context_snapshot={
-                    "experiment_template": {"template_id": "dht11_temperature_humidity"},
+                    "experiment_template": {"template_id": "sht31_temperature_humidity"},
                     "readings": [],
                     "expected_behaviors": [],
                 },
-                experiment_id="dht11_temperature_humidity",
-                deterministic_explanation={"steps": ["核对 GPIO 配置"]},
+                experiment_id="sht31_temperature_humidity",
+                deterministic_explanation={"steps": ["核对 I²C 配置"]},
                 is_test_data=True,
             )
             db.add(diagnosis)
@@ -166,7 +166,7 @@ def _verify_case_draft_governance() -> str:
                 device_id="case-draft-device",
                 diagnosis_result_id=diagnosis.id,
                 action="resolved",
-                note="核对 GPIO 后恢复",
+                note="核对 I²C 后恢复",
                 is_test_data=True,
             )
             db.add(feedback)
@@ -174,8 +174,8 @@ def _verify_case_draft_governance() -> str:
             guidance = GuidanceHistory(
                 device_id="case-draft-device",
                 diagnosis_result_id=diagnosis.id,
-                fault_tree_id="dht11-tree",
-                fault_tree_title="DHT11",
+                fault_tree_id="sht31-tree",
+                fault_tree_title="SHT31",
                 fault_tree_status="approved",
                 fault_tree_version="1",
                 fault_tree_hash="2" * 64,
@@ -184,7 +184,7 @@ def _verify_case_draft_governance() -> str:
                 anomaly_duration_seconds=30,
                 hint_level=2,
                 teacher_intervention_required=False,
-                ranked_causes=[{"cause_id": "gpio_config", "title": "GPIO 配置错误"}],
+                ranked_causes=[{"cause_id": "i2c_config", "title": "I²C 配置错误"}],
                 hints=[],
                 is_test_data=True,
             )
@@ -211,11 +211,11 @@ def _verify_case_draft_governance() -> str:
             case = approve_case_draft(
                 db,
                 draft,
-                case_id="dht11.feedback-confirmed.v1",
+                case_id="sht31.feedback-confirmed.v1",
                 reviewer_ref=reviewer.id,
                 actor_context=identity,
-                confirmed_root_cause="GPIO 配置错误",
-                final_solution_steps=["核对并修正 GPIO 配置", "重新运行并确认读数恢复"],
+                confirmed_root_cause="I²C 配置错误",
+                final_solution_steps=["核对并修正 I²C 配置", "重新运行并确认读数恢复"],
                 confirmation_note="合成审核流程夹具，不代表真实教师确认或硬件测试。",
             )
             if (
@@ -240,20 +240,20 @@ def main() -> None:
             "rule_hits": [{"error_type": "SENSOR_READ_FAILED"}],
             "fault_tree_candidates": [
                 {
-                    "cause_id": "gpio_config",
+                    "cause_id": "i2c_config",
                     "evidence_refs": ["00000000-0000-0000-0000-000000000001"],
                 }
             ],
             "reasoned_causes": [
                 {
-                    "cause_id": "gpio_config",
+                    "cause_id": "i2c_config",
                     "support_level": "medium",
                     "used_evidence_ids": ["00000000-0000-0000-0000-000000000001"],
                 }
             ],
             "evidence_registry": [{"id": "00000000-0000-0000-0000-000000000001"}],
-            "allowed_verification_actions": [{"text": "核对 GPIO"}],
-            "next_verification_action": "核对 GPIO",
+            "allowed_verification_actions": [{"text": "核对 I²C"}],
+            "next_verification_action": "核对 I²C",
             "knowledge_constraints": {"teacher_confirmed_cases": []},
         }
     )

@@ -14,7 +14,7 @@
 | 浏览器 Mock API | `npm run test:e2e` | 页面行为；不能证明真实后端联通 |
 | 浏览器真实后端 | `npm run test:e2e:integration` | 浏览器 → FastAPI → LangGraph → PostgreSQL；身份与设备数据为合成，Provider 为 Mock |
 | 离线审阅包 | `npx playwright test --config playwright.review.config.ts` | 独立构建的前端审阅页面；不连接真实后端 |
-| 固件 | `check_firmware_protocol.py`、PlatformIO、`test_firmware_host.py` | 协议样例、实际编译、LittleFS 初始镜像构建、主机 I/O 故障模拟（含慢网络采样间隔、启动等待、HTTP/HTTPS配置矩阵）；不代替 ESP32 闪存、断电、接线和无线网络实测 |
+| 设备与串口桥 | `bridge/tests`、`check_serial_bridge_protocol.py`、`check_firmware_protocol.py`、ESP-IDF 构建 | 串口行解析、批次、按序重试与队列、控制线顺序（不复位板子）、退出汇总；桥对固定输入的输出与协议样例一致并通过后端 Schema；板上程序可用 ESP-IDF v5.3.2 编译。不代替接线、故障注入和真机长时运行 |
 | 版本 | `check_version.py` | 应用版本、资料包内容与版本、指定当前文档版本；不代表软件或资料已发布 |
 
 本项目当前不执行向量召回评测。真实模型语义、硬件因果与教学效果分别需要独立材料和验收，不能从软件通过率推导。
@@ -26,11 +26,11 @@
 - Python 3.10+ 环境，安装 `backend/requirements.lock`、后端和模拟器包以及 pytest、Ruff；Python 3.10 还需要 tomli。脚本统一使用 `BACKEND_PYTHON` 所在目录的 pytest/Ruff，并不使用另一套模拟器虚拟环境。
 - Node 满足 `frontend/package.json` 的 engines（当前 `>=22.12.0`），通过 `npm ci` 安装锁定依赖及 Playwright Chromium。
 - 专用测试 PostgreSQL，能创建临时 schema，并具备历史迁移所需的 vector 扩展。不能指向正在运行的业务数据库。
-- PlatformIO（CI 固定为 6.1.19）、对应固件工具链、`tool-mklittlefs` 与 C++ 编译器；首次构建需取得锁定依赖。
+- 串口桥独立环境：`python3 -m venv bridge/.venv && bridge/.venv/bin/pip install -e 'bridge[dev]'`（只含 pyserial、httpx、pytest、Ruff，不含后端依赖）。板上程序构建需 ESP-IDF v5.3.2 或官方镜像 `espressif/idf:v5.3.2`，verify.sh 不包含这一步。
 
 ```bash
 export BACKEND_PYTHON=/absolute/path/to/venv/bin/python
-export FIRMWARE_PIO=/absolute/path/to/pio
+export BRIDGE_PYTHON=/absolute/path/to/bridge/.venv/bin/python   # 默认 bridge/.venv/bin/python
 export XINJIAN_BACKUP_TEST_CONTAINER=explicit-isolated-postgres-container
 export XINJIAN_EVAL_POSTGRES_DSN='postgresql://test_user:test_password@127.0.0.1:5432/test_database'
 scripts/verify.sh
@@ -38,7 +38,7 @@ scripts/verify.sh
 
 容器名与连接串是占位示例，必须选择隔离环境。恢复测试将在指定容器内创建并删除一次性数据库；缺少容器配置时完整验证退出2，不把恢复测试跳过当通过。脚本不回退到 `DATABASE_URL`；缺少评测 DSN 时生成 `blocked` 流程报告并退出 2。`TEST_DIAGNOSIS_CHECKPOINT_DSN`、`TEST_AI_QUOTA_POSTGRES_DSN` 未配置时继承这个明确指定的测试 DSN；若分别指定，也必须使用隔离测试库。
 
-脚本先准备测试数据库，再依次执行后端/模拟器、合成及结构化知识、协议、PostgreSQL 流程、版本、安全、固件和前端检查。任何步骤失败即停止；要结合日志判断哪些后续项目未执行。不要把最后一份历史报告误作本次未运行步骤的结果。
+脚本先运行串口桥检查，再准备测试数据库，依次执行后端/模拟器、合成及结构化知识、协议、PostgreSQL 流程、版本、安全和前端检查；板上程序的 ESP-IDF 构建由 CI 的 `firmware` 作业或上面的 Docker 命令单独执行。任何步骤失败即停止；要结合日志判断哪些后续项目未执行。不要把最后一份历史报告误作本次未运行步骤的结果。
 
 数据库准备脚本会在测试库 `public` 中创建 vector 扩展；若扩展已位于其他 schema，则明确失败，不自动迁移。它不是向量检索功能。
 
@@ -59,13 +59,19 @@ PYTHONPATH=backend python -m app.cli.verify_experiment_packages
 PYTHONPATH=backend python -m app.cli.verify_structured_knowledge
 PYTHONPATH=backend python -m app.cli.verify_v2_evidence_workflow
 PYTHONPATH=backend python scripts/check_firmware_protocol.py
+bridge/.venv/bin/ruff check bridge
+env -u PYTHONPATH bridge/.venv/bin/pytest bridge/tests
+PYTHONPATH=backend:bridge python scripts/check_serial_bridge_protocol.py
 PYTHONPATH=backend python -m app.cli.run_workflow_evaluation \
   --postgres --output output/workflow-evaluation/local-latest.json
 python scripts/check_version.py --base-ref HEAD
 scripts/security_scan.sh
-pio run -d firmware/esp32_dht11
-pio run -d firmware/esp32_dht11 -t buildfs
-python scripts/test_firmware_host.py
+```
+
+```bash
+# 板上程序构建（可选，需要 Docker）
+docker run --rm -v "$PWD/firmware/esp32s3_sht31:/project" -w /project espressif/idf:v5.3.2 \
+  bash -c 'idf.py set-target esp32s3 && idf.py build'
 ```
 
 ```bash
@@ -92,7 +98,7 @@ npx playwright test --config playwright.review.config.ts
 [CI 配置](../.github/workflows/ci.yml) 使用 Linux、Python 3.12、Node 22、pgvector PostgreSQL 16；`APP_ENV=test`。健康测试独立注入 development/test 设置，不依赖本地 `.env`。
 
 - `verify` 作业运行软件检查、真实 PostgreSQL 流程、迁移与 Checkpoint 设置、前端及真实联调。
-- `firmware` 作业独立运行协议检查、PlatformIO 编译、LittleFS 镜像构建和主机故障回归。
+- `bridge` 作业运行串口桥 Ruff 与测试、协议样例检查；`firmware` 作业在 `espressif/idf:v5.3.2` 容器内编译板上程序。
 - CI 版本基线来自 PR base SHA 或 push 前 SHA，checkout 获取完整历史。新仓库或异常基线不能视为已验证。
 - 流程报告、浏览器报告按现有配置上传 artifact，保留 14 天；报告存在不等于对应步骤成功。
 
@@ -102,7 +108,7 @@ npx playwright test --config playwright.review.config.ts
 
 迁移变更在隔离库验证空库升级、涉及的历史版本升级、历史记录保留、单一 Head 和 `alembic check`。同版本的模型检查不能代替历史升级测试。默认 `verify.sh` 不等于目标环境迁移验收，部署操作见 [部署说明](deployment.md)。
 
-真实上线还需结合目标环境验证备份恢复、持久化 Checkpoint、凭据撤销、班级隔离、无 Key 降级和监控；并按 [硬件验证计划](hardware-validation-plan.md) 记录板卡、固件、接线、原始采样、独立真值和恢复证据。规则调整数据与验收样本应隔离。
+真实上线还需结合目标环境验证备份恢复、持久化 Checkpoint、凭据撤销、班级隔离、无 Key 降级和监控；并按 [硬件验证计划](hardware-validation-plan.md) 记录板卡、板上程序与桥版本、接线、原始串口与桥日志、独立真值和恢复证据。规则调整数据与验收样本应隔离。
 
 ## 6. 失败定位
 

@@ -4,7 +4,8 @@ const codes: Record<string, string> = {
   HEARTBEAT_STALE: '未按时收到设备心跳',
   DATA_STALE: '实验数据缺失或更新不及时',
   SENSOR_READ_FAILED: '传感器读取失败',
-  DHT11_READ_FAILED: 'DHT11 传感器读取失败',
+  SHT31_READ_FAILED: 'SHT31 传感器读取失败',
+  SHT31_BOOT: 'SHT31 程序已启动',
   GPIO_EXPECTATION_FAILED: 'GPIO 输出与预期不符',
 }
 export function issueLabel(code: string | null | undefined): string {
@@ -122,8 +123,8 @@ export function queryCodeLabel(code: string): string {
   return queryCodes[code] || '暂缺解释'
 }
 export function queryQuestionText(id: string): string | null {
-  return id === 'synthetic.dht11.wiring_observation'
-    ? 'DHT11 的 DATA 线是否按实验接线表接到开发板？'
+  return id === 'synthetic.sht31.wiring_observation'
+    ? 'SHT31 的 SDA、SCL 线是否按实验接线表接到开发板？'
     : null
 }
 export const queryOptionLabels: Record<string, string> = {

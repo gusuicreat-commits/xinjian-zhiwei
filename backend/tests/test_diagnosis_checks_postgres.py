@@ -21,7 +21,7 @@ def pg_env():
     dsn = os.getenv("XINJIAN_EVAL_POSTGRES_DSN")
     if not dsn:
         pytest.skip("requires explicitly selected test PostgreSQL")
-    with workflow_environment("dht11_temperature_humidity", postgres_dsn=dsn) as env:
+    with workflow_environment("sht31_temperature_humidity", postgres_dsn=dsn) as env:
         yield env
 
 

@@ -125,4 +125,4 @@
 |UI|两端store、诊断/查询组件、`userLanguage.ts`、图表/样式、`review/state`|对象/迟到/原ID/私密/中文、卸载/五路由三宽度/离线；组件/store、`frontend/tests/e2e/`及`integration/`测试，截图人工审查|
 |LAB-PREP|`internal_experiment_preparation.py`、`cli/prepare_internal_experiment.py`|plan/apply/status/发布测试包/重复冲突；`test_internal_experiment*`|
 |OPERATIONS/历史版本|迁移、`cli/audit_historical_integrity.py`、`scripts/check_version.py`|NULL/升级/唯一Head/模型/版本/统计；`test_migration_r2.py`、`test_development_gates.py`|
-|OPERATIONS/固件备份模拟器|`firmware/esp32_dht11`、`scripts/database_backup.py`、`simulator`|同快照/关系、单批/慢重试/64位/TLS、首发清单/时限；备份、固件主机/构建、模拟器测试|
+|OPERATIONS/设备备份模拟器|`firmware/esp32s3_sht31`、`bridge`、`scripts/database_backup.py`、`simulator`|同快照/关系、程序原样与构建、桥按序重试/不复位板子/不补造读数、首发清单/时限；备份、ESP-IDF 构建、桥测试、模拟器测试|

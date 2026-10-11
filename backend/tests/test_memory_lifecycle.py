@@ -69,7 +69,7 @@ def memory_task(api_context):
         authorize_write_fixture(db, actor, "formal_approver")
         case = KnowledgeCase(
             id="synthetic-reviewed-memory",
-            experiment_type="dht11_temperature_humidity",
+            experiment_type="sht31_temperature_humidity",
             error_type="SENSOR_READ_FAILED",
             symptom="合成验证案例",
             normal_state={},
@@ -309,7 +309,7 @@ def test_memory_management_api_enforces_auth_and_plan_ownership(api_context, mem
 def test_package_configuration_is_not_measured_fact_and_revocation_is_separate(memory_task):
     db, actor, case, diagnosis, workflow, _ = memory_task
     authorize_write_fixture(db, actor)
-    bundle, _ = load_experiment_package(PACKAGE_ROOT / "dht11_temperature_humidity")
+    bundle, _ = load_experiment_package(PACKAGE_ROOT / "sht31_temperature_humidity")
     experiment, version = import_experiment_package(
         db, actor, package_documents(bundle), is_test_data=True
     )

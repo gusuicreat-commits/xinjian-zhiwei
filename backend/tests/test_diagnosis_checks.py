@@ -19,7 +19,7 @@ def check(env, **kwargs):
 
 
 def test_refresh_and_repeat_do_not_create_diagnoses_or_call_provider():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         calls = len(env.provider.calls)
         identity = str(uuid4())
@@ -35,7 +35,7 @@ def test_refresh_and_repeat_do_not_create_diagnoses_or_call_provider():
 
 
 def test_same_request_different_payload_conflicts():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         start(env)
         identity = str(uuid4())
         assert check(env, request_id=identity).status_code == 201
@@ -43,7 +43,7 @@ def test_same_request_different_payload_conflicts():
 
 
 def test_receipt_query_is_read_only_and_scope_checked():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         response = check(env, baseline_id=first["diagnosis_result_id"])
         assert response.status_code == 201
@@ -70,7 +70,7 @@ def ingest(env, *, records=None, when=None, request_id=None):
             for c in json.loads(
                 (PACKAGE_ROOT.parent / "evaluation/workflow_inputs.json").read_text()
             )
-            if c["id"] == "dht-valid"
+            if c["id"] == "sht31-valid"
         )
     now = (when or datetime.now(timezone.utc)).isoformat()
     response = env.request(
@@ -92,7 +92,7 @@ def ingest(env, *, records=None, when=None, request_id=None):
 
 
 def test_new_sampling_with_same_values_is_new_evidence_but_heartbeat_is_not_repair():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         ingest(env)
         response = check(env, baseline_id=first["diagnosis_result_id"])
@@ -111,7 +111,7 @@ def test_new_sampling_with_same_values_is_new_evidence_but_heartbeat_is_not_repa
 
 
 def test_stale_baseline_with_different_new_input_is_rejected():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         ingest(env)
         assert check(env, baseline_id=first["diagnosis_result_id"]).status_code == 201
@@ -124,7 +124,7 @@ def test_snapshot_is_frozen_before_workflow_and_resume_after_receipt_failure(mon
 
     original = service.start_workflow
     compare = service.comparison
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         ingest(env)
 
         def upload_then_start(*args, **kwargs):
@@ -170,7 +170,7 @@ def test_snapshot_is_frozen_before_workflow_and_resume_after_receipt_failure(mon
 
 
 def test_other_session_cannot_read_receipt_or_compare_baseline():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         other = env.other_student_headers()
         path = f"/api/v1/diagnosis-workflows/devices/{DEVICE_KEY}"
@@ -186,7 +186,7 @@ def test_other_session_cannot_read_receipt_or_compare_baseline():
 
 
 def test_invalid_experiment_does_not_leave_an_unrecoverable_pending_command():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         result = check(env, experiment_id="gpio_led_output")
         assert result.status_code == 403, result.text
         with env.sessions() as db:
@@ -197,7 +197,7 @@ def test_invalid_experiment_does_not_leave_an_unrecoverable_pending_command():
 def test_late_upload_is_new_input_but_cannot_prove_post_repair_recovery():
     from datetime import datetime, timedelta, timezone
 
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         ingest(env, when=datetime.now(timezone.utc) - timedelta(minutes=1))
         result = check(env, baseline_id=first["diagnosis_result_id"])
@@ -212,7 +212,7 @@ def test_late_upload_is_new_input_but_cannot_prove_post_repair_recovery():
 
 
 def test_legacy_deterministic_result_can_be_the_current_comparison_baseline():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         start(env)
         ingest(env)
         legacy = env.request("POST", f"/api/v1/diagnosis/devices/{DEVICE_KEY}/run", json={})
@@ -223,7 +223,7 @@ def test_legacy_deterministic_result_can_be_the_current_comparison_baseline():
 
 
 def test_duplicate_upload_does_not_create_another_check_result():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         original = next(e["request"] for e in env.events if e["path"].endswith("/ingest"))
         replay = env.request("POST", "/api/v1/device/ingest", json=original)
@@ -236,7 +236,7 @@ def test_duplicate_upload_does_not_create_another_check_result():
 def test_sliding_old_failures_out_of_window_does_not_confirm_recovery():
     from datetime import datetime, timedelta, timezone
 
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         ingest(env, when=datetime.now(timezone.utc) - timedelta(minutes=1))
         first = check(env, lookback_seconds=3600).json()
         result = check(env, baseline_id=first["diagnosis_result_id"], lookback_seconds=1)
@@ -250,7 +250,7 @@ def test_sliding_old_failures_out_of_window_does_not_confirm_recovery():
 def test_waiting_teacher_keeps_its_work_order_and_recheck_uses_no_new_ai():
     from app.models import InterventionCase
 
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         response = env.request(
             "POST",
@@ -271,7 +271,7 @@ def test_waiting_teacher_keeps_its_work_order_and_recheck_uses_no_new_ai():
 
 
 def test_fallback_time_cannot_prove_recovery_and_device_cannot_forge_provenance():
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         original = deepcopy(next(e["request"] for e in env.events if e["path"].endswith("/ingest")))
         original["requestId"] = str(uuid4())
@@ -300,7 +300,7 @@ def test_fallback_time_cannot_prove_recovery_and_device_cannot_forge_provenance(
 def test_after_resolution_fallback_records_do_not_reopen_but_new_timed_failures_do():
     from app.services.diagnosis_episode import issue_links
 
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         closed = env.request(
             "POST",
@@ -338,7 +338,7 @@ def test_after_resolution_fallback_records_do_not_reopen_but_new_timed_failures_
 def test_new_component_reading_does_not_claim_old_failure_logs_are_new_failures():
     from app.services.diagnosis_episode import issue_links
 
-    with workflow_environment("dht11_temperature_humidity") as env:
+    with workflow_environment("sht31_temperature_humidity") as env:
         first = start(env)
         ingest(
             env,
@@ -346,7 +346,7 @@ def test_new_component_reading_does_not_claim_old_failure_logs_are_new_failures(
                 {
                     "type": "reading",
                     "payload": {
-                        "sensor_type": "dht11",
+                        "sensor_type": "SHT31",
                         "metric_key": "temperature",
                         "value": 25,
                         "unit": "C",

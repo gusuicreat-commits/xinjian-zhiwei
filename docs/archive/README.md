@@ -23,10 +23,13 @@
 | `archive/experiment-knowledge-audit.md` | 旧参数不适用当前包，不可辨识组及试验/来源沿革已迁硬件验证计划。 | `935aaa8` |
 | `archive/implementation-history-through-2026-09-27.md` | 旧版本逐轮流水账，当前状态/待验已有归属，完整历史可从Git找回。 | `935aaa8` |
 | `archive/login-layout-review.md` | 历史视觉验收已完成，当前样式以源码和客户端合同为准，截图未删除。 | `935aaa8` |
+| `experiments/dht11-internal-lab.md` | DHT11 内部操作指南；硬件基线 2026-10-11 改为 ESP32-S3 + SHT31，当前入口为 SHT31 内部实验指南。 | `49ac507` |
+| `experiments/dht11-hardware-execution-plan.md` | DHT11 首轮施工方案（S0—S5）；方案随 DHT11 作废，门槛与步骤已改写进 SHT31 指南。 | `49ac507` |
+| `experiments/dht11-arrival-checklist.md` | DHT11 到货清单与 T0—T4 目标；随 DHT11 作废，T0—T4 已按 SHT31 重定义。 | `49ac507` |
 | `experiments/dht11-software-readiness-plan.md` | 软件收尾与初始化已完成，操作入口归内部准备手册，实物缺口归状态/施工计划。 | `49ac507` |
 | `reports/business-rules-verification-2026-09-19.json` | 旧单次机器验证输出，不证明当前通过，现行门禁与历史定位已保留。 | `d9c368b` |
 | `reports/business-rules-workflow-2026-09-19.json` | 旧单次流程验证输出，现行流程要求与测试保留，结果可从Git找回。 | `d9c368b` |
 
 ## 保留的兼容入口
 
-`context-construction-plan.md` 的方案正文已移出，当前只有短链接入口：不可修改的 `references/context-systems-article-2026-09-28.md` 仍指向它。原方案最后修改提交 `49ac507`；持续合同已归AI设计/评测要求，未新增执行规则。其余硬件/施工/课程计划保留，因仍有未执行验收。
+`context-construction-plan.md` 的方案正文已移出，当前只有短链接入口：不可修改的 `references/context-systems-article-2026-09-28.md` 仍指向它。原方案最后修改提交 `49ac507`；持续合同已归AI设计/评测要求，未新增执行规则。其余硬件/课程计划保留，因仍有未执行验收。DHT11 资料包 `backend/experiment_packages/dht11_temperature_humidity/` 与旧固件 `firmware/esp32_dht11/` 不属于 docs，同样于 2026-10-11 删除，最后所在提交为 `2876e91`。

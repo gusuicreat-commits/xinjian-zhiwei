@@ -80,7 +80,7 @@ def test_missing_postgres_coverage_does_not_become_a_green_report(workflow_repor
     ],
 )
 def test_workflow_evaluator_rejects_mutated_outputs(workflow_report, mutation, failed_requirement):
-    case = copy.deepcopy(next(c for c in workflow_report["cases"] if c["id"] == "dht-valid"))
+    case = copy.deepcopy(next(c for c in workflow_report["cases"] if c["id"] == "sht31-valid"))
     s = case["snapshots"][0]
     if mutation == "foreign_evidence":
         s["state"]["reasoned_causes"][0]["used_evidence_ids"] = ["not-this-diagnosis"]
@@ -100,7 +100,7 @@ def test_workflow_evaluator_rejects_mutated_outputs(workflow_report, mutation, f
             if c["cause_id"] == cause["cause_id"]
         )
         cause["used_evidence_ids"] = [next(e["id"] for e in s["evidence"] if e["id"] not in linked)]
-    checks = assess_case(case, EXPECTED["dht-valid"])
+    checks = assess_case(case, EXPECTED["sht31-valid"])
     assert next(c for c in checks if c["requirement"] == failed_requirement)["status"] == "failed"
 
 

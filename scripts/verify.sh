@@ -15,6 +15,16 @@ fi
 
 backend_python=$("$backend_python" -c 'import sys; print(sys.executable)')
 export BACKEND_PYTHON="$backend_python"
+bridge_python=${BRIDGE_PYTHON:-bridge/.venv/bin/python}
+bridge_bin=$(dirname "$bridge_python")
+if [ ! -x "$bridge_python" ]; then
+  echo "bridge Python not found: $bridge_python" >&2
+  echo "Create it with: python3 -m venv bridge/.venv && bridge/.venv/bin/python -m pip install -e 'bridge[dev]'" >&2
+  exit 2
+fi
+"$bridge_bin/ruff" check bridge
+env -u PYTHONPATH "$bridge_bin/pytest" bridge/tests
+PYTHONPATH=backend:bridge "$backend_python" scripts/check_serial_bridge_protocol.py
 workflow_report=${WORKFLOW_EVALUATION_REPORT:-output/workflow-evaluation/local-latest.json}
 
 if [ -z "${XINJIAN_EVAL_POSTGRES_DSN:-}" ]; then
@@ -49,15 +59,6 @@ PYTHONPATH=backend "$backend_python" -m app.cli.run_workflow_evaluation \
   --postgres --output "$workflow_report"
 "$backend_python" scripts/check_version.py
 scripts/security_scan.sh
-firmware_pio=${FIRMWARE_PIO:-pio}
-if ! command -v "$firmware_pio" >/dev/null 2>&1; then
-  echo "PlatformIO is required for firmware validation; set FIRMWARE_PIO to its executable." >&2
-  exit 2
-fi
-"$firmware_pio" run -d firmware/esp32_dht11
-"$firmware_pio" run -d firmware/esp32_dht11 -t buildfs
-"$backend_python" scripts/test_firmware_host.py
-
 (
   cd frontend
   npm run lint
